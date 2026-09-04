@@ -6,10 +6,14 @@ A small Hono service plus a scripts directory. **Owner: track A.**
 key of its own, used solely to sign subname issuances. ENS is the directory
 ([shared.md](shared.md)); the device holds the keys.
 
-**It is not on the critical path.** Kill the hub and the wallet still shows
-balances, history, and sends money. Only natural-language history and push
-notifications stop. Protect this property: if a feature would put the hub
-between the user and their money, it belongs in the app instead.
+**It is not on the critical path, with one exception.** Kill the hub and the
+wallet still shows balances, history, and sends money. Only natural-language
+history and push notifications stop. Protect this property: if a feature would
+put the hub between the user and their money, it belongs in the app instead.
+
+The exception is **sponsored name issuance** ([onboarding.md](onboarding.md)).
+It is confined to onboarding, and even there the name is skippable — a hub
+outage yields a working unnamed wallet, never a blocked user.
 
 ## Why it exists at all
 
