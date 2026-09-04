@@ -9,6 +9,7 @@ where its boundaries are, and how it fails.
 | [hub.md](hub.md) | Agent endpoint + push + ops scripts | A |
 | [subgraph.md](subgraph.md) | The Graph indexers | A |
 | [shared.md](shared.md) | Types and chain config — the seam | both |
+| [onboarding.md](onboarding.md) | First run: create, import, name claim | B (+ one hub endpoint) |
 
 Background lives in [../PLAN.md](../PLAN.md): §2 verified chain facts, §3 the
 feature set, §5 the schedule. These specs assume it and don't repeat it.
@@ -57,6 +58,11 @@ The app talks to The Graph **directly**. The hub is never in the read path.
 **The hub is not on the critical path.** Kill it and the wallet still shows
 balances, history, and sends money. Only natural-language history and push
 notifications go dark. This is a deliberate property — protect it.
+
+**One narrow exception: the name claim.** A new user has no funds on any
+chain, so we sponsor subname issuance from the subregistry we own — which
+requires the hub. Onboarding stays usable without it (the name is skippable),
+and nothing after onboarding touches it. See [onboarding.md](onboarding.md).
 
 ---
 

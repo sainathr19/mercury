@@ -2,7 +2,8 @@
 
 A small Hono service plus a scripts directory. **Owner: track A.**
 
-**It holds no keys, no funds, and no directory.** ENS is the directory
+**It holds no user keys, no user funds, and no directory.** It does hold one
+key of its own, used solely to sign subname issuances. ENS is the directory
 ([shared.md](shared.md)); the device holds the keys.
 
 **It is not on the critical path.** Kill the hub and the wallet still shows
@@ -12,14 +13,17 @@ between the user and their money, it belongs in the app instead.
 
 ## Why it exists at all
 
-Two reasons, both of which need a server:
+Three reasons, all of which need a server:
 
 1. **The LLM API key.** Anything shipped in a React Native bundle is
    extractable from the `.ipa`.
 2. **Push fan-out.** Something has to watch for incoming payments while the app
    is closed.
+3. **Sponsored name issuance.** A new user has no funds on any chain, so we pay
+   for their subname out of the subregistry we own. This needs our key, which
+   means a server. See [onboarding.md](onboarding.md).
 
-Remove both and there is no hub. That is a legitimate three-service version of
+Remove all three and there is no hub. That is a legitimate three-service version of
 Mercury; it costs natural-language history and real notifications.
 
 ## Layout
@@ -31,6 +35,7 @@ hub/
     agent.ts      NL → GraphQL → NL
     push.ts       token registry + poller + Expo push
     graph.ts      its own Graph client (NOT shared with the app)
+    names.ts      subname issuance + the issuance index
   scripts/
     check-arc.ts          connectivity + balance sanity
     ens-register.ts       claim mercury.eth on Sepolia
@@ -77,6 +82,32 @@ That is acceptable *only* because everything queryable is already public
 on-chain data — the endpoint reveals nothing a block explorer wouldn't. Do not
 add anything private to this endpoint without adding auth first.
 
+## `POST /name/claim`
+
+Issues `<name>.mercury.eth` from our subregistry, paid with our key. Full
+protocol, signed-message format and validation order in
+[onboarding.md](onboarding.md). Summary of the hub's obligations:
+
+```ts
+{ name, address, stealthMeta, timestamp, signature } → { name, txHash }
+```
+
+1. Recover the signature to `address`, else 401
+2. `timestamp` within ±5 minutes
+3. Name valid, not reserved, unclaimed
+4. **`address` does not already own a name** — one per address
+5. Rate limit per IP
+6. Issue the subname and set `addr(2152525650)` + the stealth text record in
+   **one** transaction
+
+**This endpoint spends real money** — every call costs Sepolia gas from our
+key. It is the only hub endpoint that does, and it is the only reason the hub
+holds a key at all. That key signs name issuances and nothing else; it never
+touches user funds.
+
+Keep an issuance index (`address → name → txHash`) — it backs the
+one-per-address check and the reverse lookup used by wallet import.
+
 ## `POST /push/register` and the poller
 
 ```ts
@@ -114,7 +145,8 @@ keeps working.
 
 | Failure | Symptom | Response |
 |---|---|---|
-| Hub down | No agent, no push | Wallet unaffected. App shows the agent tab as unavailable rather than spinning. |
+| Hub down | No agent, no push, no new names | Wallet unaffected. Agent tab shows unavailable; onboarding falls through to the claim banner. |
+| Sepolia key dry | Every claim fails | Monitor the balance. A dry key on demo day looks exactly like a broken product. |
 | LLM times out | Agent hangs | 10s timeout → "couldn't answer that", never a partial answer |
 | LLM emits invalid GraphQL | Query fails | Reject against the allowlist, retry once, then decline |
 | Poller falls behind | Late notifications | It is a cache — the app's own subgraph reads are the source of truth |

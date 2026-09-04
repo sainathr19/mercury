@@ -111,7 +111,7 @@ substitute for chain truth.
 
 | Screen | Does |
 |---|---|
-| onboarding | seed → SecureStore → biometric gate → claim `<name>.mercury.eth` |
+| onboarding | create or import → lock → optional name claim. Full flow in [onboarding.md](onboarding.md) |
 | home | one balance, recent activity, send/receive |
 | send | name → amount → **private toggle** → confirm → sign |
 | receive | name + QR; funding options via CCTP |
@@ -142,9 +142,10 @@ because the recipient lacks a meta-address would be the worst bug in the app.
 
 ## Open questions
 
-- **Where do stealth notes live?** Persisted in `stores/notes` via
-  AsyncStorage. A reinstall loses the index — the money is recoverable by
-  rescanning from the seed, but the UX of that is unspecified. Decide on day 9.
+- ~~Where do stealth notes live on reinstall?~~ **Resolved:** cached in
+  `stores/notes`, rebuilt by rescanning announcements from the seed on import
+  ([onboarding.md](onboarding.md) Path B step 6). The cache is an optimisation,
+  never the source of truth.
 - **Does the app need the Token API at all** if funding is limited to Base and
   Ethereum? Would remove the merge entirely. Depends on the day-6 CCTP scope.
 - **Biometric on every send, or session-scoped?** Per-send is safer, worse to
