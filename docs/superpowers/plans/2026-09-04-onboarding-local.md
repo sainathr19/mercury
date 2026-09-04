@@ -29,7 +29,8 @@
 | `shared/chains.ts` | Arc chain config + the only decimals conversion |
 | `shared/index.ts` | Re-exports |
 | `app/src/bridge/keys.ts` | Mnemonic generate/validate, seed → Arc private key + address |
-| `app/src/bridge/vault.ts` | Seed persistence behind a `Storage` interface; biometric gate |
+| `app/src/bridge/vault.ts` | Seed persistence behind a `Storage` interface (Node-clean) |
+| `app/src/bridge/secureStorage.ts` | The device `Storage` adapter — isolated so `vault.ts` stays testable |
 | `app/src/bridge/route.ts` | Derived onboarding route |
 | `app/src/bridge/verify.ts` | Recovery-phrase challenge: pick and check words |
 | `app/src/stores/session.ts` | zustand: seed presence, address, lock state |
@@ -62,7 +63,7 @@ cd /Users/sainathr19/Desktop/mercury
 npx create-expo-app@latest app --template blank-typescript
 cd app
 npx expo install expo-router expo-secure-store expo-local-authentication expo-linking expo-constants react-native-safe-area-context react-native-screens
-npm i @scure/bip39@2.4.0 @scure/bip32@2.4.0 viem@2.56.3 zustand@5.0.15
+npm i @scure/bip39@2.4.0 @scure/bip32@2.4.0 @noble/hashes@2.0.1 viem@2.56.3 zustand@5.0.15
 npm i -D vitest@5.0.0
 ```
 
@@ -467,11 +468,14 @@ export class Vault {
 Run: `cd app && npm test -- vault`
 Expected: PASS, 6 tests
 
-- [ ] **Step 5: Add the device-backed Storage adapter**
+- [ ] **Step 5: Add the device-backed Storage adapter — in its OWN file**
 
-Append to `app/src/bridge/vault.ts`:
+`app/src/bridge/secureStorage.ts`. It must NOT live in `vault.ts`:
+`expo-secure-store` is a native module, and importing it at the top of a file
+the Node tests load breaks the whole suite.
 
 ```ts
+import type { Storage } from './vault';
 import * as SecureStore from 'expo-secure-store';
 
 /** Device Storage. SecureStore keeps values in the Keychain / Keystore. */
@@ -763,7 +767,8 @@ Expected: FAIL — cannot find module `../session`
 
 ```ts
 import { create } from 'zustand';
-import { Vault, secureStorage } from '../bridge/vault';
+import { Vault } from '../bridge/vault';
+import { secureStorage } from '../bridge/secureStorage';
 import { generatePhrase } from '../bridge/keys';
 import { routeFor, type Route } from '../bridge/route';
 
