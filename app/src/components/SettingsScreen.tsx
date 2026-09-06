@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
@@ -56,9 +56,9 @@ export function SettingsScreen() {
       {/* Claim-username banner — hidden once a username is set. */}
       {!hasHandle && (
         <Pressable style={styles.banner} onPress={openUsername}>
-          <ExpoImage source={require('../../assets/icons/StaIcon.svg')} style={styles.bannerIcon} contentFit="contain" />
+          <ExpoImage source={require('../../assets/icons/MercuryIcon.svg')} style={styles.bannerIcon} contentFit="contain" />
           <View style={styles.bannerMid}>
-            <Text style={styles.bannerTitle}>Claim your Standard username</Text>
+            <Text style={styles.bannerTitle}>Claim your Mercury username</Text>
             <Text style={styles.bannerSub}>A cleaner way to receive money.</Text>
           </View>
           <Chevron />
@@ -93,11 +93,12 @@ export function SettingsScreen() {
         <Row title="Notifications" onPress={soon('Notification settings')} />
       </Section>
 
-      <Section title="About">
-        <Row title="Contact support" onPress={() => Linking.openURL('mailto:support@standard.xyz')} />
-        <Row title="Share your feedback" onPress={() => Linking.openURL('mailto:feedback@standard.xyz')} />
-        <Row title="Follow @standard" onPress={() => Linking.openURL('https://x.com/standardfnd')} />
-      </Section>
+      {/* About is intentionally empty until Mercury has its own support channel.
+          These rows used to open mailto:support@standard.xyz and an x.com
+          account belonging to a different company — a user reporting a lost
+          wallet would have sent it to strangers. An address that does not exist
+          yet is not an improvement on that, so the rows are gone rather than
+          guessed at; restore them once there is somewhere real to point. */}
     </ScrollView>
   );
 }

@@ -92,7 +92,7 @@ export default function SendAddress() {
           setResolved(r);
           setResolveErr(null);
         } else {
-          setResolveErr(`No Standard user @${handle}`);
+          setResolveErr(`No Mercury user @${handle}`);
         }
       } catch {
         if (!cancelled) setResolveErr('Could not check that username.');

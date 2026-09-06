@@ -9,7 +9,7 @@ import { getActiveEvmChainId } from './evmChain';
 // Reused from the iOS app (Reown/WalletConnect Cloud project).
 const PROJECT_ID = 'e4a554893ca957238233d31750f28144';
 const METADATA = {
-  name: 'Standard Wallet',
+  name: 'Mercury',
   description: 'Multi-chain self-custody wallet',
   url: 'https://standardwallet.xyz',
   icons: ['https://standardwallet.xyz/icon.png'],

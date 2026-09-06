@@ -15,7 +15,7 @@ export interface AddressQRProps {
   /** Surface color the QR sits on (used for the finder-pattern inner ring). */
   bg?: string;
   /** Optional custom center logo (a require()'d image) — overrides the coingecko
-   *  glyph. Used for the Standard-username QR (StaIcon). */
+   *  glyph. Used for the Mercury-username QR (MercuryIcon). */
   logo?: number;
   /** Force a minimum QR symbol version (1–40). A short payload (e.g. a
    *  @username) otherwise makes a low-density QR with huge modules; forcing a

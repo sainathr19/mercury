@@ -202,7 +202,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
     if (Date.now() - backgroundedAt >= threshold * 1000) set({ isLocked: true });
   },
   unlock: async () => {
-    if (await authenticate('Unlock Standard')) set({ isLocked: false });
+    if (await authenticate('Unlock Mercury')) set({ isLocked: false });
   },
   applyPrivateTheme: (on) => {
     set({ privateActive: on });

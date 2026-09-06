@@ -65,7 +65,7 @@ export default function ReceiveAddress() {
   // Center mark in the QR: the Standard glyph for @username, else the chain's
   // bundled icon (falls back to the CryptoGlyph inside AddressQR when none).
   const centerLogo = isUsername
-    ? require('../../../assets/icons/StaIcon.svg')
+    ? require('../../../assets/icons/MercuryIcon.svg')
     : network?.kind === 'address'
       ? localTokenIcon(network.coingeckoId, UnistylesRuntime.themeName === 'dark')
       : undefined;
@@ -142,7 +142,7 @@ export default function ReceiveAddress() {
         ) : (
           <Text variant="bodyMedium" color={theme.colors.muted} style={styles.subtitle}>
             {isUsername
-              ? 'Use your Standard username to receive tokens on any network from other Standard users.'
+              ? 'Use your Mercury username to receive tokens on any network from other Mercury users.'
               : `Use this address to receive tokens on the ${network?.name} network only.`}
           </Text>
         )}

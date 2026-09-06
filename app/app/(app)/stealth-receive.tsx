@@ -75,7 +75,7 @@ export default function StealthReceive() {
             size={230}
             coingeckoId=""
             bg={theme.colors.cardBackground}
-            logo={require('../../assets/icons/StaIcon.svg')}
+            logo={require('../../assets/icons/MercuryIcon.svg')}
           />
         </View>
 
@@ -96,7 +96,7 @@ export default function StealthReceive() {
         </View>
 
         <Text variant="bodyMedium" color={theme.colors.muted} style={styles.subtitle}>
-          Use your stealth address to receive tokens privately from any other Standard user.
+          Use your stealth address to receive tokens privately from any other Mercury user.
         </Text>
       </View>
 

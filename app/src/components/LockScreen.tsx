@@ -35,7 +35,7 @@ export function LockScreen() {
       <View style={styles.root}>
         <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
           <Icon name="lock" size={28} color={theme.colors.text} />
-          <RNText style={styles.heading}>Standard is locked.</RNText>
+          <RNText style={styles.heading}>Mercury is locked.</RNText>
           <RNText style={styles.subtitle}>Unlock with Face ID to continue.</RNText>
 
           <PressableScale style={styles.button} onPress={unlock}>

@@ -24,7 +24,7 @@ export type ReceiveNetwork =
 // `ethereum:` URI scheme — only the display name / icon differ. `coingeckoId`
 // here doubles as the bundled-icon lookup key (see icon-assets LOCAL_TOKEN_ICONS).
 export const RECEIVE_NETWORKS: ReceiveNetwork[] = [
-  { key: 'standard', name: 'Standard', kind: 'username' },
+  { key: 'standard', name: 'Mercury', kind: 'username' },
   { key: 'bitcoin', name: 'Bitcoin', kind: 'address', addrKey: 'btc', coingeckoId: 'bitcoin', symbol: 'BTC', colorHex: '#FF991A', uriScheme: 'bitcoin' },
   { key: 'ethereum', name: 'Ethereum', kind: 'address', addrKey: 'eth', coingeckoId: 'ethereum', symbol: 'ETH', colorHex: '#25292E', uriScheme: 'ethereum', chainIds: { mainnet: 1n, testnet: 11155111n } },
   { key: 'arbitrum', name: 'Arbitrum', kind: 'address', addrKey: 'eth', coingeckoId: 'arbitrum', symbol: 'ARB', colorHex: '#28A0F0', uriScheme: 'ethereum', chainIds: { mainnet: 42161n, testnet: 421614n } },

@@ -8,7 +8,7 @@ export default function Boot() {
   return (
     <View style={styles.root}>
       <View style={styles.center}>
-        <RNText style={styles.wordmark}>Standard</RNText>
+        <RNText style={styles.wordmark}>Mercury</RNText>
       </View>
     </View>
   );

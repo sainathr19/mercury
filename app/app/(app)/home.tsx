@@ -429,7 +429,7 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
           <View style={styles.emptyRow}>
             <View style={styles.emptyText}>
               <RNText style={styles.emptyTitle}>There is nothing here yet</RNText>
-              <RNText style={styles.emptyDesc}>Deposit funds to your wallet to start using Standard.</RNText>
+              <RNText style={styles.emptyDesc}>Deposit funds to your wallet to start using Mercury.</RNText>
             </View>
             <PressableScale style={styles.receivePill} onPress={() => router.push('/(app)/receive')}>
               <ExpoImage source={require('../../assets/icons/arrowDown.svg')} style={styles.receiveIcon} tintColor={theme.colors.primaryLabel} contentFit="contain" />

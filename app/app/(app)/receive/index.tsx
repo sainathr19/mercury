@@ -108,7 +108,7 @@ export default function AddFunds() {
           {RECEIVE_NETWORKS.map((n) => (
             <Pressable key={n.key} style={styles.netRow} onPress={() => selectNetwork(n)}>
               {n.kind === 'username' ? (
-                <ExpoImage source={require('../../../assets/icons/StaIcon.svg')} style={styles.brandIcon} contentFit="contain" />
+                <ExpoImage source={require('../../../assets/icons/MercuryIcon.svg')} style={styles.brandIcon} contentFit="contain" />
               ) : (
                 <CryptoIcon coingeckoId={n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={40} />
               )}

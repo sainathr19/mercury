@@ -285,7 +285,7 @@ const ICON =
  * and events arrive via `window.__standardEmit`. Announces via EIP-6963.
  */
 export const EVM_PROVIDER_SCRIPT = `(() => {
-  if (window.ethereum && window.ethereum.isStandard) return;
+  if (window.ethereum && window.ethereum.isMercury) return;
   const listeners = {}; const pending = {}; let nextId = 1;
   const emit = (event, data) => (listeners[event] || []).forEach((cb) => { try { cb(data); } catch (e) {} });
   window.__standardEmit = (event, data) => {
@@ -303,7 +303,7 @@ export const EVM_PROVIDER_SCRIPT = `(() => {
     window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, params: params || [] }));
   });
   const provider = {
-    isStandard: true, isMetaMask: false,
+    isMercury: true, isMetaMask: false,
     chainId: '0xaa36a7', networkVersion: '11155111', selectedAddress: null,
     request: ({ method, params }) => rpc(method, params),
     on: (event, cb) => { (listeners[event] = listeners[event] || []).push(cb); return provider; },
@@ -317,7 +317,7 @@ export const EVM_PROVIDER_SCRIPT = `(() => {
   window.ethereum = provider;
   const announce = () => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
     detail: Object.freeze({
-      info: { uuid: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()), name: 'Standard', rdns: 'com.hashiraworks.standardrn', icon: '${ICON}' },
+      info: { uuid: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()), name: 'Mercury', rdns: 'run.mercury.wallet', icon: '${ICON}' },
       provider,
     }),
   }));

@@ -3,7 +3,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 /** Prompt for Face ID / Touch ID / device biometrics. On hardware without
  *  biometrics (e.g. the simulator) we allow through so dev flows aren't blocked.
  *  The Secure Enclave unwrap on device still enforces real auth on open. */
-export async function authenticate(reason = 'Unlock your Standard wallet'): Promise<boolean> {
+export async function authenticate(reason = 'Unlock your Mercury wallet'): Promise<boolean> {
   const hasHardware = await LocalAuthentication.hasHardwareAsync();
   const enrolled = await LocalAuthentication.isEnrolledAsync();
   if (!hasHardware || !enrolled) return true; // simulator / not set up → allow (dev)
