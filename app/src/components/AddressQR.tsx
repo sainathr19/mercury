@@ -21,7 +21,7 @@ export interface AddressQRProps {
    *  @username) otherwise makes a low-density QR with huge modules; forcing a
    *  higher version pads it so the dots stay small — matching the address QRs. */
   version?: number;
-  /** Error-correction level (default 'H'). A LONG payload (e.g. a bolt11 Lightning
+  /** Error-correction level (default 'H'). A LONG payload (e.g. a long URI
    *  invoice) at 'H' packs in so many modules the dots get tiny — pass 'M' (or 'L')
    *  for fewer, bigger dots. Short payloads (addresses) stay at 'H'. */
   ecl?: 'L' | 'M' | 'Q' | 'H';

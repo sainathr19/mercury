@@ -127,20 +127,6 @@ export default function RootLayout() {
     if (status === 'ready') void useSwap.getState().loadAssets();
   }, [status]);
 
-  // Fetch the Lightning (Spark) balance + claim any confirmed on-chain deposits
-  // once the wallet is open AND on every foreground, so a Bitcoin deposit to the
-  // Lightning deposit address gets pulled into the Spark balance automatically
-  // (refreshLightning runs syncWallet → listUnclaimedDeposits → claimDeposit).
-  // Best-effort (connects Breez in the background).
-  useEffect(() => {
-    if (status !== 'ready') return;
-    void usePortfolio.getState().refreshLightning();
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') void usePortfolio.getState().refreshLightning();
-    });
-    return () => sub.remove();
-  }, [status]);
-
   // App-lock: arm ONLY on a real 'background' (not 'inactive'), evaluate on
   // foreground. iOS fires 'inactive' for transient interruptions — most importantly
   // the Face ID prompt itself — so arming on 'inactive' made every biometric prompt

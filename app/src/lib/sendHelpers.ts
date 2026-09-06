@@ -68,9 +68,6 @@ function evmChainKey(a: PortfolioAsset): string {
  *    not on Ethereum, so the chain matters.
  */
 export function chainIconKeyFor(a: PortfolioAsset): string | null {
-  // Lightning (Spark) BTC → show the Lightning badge so it's distinct from
-  // on-chain Bitcoin (both use the Bitcoin base icon).
-  if (a.lightning) return 'lightning';
   const isToken = !!a.tokenContract || !!a.tokenMint;
   // Solana: SPL tokens badge with Solana; native SOL / Bitcoin native → no badge.
   if (a.chain === 'solana') return isToken ? 'solana' : null;

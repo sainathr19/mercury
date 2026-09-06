@@ -21,7 +21,7 @@ describe('isTestnetActivity', () => {
   });
 
   it('does NOT flag mainnet chains', () => {
-    for (const n of ['Ethereum', 'Arbitrum One', 'Base', 'Optimism', 'Polygon', 'Bitcoin', 'Solana', 'Lightning', 'Tempo']) {
+    for (const n of ['Ethereum', 'Arbitrum One', 'Base', 'Optimism', 'Polygon', 'Bitcoin', 'Solana', 'Tempo']) {
       expect(isTestnetActivity(item(n))).toBe(false);
     }
   });

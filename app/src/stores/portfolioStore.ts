@@ -7,26 +7,10 @@ import {
   type PortfolioChunk,
   type MarketSnapshot,
 } from '../bridge/portfolio';
-import { lightningBalance, claimDeposits } from '../bridge/lightning';
 import { useSession } from './session';
 import { useTokens } from './tokensStore';
 import { useRegistry } from './registryStore';
 
-/** Synthetic BTC asset representing the custodial Lightning (Spark) balance. */
-function lightningAsset(sats: number): PortfolioAsset {
-  return {
-    id: 'lightning-btc',
-    name: 'Bitcoin',
-    symbol: 'BTC',
-    amount: sats / 1e8,
-    decimals: 8,
-    coingeckoId: 'bitcoin',
-    chain: 'bitcoin',
-    colorHex: '#F7931A',
-    networkName: 'Lightning',
-    lightning: true,
-  };
-}
 import { activeScopeKey } from '../bridge/wallet';
 import { usePendingBalance } from './pendingBalanceStore';
 import { applyDeltas, type PendingDelta } from '../lib/pendingBalance';
@@ -65,12 +49,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 const MARKET_CACHE = 'market.v1.json';
 function assetsCacheName(): string {
   return `assets-${activeScopeKey()}.json`;
-}
-// Lightning (Spark) balance cache — keyed by scope (alias) so a switched wallet
-// never shows the wrong last-known balance. Cached like any other asset so it
-// paints its last value on open instead of 0 while Breez reconnects.
-function lightningCacheName(): string {
-  return `lightning-${activeScopeKey()}.json`;
 }
 function file(name: string): File {
   return new File(Paths.document, name);
@@ -159,10 +137,6 @@ interface PortfolioState {
   /** Recompute `assets` (display) from confirmed balances + current deltas. Cheap;
    *  called on every refresh chunk and whenever the pending-delta ledger changes. */
   recomputeDisplay: () => void;
-  /** The custodial Lightning (Spark) balance in sats, surfaced as a BTC asset. */
-  lightningSats: number;
-  /** Fetch the Lightning balance from the Breez SDK and fold it into `assets`. */
-  refreshLightning: () => Promise<void>;
   /** Ensure `ids` are priced now (targeted fetch for any missing from `market`)
    *  and tracked for future refreshes. Populates both price AND icon URL, so a
    *  privately-received token isn't stuck on a blank icon / $0 until a full
@@ -180,36 +154,15 @@ export const usePortfolio = create<PortfolioState>((set, get) => ({
   loadedScope: null,
   extraPriceIds: [],
   recomputeDisplay: () => {
-    const { confirmedAssets, loadedScope, lightningSats } = get();
-    const base = applyDeltas(confirmedAssets, scopedDeltas(loadedScope));
-    // Append the custodial Lightning (Spark) balance as its own BTC-priced asset.
-    set({ assets: [...base, lightningAsset(lightningSats)] });
-  },
-  lightningSats: 0,
-  refreshLightning: async () => {
-    try {
-      void get().ensurePriced(['bitcoin']); // so the LN asset shows a USD value
-      // Claim any confirmed on-chain deposits first, then read the balance.
-      try {
-        await claimDeposits();
-      } catch (e) {
-        console.warn('[lightning] claimDeposits failed:', String(e));
-      }
-      const sats = await lightningBalance();
-      set({ lightningSats: sats });
-      persist(lightningCacheName(), sats); // cache so next open paints it instantly
-      get().recomputeDisplay();
-    } catch {
-      // best-effort — Lightning may be offline / not yet connected
-    }
+    const { confirmedAssets, loadedScope } = get();
+    set({ assets: applyDeltas(confirmedAssets, scopedDeltas(loadedScope)) });
   },
   hydrate: async () => {
     if (get().hydrated) return;
     const scope = activeScopeKey();
-    const [cachedMarket, cachedAssets, cachedLightning] = await Promise.all([
+    const [cachedMarket, cachedAssets] = await Promise.all([
       readCache<Record<string, MarketSnapshot>>(MARKET_CACHE),
       readCache<PortfolioAsset[]>(assetsCacheName()),
-      readCache<number>(lightningCacheName()),
     ]);
     // Load this scope's persisted deltas so a mid-flight restart resumes with the
     // right optimistic balance (and folds them into the first paint below).
@@ -217,7 +170,6 @@ export const usePortfolio = create<PortfolioState>((set, get) => ({
     set((s) => ({
       market: cachedMarket && Object.keys(cachedMarket).length ? { ...cachedMarket, ...s.market } : s.market,
       confirmedAssets: s.confirmedAssets.length ? s.confirmedAssets : cachedAssets ?? s.confirmedAssets,
-      lightningSats: s.lightningSats || cachedLightning || 0,
       loadedScope: scope,
       hydrated: true,
     }));
@@ -288,7 +240,7 @@ export const usePortfolio = create<PortfolioState>((set, get) => ({
       const merged = get().confirmedAssets;
       const priceIds = [
         ...new Set([
-          'bitcoin', // always priced — the Lightning (Spark) asset is BTC-denominated
+          'bitcoin',
           ...merged.flatMap((a) => (a.feeCoingeckoId ? [a.coingeckoId, a.feeCoingeckoId] : [a.coingeckoId])),
           ...get().extraPriceIds, // stealth-received tokens etc.
         ]),
@@ -384,8 +336,8 @@ export function investmentsValue(
  *  `hidden` is a set of asset ids the user disabled in Manage Tokens (per chain). */
 export function displayAssets(assets: PortfolioAsset[], hidden: string[] = []): PortfolioAsset[] {
   const hideSet = new Set(hidden);
-  // Every asset — Lightning included — shows only when actually held (amount > 0),
-  // so an empty Lightning balance isn't listed as a $0.00 row.
+  // An asset shows only when actually held (amount > 0), so a zero balance
+  // isn't listed as a $0.00 row.
   return assets.filter((a) => a.amount > 0 && !hideSet.has(a.id));
 }
 
@@ -400,8 +352,7 @@ export function displayAssets(assets: PortfolioAsset[], hidden: string[] = []): 
 export function groupedAssets(assets: PortfolioAsset[], hidden: string[] = []): PortfolioAsset[] {
   const byCoin = new Map<string, PortfolioAsset>();
   for (const a of displayAssets(assets, hidden)) {
-    // Keep the Lightning BTC balance as its own row (don't merge it into on-chain BTC).
-    const key = a.lightning ? `${a.coingeckoId}|ln` : a.coingeckoId;
+    const key = a.coingeckoId;
     const g = byCoin.get(key);
     if (!g) {
       byCoin.set(key, { ...a });

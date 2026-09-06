@@ -50,7 +50,6 @@
       "expo-secure-store",
       "expo-sharing",
       "./plugins/withoutPush",
-      "./plugins/withNfc",
       "@react-native-google-signin/google-signin",
       "expo-apple-authentication",
       "expo-web-browser",

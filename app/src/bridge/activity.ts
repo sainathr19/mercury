@@ -259,44 +259,7 @@ export async function loadActivity(
   return [...btc, ...sol, ...evm];
 }
 
-/** A received Lightning payment (custodial gateway). Lightning is Bitcoin-only,
- *  so the asset is BTC and the amount is shown in sats. Marked `confirmed` (a
- *  settled Lightning payment is final) with no explorer URL (off-chain). Not on
- *  any chain the scan covers, so it's preserved across refresh via mergeActivity. */
-export function lightningReceiveItem(args: { id: string; sats: number; btcPrice?: number }): ActivityItem {
-  return {
-    id: `ln-recv-${args.id}`,
-    symbol: 'BTC',
-    coingeckoId: 'bitcoin',
-    colorHex: '#F7931A',
-    type: 'received',
-    label: 'via Lightning',
-    amountText: `+${args.sats.toLocaleString('en-US')} sats`,
-    usdText: args.btcPrice ? usd((args.sats / 1e8) * args.btcPrice, '+') : '',
-    timestamp: Math.floor(Date.now() / 1000),
-    status: 'confirmed',
-    explorerUrl: '',
-    network: 'Lightning',
-  };
-}
 
-/** A sent Lightning payment (custodial gateway). Mirror of {@link lightningReceiveItem}. */
-export function lightningSendItem(args: { id: string; sats: number; btcPrice?: number }): ActivityItem {
-  return {
-    id: `ln-sent-${args.id}`,
-    symbol: 'BTC',
-    coingeckoId: 'bitcoin',
-    colorHex: '#F7931A',
-    type: 'sent',
-    label: 'via Lightning',
-    amountText: `-${args.sats.toLocaleString('en-US')} sats`,
-    usdText: args.btcPrice ? usd((args.sats / 1e8) * args.btcPrice, '-') : '',
-    timestamp: Math.floor(Date.now() / 1000),
-    status: 'confirmed',
-    explorerUrl: '',
-    network: 'Lightning',
-  };
-}
 
 /**
  * Build an optimistic `pending`/`sent` item for a transaction we just broadcast,

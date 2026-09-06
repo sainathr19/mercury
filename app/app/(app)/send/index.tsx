@@ -244,13 +244,6 @@ export default function SendFlow() {
 
   async function selectAsset(a: PortfolioAsset) {
     tap();
-    // Lightning (Spark) BTC isn't an on-chain send — it pays a bolt11 invoice.
-    // Route to the Lightning pay screen WITHIN the send stack so it opens the same
-    // way as other assets (a card push inside this sheet), not a separate route.
-    if (a.lightning) {
-      router.push('/(app)/send/lightning');
-      return;
-    }
     // Pre-fill the address step with a just-scanned recipient (@username / stealth1)
     // on the FIRST pick, then consume it so re-picking an asset asks for a fresh
     // address. Any non-scanned entry is cleared.

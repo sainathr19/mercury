@@ -12,8 +12,7 @@ export type ReceiveNetwork =
       colorHex: string;
       uriScheme: string;
     }
-  | { key: string; name: string; kind: 'username' }
-  | { key: string; name: string; kind: 'lightning' };
+  | { key: string; name: string; kind: 'username' };
 
 // All EVM chains (Ethereum, Arbitrum, Base, Optimism, Polygon, Hyperliquid) share
 // the SAME 0x receive address, so they all map to `addrKey: 'eth'` and the
@@ -21,7 +20,6 @@ export type ReceiveNetwork =
 // here doubles as the bundled-icon lookup key (see icon-assets LOCAL_TOKEN_ICONS).
 export const RECEIVE_NETWORKS: ReceiveNetwork[] = [
   { key: 'standard', name: 'Standard', kind: 'username' },
-  { key: 'lightning', name: 'Lightning', kind: 'lightning' },
   { key: 'bitcoin', name: 'Bitcoin', kind: 'address', addrKey: 'btc', coingeckoId: 'bitcoin', symbol: 'BTC', colorHex: '#FF991A', uriScheme: 'bitcoin' },
   { key: 'ethereum', name: 'Ethereum', kind: 'address', addrKey: 'eth', coingeckoId: 'ethereum', symbol: 'ETH', colorHex: '#25292E', uriScheme: 'ethereum' },
   { key: 'arbitrum', name: 'Arbitrum', kind: 'address', addrKey: 'eth', coingeckoId: 'arbitrum', symbol: 'ARB', colorHex: '#28A0F0', uriScheme: 'ethereum' },

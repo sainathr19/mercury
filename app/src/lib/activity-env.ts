@@ -12,7 +12,7 @@
 // Classification is by the row's human network name + explorer URL — both are
 // stamped at creation for every chain family (BTC "Bitcoin Testnet", SOL "Solana
 // Devnet", EVM "Sepolia"/"Base Sepolia"/…), so a testnet row is reliably
-// identifiable while every mainnet row (and Lightning, which is mainnet-only)
+// identifiable while every mainnet row (and mainnet-only rows)
 // falls through to mainnet.
 
 import type { Environment } from './environment';
@@ -41,7 +41,7 @@ export function isTestnetActivity(item: Classifiable): boolean {
 }
 
 /** True if this row should be shown in the given environment. Testnet rows show
- *  only on testnet; everything else (mainnet + Lightning + unclassifiable) shows
+ *  only on testnet; everything else (mainnet + unclassifiable) shows
  *  only on mainnet. */
 export function activityMatchesEnv(item: Classifiable, env: Environment): boolean {
   return env === 'testnet' ? isTestnetActivity(item) : !isTestnetActivity(item);

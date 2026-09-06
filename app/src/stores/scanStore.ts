@@ -42,11 +42,7 @@ export interface ScannedPayment {
   /** Chain implied by the URI scheme (`ethereum:`→eth, `bitcoin:`→btc,
    *  `solana:`→sol). Authoritative over address-byte guessing, which is
    *  ambiguous (a bech32 `tb1…` also matches the base58 Solana shape). */
-  chainHint?: 'btc' | 'eth' | 'sol';
-  /** Set when the scanned payload is a bolt11 Lightning invoice — `address`
-   *  holds the raw bolt11. Routed to the Lightning pay screen, not on-chain. */
-  lightning?: string;
-}
+  chainHint?: 'btc' | 'eth' | 'sol';}
 
 /** Manual query-string parse. Avoids depending on RN's partial URLSearchParams
  *  polyfill, and handles percent-encoding. */
@@ -76,14 +72,6 @@ function parseQuery(qs: string): Record<string, string> {
 export function parsePayment(raw: string): ScannedPayment {
   const s = raw.trim();
   const lower = s.toLowerCase();
-
-  // Lightning bolt11 invoice (optionally `lightning:`-prefixed). Detected before
-  // the on-chain schemes so an `lnbc…`/`lntb…` string routes to the LN pay flow
-  // instead of failing chain detection. `address` carries the raw bolt11.
-  const lnBody = lower.startsWith('lightning:') ? s.slice('lightning:'.length).trim() : s;
-  if (/^ln(bc|tb|tbs|bcrt|sb)[0-9]/i.test(lnBody)) {
-    return { address: lnBody.toLowerCase(), lightning: lnBody.toLowerCase() };
-  }
 
   // Standard handle (@username) — what the Standard receive QR encodes. Return it
   // verbatim so the Send flow resolves it to the recipient's receive address.

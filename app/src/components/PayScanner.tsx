@@ -16,8 +16,7 @@ const BTN_H = 48;
 /**
  * Floating "Pay" capsule. Tapping it slides the capsule down out of view and
  * raises a QR scanner presented as a MODAL SHEET (dimmed backdrop, top gap,
- * rounded top corners) — not a full page. Scanning a QR opens Send (or the
- * Lightning pay screen for a bolt11).
+ * rounded top corners) — not a full page. Scanning a QR opens Send.
  *
  * The sheet is a PERSISTENT reanimated overlay (not a React-Native Modal) so the
  * CameraView stays mounted across opens — we only toggle its `active` prop. A
@@ -78,13 +77,6 @@ export function PayScanner({ visible }: { visible: boolean }) {
     sheetY.value = withTiming(H, { duration: 260 });
     dim.value = withTiming(0, { duration: 260 });
     hidden.value = 0; // reset so the capsule is back when returning to Wallet
-    // A Lightning bolt11 invoice routes to the LN pay screen, not the on-chain
-    // Send flow (it has no chain address to resolve against the portfolio).
-    const ln = parsePayment(value).lightning;
-    if (ln) {
-      router.push({ pathname: '/(app)/ln-pay', params: { invoice: ln } });
-      return;
-    }
     setResult(value);
     router.push({ pathname: '/(app)/send', params: { step: 'pick' } });
   }

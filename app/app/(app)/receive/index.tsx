@@ -51,12 +51,6 @@ export default function AddFunds() {
 
   function selectNetwork(n: ReceiveNetwork) {
     tap();
-    // Lightning has its own flow (reusable address + invoice), but it's a real
-    // page in the receive stack — like the on-chain address screen — not a modal.
-    if (n.kind === 'lightning') {
-      router.push({ pathname: '/(app)/receive/ln' });
-      return;
-    }
     router.push({ pathname: '/(app)/receive/address', params: { key: n.key } });
   }
 
@@ -115,8 +109,6 @@ export default function AddFunds() {
             <Pressable key={n.key} style={styles.netRow} onPress={() => selectNetwork(n)}>
               {n.kind === 'username' ? (
                 <ExpoImage source={require('../../../assets/icons/StaIcon.svg')} style={styles.brandIcon} contentFit="contain" />
-              ) : n.kind === 'lightning' ? (
-                <ExpoImage source={require('../../../assets/icons/lightning.svg')} style={styles.brandIcon} contentFit="contain" />
               ) : (
                 <CryptoIcon coingeckoId={n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={40} />
               )}

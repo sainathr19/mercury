@@ -326,7 +326,7 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
     // Haptic on every pull — even when there's nothing to load — so the gesture confirms.
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setRefreshing(true);
-    await Promise.all([refresh(), refreshActivity(), usePortfolio.getState().refreshLightning()]);
+    await Promise.all([refresh(), refreshActivity()]);
     setRefreshing(false);
   }
 
@@ -443,9 +443,8 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
                       colorHex={a.colorHex}
                       imageUrl={a.imageUrl}
                       size={32}
-                      // Your Assets shows NO chain badges except Lightning (so
-                      // Bitcoin·Lightning stays distinct from on-chain BTC).
-                      chainKey={a.lightning ? 'lightning' : null}
+                      // Your Assets shows no chain badges.
+                      chainKey={null}
                     />
                     <View style={styles.assetMid}>
                       <Text style={styles.assetName}>{a.name}</Text>

@@ -19,9 +19,6 @@ export const LOCAL_TOKEN_ICONS: Record<string, number> = {
   'usd-coin': require('../../assets/crypto/usdc.svg'),
   usdc: require('../../assets/crypto/usdc.svg'),
   pathusd: require('../../assets/crypto/pathusd.png'),
-  // Lightning chain badge (self-contained orange chip + white bolt) — shown on
-  // the Bitcoin·Lightning asset so it reads distinctly from on-chain BTC.
-  lightning: require('../../assets/icons/lightning.svg'),
 };
 
 /** Dark-theme overrides (used when the app is in stealth/private "dark" mode).

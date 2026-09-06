@@ -120,10 +120,8 @@ export default function Swap() {
   // so multi-chain tokens (e.g. USDC on Arbitrum vs Base) read correctly.
   const heldOf = (a: GardenAsset | null): number => {
     if (!a) return 0;
-    // Exclude the Lightning (Spark) BTC balance: Garden swaps use ON-CHAIN BTC
-    // (UTXOs), and Lightning BTC is a separate off-chain L2 balance that can't be
-    // swapped directly — otherwise it leaks into the on-chain Bitcoin slot here.
-    const matches = portfolio.filter((p) => p.coingeckoId === a.coingeckoId && !p.lightning);
+    // Garden swaps use ON-CHAIN BTC (UTXOs).
+    const matches = portfolio.filter((p) => p.coingeckoId === a.coingeckoId);
     if (a.chain.startsWith('evm:')) {
       const chainId = a.chain.slice(4);
       const onChain = matches.find((p) => p.evmChainId !== undefined && String(p.evmChainId) === chainId);

@@ -56,10 +56,6 @@ export function SwapTokenPicker({ visible, assets, activeId, allowedIds, heldOnl
   const heldByAsset = useMemo(() => {
     const m: Record<string, number> = {};
     for (const a of portfolio) {
-      // Lightning (Spark) BTC isn't swappable via Garden (off-chain L2) and shares
-      // the on-chain BTC coin, so skip it — otherwise it sums into the `btc:native`
-      // key and shows the Lightning balance on the on-chain Bitcoin row.
-      if (a.lightning) continue;
       const k = portfolioHoldKey(a);
       m[k] = (m[k] ?? 0) + a.amount;
     }

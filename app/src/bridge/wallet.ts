@@ -4,7 +4,6 @@ import { SecureEnclaveKeystore } from './keystore';
 import { applyEnvironment } from './networks';
 import { getActiveEnvironment } from './activeEnv';
 import type { Environment } from '../lib/environment';
-import { configureCard } from './card';
 import { saveMnemonic, clearMnemonic, loadMnemonic } from './seedVault';
 import { getActiveAccount } from './account';
 
@@ -93,7 +92,6 @@ export async function createByAlias(alias: string): Promise<{ wallet: WalletInte
   const mnemonic = (await wallet.consumeMnemonic()) ?? [];
   if (mnemonic.length) await saveMnemonic(mnemonic, alias);
   await applyEnvironment(wallet, getActiveEnvironment());
-  configureCard(wallet);
   return { wallet, mnemonic };
 }
 
@@ -102,7 +100,6 @@ export async function importByAlias(alias: string, words: string[]): Promise<Wal
   const wallet = await Wallet.restore(keystore, alias, { dbPath: dbPathFor(alias) }, words, undefined);
   await saveMnemonic(words, alias);
   await applyEnvironment(wallet, getActiveEnvironment());
-  configureCard(wallet);
   return wallet;
 }
 
@@ -110,8 +107,7 @@ export async function openByAlias(alias: string): Promise<WalletInterface> {
   try {
     const wallet = await Wallet.open(keystore, alias, { dbPath: dbPathFor(alias) });
     await applyEnvironment(wallet, getActiveEnvironment());
-    configureCard(wallet);
-    return wallet;
+      return wallet;
   } catch (e) {
     // A biometric cancel/failure is a REAL auth gate — re-throw so the session
     // locks/logs out, never silently rebuilds (which would bypass Face ID).
@@ -136,8 +132,7 @@ export async function openByAlias(alias: string): Promise<WalletInterface> {
     const wallet = await Wallet.restore(keystore, alias, { dbPath: dbPathFor(alias) }, words, undefined);
     await saveMnemonic(words, alias); // resetStorageFor cleared it — re-save
     await applyEnvironment(wallet, getActiveEnvironment());
-    configureCard(wallet);
-    return wallet;
+      return wallet;
   }
 }
 

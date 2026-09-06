@@ -49,10 +49,6 @@ export interface PortfolioAsset {
   feeSymbol?: string;
   /** CoinGecko id of the fee coin, for pricing the fee in USD. */
   feeCoingeckoId?: string;
-  /** True for the custodial-free Lightning (Spark) balance — a synthetic BTC asset
-   *  kept as its own "Your Assets" row (not merged with on-chain BTC) and shown
-   *  even at a zero balance so it's always discoverable. */
-  lightning?: boolean;
 }
 
 export interface MarketSnapshot {

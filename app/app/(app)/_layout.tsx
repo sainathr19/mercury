@@ -75,26 +75,9 @@ export default function AppLayout() {
       />
       {/* Receive-via-card is a multi-step flow (network → amount → confirm), so
           it needs the full-height form sheet like Send. */}
-      <Stack.Screen
-        name="card-receive"
-        options={{
-          presentation: 'formSheet',
-          sheetAllowedDetents: [1.0],
-          sheetGrabberVisible: true,
-          sheetLargestUndimmedDetentIndex: 'none',
-        }}
-      />
       {/* Private (stealth) receive — a FULL-HEIGHT sheet mirroring the normal
           network receive (QR + address + share), not a compact content-sized one. */}
       <Stack.Screen name="stealth-receive" options={{ ...sheet, sheetAllowedDetents: [1.0] }} />
-      {/* Lightning pay (scan bolt11, or Send → Bitcoin·Lightning) is a full-screen
-          CARD PUSH (slide from the right) — NOT a bottom sheet — so it matches the
-          on-chain Send steps (address → amount → review), which push in from the
-          right. Lightning RECEIVE is a page inside the receive stack. */}
-      <Stack.Screen
-        name="ln-pay"
-        options={{ presentation: 'card', animation: 'slide_from_right', contentStyle: { backgroundColor: theme.colors.appBackground } }}
-      />
       {SHEET_ROUTES.map((name) => (
         <Stack.Screen key={name} name={name} options={{ ...sheet }} />
       ))}
