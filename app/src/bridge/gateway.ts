@@ -10,6 +10,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import type { WalletInterface } from 'standard-rn';
 import {
+  ensureAllowance,
+  ethCall,
+  rpc,
+  sendCall,
+  uint,
+  waitForReceipt,
+  word,
+} from './evmTx';
+import {
   chainById,
   chainCircleDomain,
   chainUsdc,
@@ -210,10 +219,11 @@ async function gatewayOnchain(
         return;
       }
       const read = async () => {
-        const hex = await rpc<string>(c.rpcUrl, 'eth_call', [
-          { to: GATEWAY_WALLET, data: SEL_TOTAL_BALANCE + word(c.usdc!) + word(address) },
-          'latest',
-        ]);
+        const hex = await ethCall(
+          c.rpcUrl,
+          GATEWAY_WALLET,
+          SEL_TOTAL_BALANCE + word(c.usdc!) + word(address),
+        );
         return hex && hex !== '0x' ? Number(BigInt(hex)) / 1e6 : 0;
       };
       try {
@@ -291,73 +301,8 @@ export async function usdcHoldings(
 // ── Settling wallet USDC into Gateway ────────────────────────────────────────
 
 // Verified against the deployed GatewayWallet on Arc (proxy 0x0077777d…,
-// implementation 0xa33d52b4…): all four selectors are present in its bytecode.
-const SEL_APPROVE = '0x095ea7b3'; // approve(address,uint256)
-const SEL_ALLOWANCE = '0xdd62ed3e'; // allowance(address,address)
+// implementation 0xa33d52b4…): every selector below is present in its bytecode.
 const SEL_DEPOSIT = '0x47e7ef24'; // deposit(address,uint256)
-
-const word = (hex: string): string => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
-const uint = (n: bigint): string => word(n.toString(16));
-
-function hexToBytes(hex: string): ArrayBuffer {
-  const h = hex.replace(/^0x/, '');
-  const out = new Uint8Array(h.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-  return out.buffer;
-}
-
-async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  });
-  const json = (await res.json()) as { result?: T; error?: { message?: string } };
-  if (json.error) throw new Error(json.error.message ?? `${method} failed`);
-  return json.result as T;
-}
-
-/** Node estimate + 25% headroom, mirroring the send path. */
-async function estimateGas(url: string, from: string, to: string, data: string): Promise<bigint> {
-  const r = await rpc<string>(url, 'eth_estimateGas', [{ from, to, value: '0x0', data }]);
-  return (BigInt(r) * 125n) / 100n;
-}
-
-/** Poll until mined. Returns false on revert OR on timeout — the caller must not
- *  treat "we stopped waiting" as success, because the next step would revert. */
-async function waitForReceipt(url: string, hash: string, timeoutMs = 90_000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const r = await rpc<{ status?: string } | null>(url, 'eth_getTransactionReceipt', [hash]);
-    if (r) return r.status === '0x1';
-    await new Promise((res) => setTimeout(res, 1200));
-  }
-  return false;
-}
-
-/** Build + sign + broadcast a contract call through the Rust core. */
-async function sendCall(
-  wallet: WalletInterface,
-  account: number,
-  chainId: bigint,
-  url: string,
-  from: string,
-  to: string,
-  data: string,
-): Promise<string> {
-  const gasLimit = await estimateGas(url, from, to, data);
-  const fees = await wallet.evmEstimateFees(chainId, account);
-  const maxPriorityFeePerGas = fees.mediumPriorityFee;
-  const maxFeePerGas = (BigInt(fees.baseFeePerGas) * 2n + BigInt(maxPriorityFeePerGas)).toString();
-  return wallet.evmSendTx(chainId, account, {
-    to,
-    value: '0',
-    data: hexToBytes(data),
-    gasLimit,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-  } as never);
-}
 
 export interface DepositResult {
   ok: boolean;
@@ -399,21 +344,10 @@ export async function gatewayDeposit(opts: {
   try {
     const from = await wallet.evmAddress(account);
 
-    const allowanceHex = await rpc<string>(url, 'eth_call', [
-      { to: token, data: SEL_ALLOWANCE + word(from) + word(GATEWAY_WALLET) },
-      'latest',
-    ]);
-    const allowance = allowanceHex && allowanceHex !== '0x' ? BigInt(allowanceHex) : 0n;
-
-    if (allowance < value) {
-      const approveTx = await sendCall(
-        wallet, account, chainId, url, from, token,
-        SEL_APPROVE + word(GATEWAY_WALLET) + uint(value),
-      );
-      if (!(await waitForReceipt(url, approveTx))) {
-        return { ok: false, error: 'Approval did not confirm', ms: Date.now() - t0 };
-      }
-    }
+    const approved = await ensureAllowance({
+      wallet, account, chainId, url, from, token, spender: GATEWAY_WALLET, amount: value,
+    });
+    if (!approved) return { ok: false, error: 'Approval did not confirm', ms: Date.now() - t0 };
 
     const depositTx = await sendCall(
       wallet, account, chainId, url, from, GATEWAY_WALLET,

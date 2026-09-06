@@ -1,549 +1,330 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
-import * as Haptics from 'expo-haptics';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Button, Icon, PressableScale, Text, useToast } from '../../src/ui';
-import { TokenAvatar } from '../../src/components/TokenAvatar';
-import { SwapTokenPicker } from '../../src/components/SwapTokenPicker';
-import { SendNotice } from '../../src/components/SendNotice';
-import { useSwap, selectedQuote } from '../../src/stores/swapStore';
-import { usePortfolio } from '../../src/stores/portfolioStore';
-import { authenticate } from '../../src/lib/biometrics';
+import { Button, Card, Field, Icon, PressableScale, Text, useToast } from '../../src/ui';
+import { CryptoIcon } from '../../src/components/CryptoIcon';
 import { useSession } from '../../src/stores/session';
-import { useActivity } from '../../src/stores/activityStore';
+import { getActiveEnvironment } from '../../src/bridge/activeEnv';
+import { getActiveAccount } from '../../src/bridge/account';
 import {
   executeSwap,
-  swapActivityItem,
-  friendlySwapError,
-  toAtomic,
-  findGardenAsset,
-  chainBadgeFor,
-  type GardenAsset,
-} from '../../src/bridge/swap';
-import { recordSwapOptimistic } from '../../src/bridge/seamless';
-import { formatCrypto, formatUsd } from '../../src/lib/format';
-import { fontFamily } from '../../src/theme/fonts';
-import { posthog } from '../../src/lib/posthog';
+  fromAtomic,
+  quoteSwap,
+  type Quote,
+  type SwapResult,
+} from '../../src/bridge/uniswap';
+import { erc20BalanceOf, rpcUrlFor } from '../../src/bridge/evmTx';
+import { gatewaySend } from '../../src/bridge/gateway';
+import { useGateway } from '../../src/stores/gatewayStore';
+import { swapChainsForEnvironment, type ChainDef, type TokenDef } from '../../src/lib/chains';
 
-const KEYS = [
-  ['1', '2', '3'],
-  ['4', '5', '6'],
-  ['7', '8', '9'],
-  ['.', '0', 'delete'],
-] as const;
+/** 0.5% — the Uniswap interface's own default, and a sane floor for a stable pair. */
+const SLIPPAGE_BPS = 50;
 
-// Subtle per-key haptic so tapping the pad gives varied tactile feedback: digits
-// rotate through the three light iOS styles, "." is soft, delete is rigid.
-const DIGIT_STYLES = [
-  Haptics.ImpactFeedbackStyle.Light,
-  Haptics.ImpactFeedbackStyle.Soft,
-  Haptics.ImpactFeedbackStyle.Rigid,
-];
-function keyHaptic(key: string): Haptics.ImpactFeedbackStyle {
-  if (key === 'delete') return Haptics.ImpactFeedbackStyle.Rigid;
-  if (key === '.') return Haptics.ImpactFeedbackStyle.Soft;
-  return DIGIT_STYLES[Number(key) % DIGIT_STYLES.length];
-}
+/**
+ * Extra USDC to pull when the token being SOLD is also the gas token (Arc).
+ * Topping up exactly the shortfall leaves the balance equal to the trade size,
+ * and gas then comes out of the very amount being swapped — so the router's
+ * transferFrom reverts for a rounding error's worth of fuel. A measured
+ * approve + swap is ~0.005 USDC; this is an order of magnitude over it.
+ */
+const GAS_BUFFER_USDC = 0.05;
 
-// Slippage tolerance shown + used for the "Minimum Received" figure on Review.
-const SLIPPAGE_PCT = 0.5;
-
-/** Soft-red error pill shown in place of the action button (matches the app's
- *  error palette — light-red fill, red text — not the solid `danger` button).
- *  Non-actionable by default; pass `onPress` to make it a tap-to-retry (used for
- *  a failed swap execution). */
-function ErrorPill({ label, onPress }: { label: string; onPress?: () => void }) {
-  const inner = (
-    <Text variant="body" color="#FD3456" style={styles.errorPillText} numberOfLines={1}>
-      {label}
-    </Text>
-  );
-  return onPress ? (
-    <PressableScale style={styles.errorPill} onPress={onPress}>
-      {inner}
-    </PressableScale>
-  ) : (
-    <View style={styles.errorPill}>{inner}</View>
-  );
-}
-
+/**
+ * Swap, through the chain's own Uniswap V2 deployment.
+ *
+ * The chain comes from the registry rather than the app's "active EVM chain",
+ * because that selector only offers Ethereum and Sepolia — Arc, where the pool
+ * actually is, can never be active. Picking the swap chain here sidesteps that
+ * entirely and is what the user means anyway: they pick assets, not networks.
+ */
 export default function Swap() {
   const router = useRouter();
-  // When opened from an asset's "Swap" action, pre-select that asset on its own
-  // chain (the same coingeckoId can exist on several Garden chains).
-  const { fromCg, fromChainId } = useLocalSearchParams<{ fromCg?: string; fromChainId?: string }>();
   const theme = UnistylesRuntime.getTheme();
-  const wallet = useSession((s) => s.wallet);
-  const { assets, loadAssets, requestQuote, clearQuote, quotes, quoteError, phase, setPhase, reset } = useSwap();
-  const market = usePortfolio((s) => s.market);
-  const portfolio = usePortfolio((s) => s.assets);
-  const prependActivity = useActivity((s) => s.prepend);
   const show = useToast((s) => s.show);
+  const wallet = useSession((s) => s.wallet);
+  const addresses = useSession((s) => s.addresses);
+  // Swapping needs tokens in the user's OWN address, but settled USDC lives in
+  // Gateway. Rather than ask the user to understand that, the swap pulls what it
+  // is short by out of the unified balance first.
+  const { spendable, perDomain, refresh: refreshGateway, noteSent } = useGateway();
 
-  const [from, setFrom] = useState<GardenAsset | null>(null);
-  const [to, setTo] = useState<GardenAsset | null>(null);
-  const [amount, setAmount] = useState('0');
-  const [picker, setPicker] = useState<'from' | 'to' | null>(null);
-  const [reviewing, setReviewing] = useState(false);
-  // A failed swap EXECUTION message, surfaced in the action button (not a toast).
-  const [swapError, setSwapError] = useState<string | null>(null);
+  const env = getActiveEnvironment();
+  const chains = useMemo(() => swapChainsForEnvironment(env), [env]);
+  const [chain] = useState<ChainDef | null>(chains[0] ?? null);
+  const tokens = chain?.tokens ?? [];
 
-  // Load Garden assets once; default the pair to BTC → WBTC (Garden's primary).
+  const [from, setFrom] = useState<TokenDef | null>(tokens[0] ?? null);
+  const [to, setTo] = useState<TokenDef | null>(tokens[1] ?? null);
+  const [amount, setAmount] = useState('');
+  const [balance, setBalance] = useState<number | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'funding' | 'swapping'>('idle');
+  const [result, setResult] = useState<SwapResult | null>(null);
+  const [fault, setFault] = useState<string | null>(null);
+  /** Bumped after a swap so the balance re-reads. */
+  const [reload, setReload] = useState(0);
+
+  const value = Number(amount);
+  const address = addresses?.eth ?? null;
+
+  // Balance of whatever is being sold, so "more than you have" is caught before
+  // the router reverts on it.
   useEffect(() => {
-    loadAssets();
-    return () => reset();
-  }, [loadAssets, reset]);
+    let live = true;
+    setBalance(null);
+    if (!chain || !from || !address) return;
+    const url = rpcUrlFor(chain.chainId);
+    if (!url) return;
+    void erc20BalanceOf(url, from.address, address)
+      .then((b) => { if (live) setBalance(fromAtomic(b, from.decimals)); })
+      .catch(() => { if (live) setBalance(null); });
+    return () => { live = false; };
+  }, [chain, from, address, reload]);
 
+  // Re-quote as the amount settles. Debounced so a four-keystroke amount does
+  // not fire four round trips, and guarded by a sequence number so a slow early
+  // quote cannot land on top of a fast later one.
+  const seq = useRef(0);
   useEffect(() => {
-    if (!assets.length || from || to) return;
-    const tapped = fromCg ? findGardenAsset(assets, fromCg, fromChainId || undefined) : undefined;
-    if (tapped) {
-      setFrom(tapped);
-      const counter =
-        assets.find((a) => a.coingeckoId === 'wrapped-bitcoin' && a.id !== tapped.id) ??
-        assets.find((a) => a.coingeckoId === 'bitcoin' && a.id !== tapped.id) ??
-        assets.find((a) => a.id !== tapped.id);
-      if (counter) setTo(counter);
-      return;
-    }
-    const btc =
-      assets.find((a) => a.chain === 'bitcoin') ?? assets.find((a) => a.coingeckoId === 'bitcoin');
-    const wbtc = assets.find((a) => a.coingeckoId === 'wrapped-bitcoin');
-    if (btc) setFrom(btc);
-    if (wbtc) setTo(wbtc);
-  }, [assets, from, to, fromCg, fromChainId]);
-
-  // Held balance for a Garden asset — matched on its chain when it's an EVM asset,
-  // so multi-chain tokens (e.g. USDC on Arbitrum vs Base) read correctly.
-  const heldOf = (a: GardenAsset | null): number => {
-    if (!a) return 0;
-    // Garden swaps use ON-CHAIN BTC (UTXOs).
-    const matches = portfolio.filter((p) => p.coingeckoId === a.coingeckoId);
-    if (a.chain.startsWith('evm:')) {
-      const chainId = a.chain.slice(4);
-      const onChain = matches.find((p) => p.evmChainId !== undefined && String(p.evmChainId) === chainId);
-      if (onChain) return onChain.amount;
-    }
-    return matches[0]?.amount ?? 0;
-  };
-  const held = useMemo(() => heldOf(from), [from, portfolio]);
-  const heldTo = useMemo(() => heldOf(to), [to, portfolio]);
-
-  const unitPrice = (a: GardenAsset | null): number =>
-    a ? market[a.coingeckoId]?.price ?? a.price ?? 0 : 0;
-
-  // Debounced quote: 450ms after the user stops typing (mirrors iOS .task(id:)).
-  useEffect(() => {
-    if (!from || !to) return;
-    const human = parseFloat(amount);
-    if (!human || human <= 0) {
-      clearQuote();
-      return;
-    }
-    const atomic = toAtomic(amount, from.decimals);
-    if (!atomic || atomic === '0') return;
-    const t = setTimeout(() => requestQuote(from.id, to.id, atomic, { decimals: from.decimals, symbol: from.symbol }), 450);
+    if (!chain || !from || !to || !(value > 0)) { setQuote(null); return; }
+    const mine = ++seq.current;
+    setQuoting(true);
+    const t = setTimeout(() => {
+      void quoteSwap({ chainId: chain.chainId, from, to, amount: value })
+        .then((q) => { if (seq.current === mine) setQuote(q); })
+        .catch(() => { if (seq.current === mine) setQuote(null); })
+        .finally(() => { if (seq.current === mine) setQuoting(false); });
+    }, 350);
     return () => clearTimeout(t);
-  }, [amount, from, to, requestQuote, clearQuote]);
+  }, [chain, from, to, value]);
 
-  const quote = selectedQuote(quotes);
-  const tokenAmount = parseFloat(amount) || 0;
+  // USDC can be topped up from the unified balance; anything else has to be held.
+  const topUpable = !!from && !!chain && from.address.toLowerCase() === chain.usdc?.toLowerCase();
+  const reachable = (balance ?? 0) + (topUpable ? spendable : 0);
+  const overBalance = balance !== null && value > reachable;
+  const ready =
+    !!wallet && !!chain && !!from && !!to && !!quote && value > 0 && !overBalance && !quoting;
 
-  const estReceive = useMemo(() => {
-    const fromQuote = quote ? parseFloat(quote.destination.displayAmount) : NaN;
-    if (Number.isFinite(fromQuote) && fromQuote > 0) return fromQuote;
-    const tp = unitPrice(to);
-    return tp > 0 ? (tokenAmount * unitPrice(from)) / tp : 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quote, tokenAmount, from, to, market]);
-
-  const payUsd = tokenAmount * unitPrice(from);
-  const recvUsd = quote && parseFloat(quote.destination.usdValue.replace('$', ''))
-    ? parseFloat(quote.destination.usdValue.replace('$', ''))
-    : estReceive * unitPrice(to);
-
-  const canSwap = !!from && !!to && tokenAmount > 0 && tokenAmount <= held && !!quote && phase !== 'swapping';
-  const minReceive = estReceive > 0 ? estReceive * (1 - SLIPPAGE_PCT / 100) : 0;
-
-  // Surfaced as the toast. Insufficient balance takes priority over a quote error
-  // (no point warning about the pair if you can't afford the amount anyway).
-  const errorMsg = from && tokenAmount > held ? 'Insufficient balance' : quoteError || null;
-
-  function handleKey(key: string) {
-    Haptics.impactAsync(keyHaptic(key)).catch(() => {});
-    setAmount((cur) => {
-      if (key === 'delete') return cur.length > 1 ? cur.slice(0, -1) : '0';
-      if (key === '.') return cur.includes('.') ? cur : cur + '.';
-      // Pressing "0" on an empty (still "0") field starts a decimal — "0." — so
-      // the next digits land after the point instead of being swallowed.
-      if (key === '0' && cur === '0') return '0.';
-      return cur === '0' ? key : cur + key;
-    });
-  }
-
-  // Errors are shown IN the action button below (see the Button `variant`/`title`
-  // in the render), not as a toast. A stale execution error clears the moment the
-  // inputs change, so it never sticks around after the user adjusts the swap.
-  useEffect(() => {
-    setSwapError(null);
-  }, [amount, from, to]);
-
-  // Flip pay/receive: swap the pair instantly (no icon rotation animation).
-  function flip() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setAmount('0');
-    clearQuote();
-    const cur = from;
+  const flip = useCallback(() => {
     setFrom(to);
-    setTo(cur);
-  }
+    setTo(from);
+    setAmount('');
+    setQuote(null);
+    setResult(null);
+  }, [from, to]);
 
-  function pick(a: GardenAsset) {
-    if (picker === 'from') {
-      setFrom(a);
-      setAmount('0'); // amount is denominated in the SOURCE — reset when it changes
-    } else {
-      setTo(a); // changing the RECEIVE asset keeps the amount + source untouched
-    }
-    clearQuote();
-    setPicker(null);
-  }
-
-  async function doSwap() {
-    if (!wallet || !from || !to || !quote) return;
-    setSwapError(null); // clear any prior failure before retrying
-    // Confirm the swap with Face ID (single per-transaction biometric).
-    if (!(await authenticate(`Confirm to swap ${from.symbol} → ${to.symbol}`))) return;
-    setPhase('swapping');
+  async function submit() {
+    if (!wallet || !chain || !from || !to || !quote) return;
+    setBusy(true); setResult(null); setFault(null);
     try {
-      const res = await executeSwap(wallet, { from, to, amountHuman: amount, quote });
-      posthog.capture('swap_completed', {
-        from_symbol: from.symbol,
-        to_symbol: to.symbol,
-        from_chain: from.chain,
-        to_chain: to.chain,
-      });
-      prependActivity(
-        swapActivityItem({ orderId: res.orderId, from, to, quote, amountHuman: amount, sourceTxId: res.txHash }),
-      );
-      // Instantly reflect the swap in balances: debit what we paid, credit the
-      // estimated receive — steady + reconciled by the pending-balance ledger.
-      recordSwapOptimistic({
+      // Top up from the unified balance if this address is short. Delivering to
+      // ourselves on this chain mints real USDC here, which is both the swap
+      // input and the gas — on Arc they are the same asset.
+      const shortfall = value - (balance ?? 0);
+      if (topUpable && shortfall > 0 && addresses?.eth) {
+        setPhase('funding');
+        const soldPaysGas = from.symbol === chain.nativeSymbol;
+        const pulled = Math.ceil((shortfall + (soldPaysGas ? GAS_BUFFER_USDC : 0)) * 1e6) / 1e6;
+        const moved = await gatewaySend({
+          wallet,
+          account: getActiveAccount(),
+          address: addresses.eth,
+          toChainId: chain.chainId,
+          amount: pulled,
+          recipient: addresses.eth,
+          env,
+          sources: perDomain,
+        });
+        if (!moved.ok) {
+          setFault(moved.error ?? 'Could not move funds for the swap');
+          show(moved.error ?? 'Could not move funds', 'error');
+          return;
+        }
+        noteSent(pulled);
+        void refreshGateway(addresses.eth);
+      }
+
+      setPhase('swapping');
+      const r = await executeSwap({
+        wallet,
+        account: getActiveAccount(),
+        chainId: chain.chainId,
         from,
         to,
-        orderId: res.orderId,
-        txHash: res.txHash ?? '',
-        paidAmount: tokenAmount,
-        receiveAmount: estReceive,
+        quote,
+        slippageBps: SLIPPAGE_BPS,
       });
-      reset();
-      // No success screen — close the sheet and confirm with a top toast.
-      router.back();
-      show('Swapped', 'success');
+      setResult(r);
+      if (r.ok) {
+        show(`Swapped ${value} ${from.symbol} for ${quote.out.toFixed(4)} ${to.symbol}`, 'success');
+        setAmount('');
+        setQuote(null);
+        setReload((n) => n + 1);
+      } else {
+        setFault(r.error ?? 'Swap failed');
+        show(r.error ?? 'Swap failed', 'error');
+      }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFault(msg);
+      show(msg, 'error');
+    } finally {
+      setBusy(false);
       setPhase('idle');
-      // Keep the user-facing message friendly, but never lose the raw error —
-      // friendlySwapError collapses everything to "Network issue", which makes
-      // real failures (bad address kind, unconfigured Garden, RPC) invisible.
-      console.warn('[swap] failed:', e);
-      posthog.capture('swap_failed', {
-        from_symbol: from.symbol,
-        to_symbol: to.symbol,
-        from_chain: from.chain,
-        to_chain: to.chain,
-        error: String(e),
-      });
-      // Surface the failure in the Swap button (danger style), not a toast.
-      setSwapError(friendlySwapError(String(e)));
     }
   }
 
+  if (!chain || !from || !to) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <Text variant="titleLarge">Swap</Text>
+          <PressableScale haptic={false} onPress={() => router.back()}>
+            <Icon name="close" size={22} color={theme.colors.muted} />
+          </PressableScale>
+        </View>
+        <Text variant="subhead" color={theme.colors.muted}>
+          No exchange is available on this network yet.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  const minOut = quote ? fromAtomic((quote.amountOut * BigInt(10_000 - SLIPPAGE_BPS)) / 10_000n, to.decimals) : 0;
+
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.grabber} />
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        {reviewing ? (
-          <>
-            <Pressable onPress={() => setReviewing(false)} hitSlop={10}>
-              <ExpoImage source={require('../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
-            </Pressable>
-            <Text style={styles.reviewTitle}>Review</Text>
-          </>
-        ) : (
-          // Title top-left, like the other modal sheets — no back (swipe to dismiss).
-          <Text style={styles.title}>Swap</Text>
-        )}
+        <Text variant="titleLarge">Swap</Text>
+        <PressableScale haptic={false} onPress={() => router.back()}>
+          <Icon name="close" size={22} color={theme.colors.muted} />
+        </PressableScale>
       </View>
 
-      {reviewing && from && to ? (
-        <View style={styles.body}>
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel} color={theme.colors.text}>You pay</Text>
-            <View style={styles.sectionMid}>
-              <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
-                {amount} {from.symbol}
+      <Card>
+        <View style={styles.tokenRow}>
+          <Text variant="caption" color={theme.colors.muted}>YOU PAY</Text>
+          {balance !== null && (
+            <PressableScale haptic={false} onPress={() => setAmount(String(balance))}>
+              <Text variant="caption" color={theme.colors.muted}>
+                Balance {balance.toFixed(4)} · Max
               </Text>
-              <TokenAvatar uri={from.tokenIcon} fallbackColor={from.colorHex} symbol={from.symbol} size={48} badge={chainBadgeFor(from)} />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel} color={theme.colors.text}>You receive</Text>
-            <View style={styles.sectionMid}>
-              <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
-                {estReceive > 0 ? formatCrypto(estReceive) : '0'} {to.symbol}
-              </Text>
-              <TokenAvatar uri={to.tokenIcon} fallbackColor={to.colorHex} symbol={to.symbol} size={48} badge={chainBadgeFor(to)} />
-            </View>
-          </View>
-
-          <View style={styles.reviewCard}>
-            <View style={styles.reviewCardRow}>
-              <Text style={styles.reviewKey}>Slippage</Text>
-              <Text style={styles.reviewVal}>{SLIPPAGE_PCT}%</Text>
-            </View>
-            <View style={styles.reviewCardRow}>
-              <Text style={styles.reviewKey}>Minimum Received</Text>
-              <Text style={styles.reviewVal}>
-                {formatCrypto(minReceive)} {to.symbol}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.spacer} />
-          {/* A failed swap shows the soft-red pill (tap to retry); otherwise the
-              normal Swap button with the Face ID glyph. */}
-          {swapError ? (
-            <ErrorPill label={swapError} onPress={doSwap} />
-          ) : (
-            <Button
-              title="Swap"
-              shape="pill"
-              onPress={doSwap}
-              loading={phase === 'swapping'}
-              // Face ID icon 12px before the label (Button's row gap is 8, +4 margin).
-              icon={
-                <View style={styles.swapBtnIcon}>
-                  <Icon name="faceid" size={18} color={theme.colors.primaryLabel} />
-                </View>
-              }
-            />
+            </PressableScale>
           )}
         </View>
-      ) : (
-        <View style={styles.body}>
-          <SwapSection
-            label="You pay"
-            asset={from}
-            amount={amount}
-            usd={payUsd}
-            onPickAsset={() => setPicker('from')}
-            right={
-              from ? (
-                <Pressable onPress={() => setAmount(formatCrypto(held))}>
-                  <Text style={styles.subText} color={theme.colors.muted}>
-                    {formatCrypto(held)} {from.symbol}
-                  </Text>
-                </Pressable>
-              ) : null
-            }
-          />
+        <TokenChips tokens={tokens} selected={from} onSelect={(t) => (t.address === to.address ? flip() : setFrom(t))} />
+        <Field
+          label=""
+          value={amount}
+          onChangeText={(v) => { if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v); }}
+          keyboardType="decimal-pad"
+          placeholder="0.00"
+          error={overBalance ? `More than your ${from.symbol}.` : undefined}
+        />
+      </Card>
 
-          {/* Divider line with the flip toggle centered on it. */}
-          <View style={styles.dividerRow}>
-            <View style={styles.line} />
-            <Pressable onPress={flip} hitSlop={12} style={styles.flipBtn}>
-              <Icon name="swapVert" size={18} color={theme.colors.text} />
-            </Pressable>
-            <View style={styles.line} />
-          </View>
+      <PressableScale style={styles.flip} onPress={flip}>
+        <Icon name="swap" size={18} color={theme.colors.text} />
+      </PressableScale>
 
-          <SwapSection
-            label="You receive"
-            asset={to}
-            amount={estReceive > 0 ? formatCrypto(estReceive) : '0'}
-            usd={recvUsd}
-            dim={estReceive <= 0}
-            onPickAsset={() => setPicker('to')}
-            right={
-              to ? (
-                <Text style={styles.subText} color={theme.colors.muted}>
-                  {formatCrypto(heldTo)} {to.symbol}
-                </Text>
-              ) : null
-            }
-          />
+      <Card>
+        <Text variant="caption" color={theme.colors.muted}>YOU RECEIVE</Text>
+        <TokenChips tokens={tokens} selected={to} onSelect={(t) => (t.address === from.address ? flip() : setTo(t))} />
+        <Text variant="displaySmall">
+          {quoting ? '…' : quote ? quote.out.toFixed(4) : '0.0000'}
+        </Text>
+        {quote && !quoting && (
+          <Text variant="caption" color={theme.colors.muted}>
+            1 {from.symbol} = {quote.rate.toFixed(4)} {to.symbol} · at least {minOut.toFixed(4)} after {SLIPPAGE_BPS / 100}% slippage
+          </Text>
+        )}
+        {!quote && !quoting && value > 0 && (
+          <Text variant="caption" color={theme.colors.warning}>
+            No pool for this pair on {chain.name}.
+          </Text>
+        )}
+      </Card>
 
-          <View style={styles.spacer} />
-
-          <View style={styles.pad}>
-            {KEYS.map((row, ri) => (
-              <View key={ri} style={styles.padRow}>
-                {row.map((key) => (
-                  <Pressable key={key} style={styles.key} onPress={() => handleKey(key)}>
-                    {key === 'delete' ? (
-                      <Icon name="backspace" size={24} color={theme.colors.text} />
-                    ) : (
-                      <Text style={styles.keyText}>{key}</Text>
-                    )}
-                  </Pressable>
-                ))}
-              </View>
-            ))}
-          </View>
-
-          {/* Input/quote errors (insufficient balance, no route) show IN place of
-              the button as a soft-red pill — matches the app's error palette,
-              non-actionable (you can't proceed until it clears). */}
-          {errorMsg ? (
-            <ErrorPill label={errorMsg} />
-          ) : (
-            <Button title="Review" shape="pill" onPress={() => setReviewing(true)} disabled={!canSwap} loading={phase === 'swapping'} />
-          )}
-        </View>
+      {result?.ok && (
+        <Card style={{ marginTop: 12 }}>
+          <Text variant="subheadBold" color={theme.colors.success}>Swapped</Text>
+          <Text variant="caption" color={theme.colors.muted}>
+            confirmed in {(result.ms / 1000).toFixed(1)}s
+          </Text>
+        </Card>
+      )}
+      {fault && (
+        <Card style={{ marginTop: 12 }}>
+          <Text variant="subheadBold" color={theme.colors.danger}>Could not swap</Text>
+          <Text variant="caption" color={theme.colors.muted}>{fault}</Text>
+        </Card>
       )}
 
-      <SwapTokenPicker
-        visible={picker !== null}
-        assets={assets}
-        activeId={(picker === 'from' ? from : to)?.id ?? ''}
-        heldOnly={picker === 'from'}
-        onSelect={pick}
-        onClose={() => setPicker(null)}
-      />
-
-      {/* Scoped toast overlay so error pills show ON TOP of this modal sheet
-          (the root copy yields while this is mounted). pointerEvents="none" —
-          never blocks the keypad. */}
-      <SendNotice scoped />
+      <View style={{ flex: 1 }} />
+      <Text variant="caption" color={theme.colors.muted} style={styles.note}>
+        {phase === 'funding'
+          ? 'Moving funds onto ' + chain.name + '…'
+          : `Swapped on ${chain.name} via Uniswap. Gas is paid in ${chain.nativeSymbol}.`}
+      </Text>
+      <Button title="Swap" onPress={submit} disabled={!ready} loading={busy} shape="pill" />
     </SafeAreaView>
   );
 }
 
-function SwapSection({
-  label,
-  asset,
-  amount,
-  usd,
-  dim,
-  onPickAsset,
-  right,
+function TokenChips({
+  tokens,
+  selected,
+  onSelect,
 }: {
-  label: string;
-  asset: GardenAsset | null;
-  amount: string;
-  usd: number;
-  dim?: boolean;
-  onPickAsset: () => void;
-  right?: React.ReactNode;
+  tokens: TokenDef[];
+  selected: TokenDef;
+  onSelect: (t: TokenDef) => void;
 }) {
   const theme = UnistylesRuntime.getTheme();
-  const amountColor = dim || amount === '0' ? theme.colors.faint : theme.colors.text;
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel} color={theme.colors.text}>
-        {label}
-      </Text>
-      <View style={styles.sectionMid}>
-        <Text style={[styles.amount, { color: amountColor }]} numberOfLines={1} adjustsFontSizeToFit>
-          {amount}
-        </Text>
-        <PressableScale style={styles.badge} onPress={onPickAsset}>
-          {asset ? (
-            <TokenAvatar uri={asset.tokenIcon} fallbackColor={asset.colorHex} symbol={asset.symbol} size={28} badge={chainBadgeFor(asset)} />
-          ) : (
-            <View style={[styles.badgeDot, { backgroundColor: theme.colors.muted }]} />
-          )}
-          <Icon name="chevronRight" size={16} color={theme.colors.muted} />
-        </PressableScale>
-      </View>
-      <View style={styles.sectionBottom}>
-        {/* Only show the USD line once there's a value — no "$0.00" at rest. */}
-        {usd > 0 ? (
-          <Text style={styles.subText} color={theme.colors.muted}>
-            {formatUsd(usd)}
-          </Text>
-        ) : (
-          <View />
-        )}
-        {right}
-      </View>
+    <View style={styles.chips}>
+      {tokens.map((t) => {
+        const active = t.address === selected.address;
+        return (
+          <PressableScale
+            key={t.address}
+            haptic={false}
+            onPress={() => onSelect(t)}
+            style={[styles.chip, active && styles.chipOn]}
+          >
+            <CryptoIcon coingeckoId={t.coingeckoId} symbol={t.symbol} colorHex={t.colorHex} size={20} />
+            <Text variant="caption" color={active ? theme.colors.primaryLabel : theme.colors.text}>
+              {t.symbol}
+            </Text>
+          </PressableScale>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Soft-red error pill — same footprint as the primary Button (pill shape,
-  // 15px vertical pad) so it drops in without shifting the layout.
-  errorPill: {
-    paddingVertical: 15,
-    paddingHorizontal: theme.spacing.lg,
-    borderRadius: theme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFE2E7',
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md },
+  tokenRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: theme.radius.pill, backgroundColor: theme.colors.appBackground,
   },
-  errorPillText: { fontFamily: fontFamily.bold, letterSpacing: -0.3 },
-  root: { flex: 1, backgroundColor: theme.colors.appBackground },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: theme.colors.separator, marginTop: theme.spacing.sm },
-  header: { paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.md },
-  // "Swap" title — matches the other modal sheet titles.
-  title: { fontSize: 20, fontFamily: fontFamily.bold, letterSpacing: -0.4, color: theme.colors.text },
-  backIcon: { width: 30, height: 30 },
-  // "Review" title sits below the back arrow (standard 24px gap).
-  reviewTitle: { fontSize: 20, fontFamily: fontFamily.bold, letterSpacing: -0.4, color: theme.colors.text, marginTop: 24 },
-  // Slippage / Minimum Received card on the Review step.
-  reviewCard: {
-    marginTop: theme.spacing.lg,
+  chipOn: { backgroundColor: theme.colors.primary },
+  flip: {
+    alignSelf: 'center',
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
-    overflow: 'hidden',
+    marginVertical: 8,
   },
-  reviewCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-  },
-  reviewKey: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  reviewVal: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  swapBtnIcon: { marginRight: 4 },
-  // 32px gap between the "Swap" title and the "You pay" section (section adds its
-  // own top padding, so offset that to land on a true 32px visual gap).
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.xl - theme.spacing.sm, paddingBottom: theme.spacing.lg },
-  // Flat pay/receive section (no card box).
-  section: { gap: 8, paddingVertical: theme.spacing.sm },
-  sectionLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
-  sectionMid: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
-  amount: { flex: 1, fontSize: 44, fontFamily: fontFamily.bold, letterSpacing: -1 },
-  // Fixed height so the USD / balance line reserves its space — the row can't
-  // shift the layout when the balance loads in a beat after the assets.
-  sectionBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 },
-  subText: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.pill,
-    paddingLeft: 6,
-    paddingRight: 10,
-    paddingVertical: 6,
-  },
-  badgeDot: { width: 28, height: 28, borderRadius: 14 },
-  // Divider line + centered flip toggle.
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 4 },
-  line: { flex: 1, height: 1, backgroundColor: theme.colors.separator },
-  flipBtn: { paddingHorizontal: 6, paddingVertical: 6 },
-  // Pushes the keypad + button to the bottom (amounts stay at the top).
-  spacer: { flex: 1 },
-  // 16px gap between the keypad and the button below.
-  pad: { gap: theme.spacing.sm, marginBottom: theme.spacing.md },
-  padRow: { flexDirection: 'row' },
-  key: { flex: 1, height: 52, alignItems: 'center', justifyContent: 'center' },
-  keyText: { fontSize: 30, fontFamily: fontFamily.bold, color: theme.colors.text },
+  note: { textAlign: 'center', marginBottom: theme.spacing.sm },
 }));

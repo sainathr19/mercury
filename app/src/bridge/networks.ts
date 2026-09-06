@@ -1,7 +1,6 @@
 import { chainsForEnvironment, type ChainDef } from '../lib/chains';
 import { BtcNetwork, type EvmChainConfig, type WalletInterface } from 'standard-rn';
 import { setActiveEvmChainId } from './evmChain';
-import { configureGarden } from './swap';
 import { setStealthEvmChains } from './stealth';
 import { APP_ENVIRONMENT, chainInEnvironment, type Environment } from '../lib/environment';
 
@@ -177,7 +176,4 @@ async function syncEnvChains(wallet: WalletInterface, env: Environment): Promise
 export async function applyEnvironment(wallet: WalletInterface, env: Environment): Promise<void> {
   applyNetworks(wallet, choicesForEnv(env));
   await syncEnvChains(wallet, env);
-  // Point the Rust Garden client at this environment's API; without it
-  // swap execution throws "garden not configured".
-  configureGarden(wallet, env);
 }

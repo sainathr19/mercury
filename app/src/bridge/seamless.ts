@@ -13,7 +13,6 @@
 
 import type { PortfolioAsset } from './portfolio';
 import { evmNativeId, evmTokenId, splAssetId, BTC_ASSET_ID, SOL_ASSET_ID } from './portfolio';
-import type { GardenAsset } from './swap';
 import type { DeltaMeta } from '../lib/pendingBalance';
 import { authClient } from './auth';
 import { loadEncIdentity } from './seamlessCrypto';
@@ -199,87 +198,4 @@ export async function pollSeamlessReceives(): Promise<void> {
   } catch {
     // best-effort; the next poll (or the normal RPC scan) recovers
   }
-}
-
-// ---------------------------------------------------------------------------
-// Swaps — optimistic, using the SAME ledger. A swap is just a debit of the
-// from-asset + a credit of the to-asset, each anchored to its confirmed balance
-// (baseline) and reconciled as the real balances move on their own chains. No
-// relay involved — this is purely local (only the swapper's own two balances
-// change), so it's called inline right after the swap is broadcast.
-// ---------------------------------------------------------------------------
-
-/** decimal chain id for an EVM Garden asset (undefined for BTC/SOL). */
-function gardenChainId(a: GardenAsset): string | undefined {
-  return a.chain.startsWith('evm:') ? a.chain.slice(4) : undefined;
-}
-
-/** The kind used by the ledger for a Garden asset's chain. */
-function gardenChainKind(a: GardenAsset): ChainKind {
-  return a.chainKind === 'btc' ? 'btc' : a.chainKind === 'sol' ? 'sol' : 'evm';
-}
-
-/** The PortfolioAsset id a Garden asset maps to — same scheme portfolio.ts uses,
- *  so a swap delta lands on (and is absorbed by) the exact confirmed row. */
-export function gardenAssetId(a: GardenAsset): string {
-  if (a.chainKind === 'btc') return BTC_ASSET_ID;
-  if (a.chainKind === 'sol') return a.tokenAddress ? splAssetId(a.tokenAddress) : SOL_ASSET_ID;
-  const chainId = BigInt(gardenChainId(a) ?? '0');
-  return a.tokenAddress ? evmTokenId(a.coingeckoId, chainId) : evmNativeId(chainId);
-}
-
-function gardenMeta(a: GardenAsset): DeltaMeta {
-  return {
-    symbol: a.symbol,
-    decimals: a.decimals,
-    coingeckoId: a.coingeckoId,
-    colorHex: a.colorHex,
-    chain: a.chainKind === 'btc' ? 'bitcoin' : a.chainKind === 'sol' ? 'solana' : 'ethereum',
-    name: a.displayName,
-    imageUrl: a.tokenIcon ?? undefined,
-    evmChainId: gardenChainId(a),
-    tokenContract: a.chainKind === 'eth' ? a.tokenAddress ?? undefined : undefined,
-    tokenMint: a.chainKind === 'sol' ? a.tokenAddress ?? undefined : undefined,
-    networkName: a.chainName ?? undefined,
-  };
-}
-
-/** Optimistically reflect a just-broadcast swap: debit the from-asset by
- *  `paidAmount` and credit the to-asset by `receiveAmount`, both instantly and
- *  steadily (baseline-anchored), so the balances feel updated before the swap
- *  settles on-chain. Reconciled + reversed-on-failure by pendingBalanceStore. */
-export function recordSwapOptimistic(args: {
-  from: GardenAsset;
-  to: GardenAsset;
-  orderId: string;
-  txHash: string;
-  paidAmount: number;
-  receiveAmount: number;
-}): void {
-  const confirmed = usePortfolio.getState().confirmedAssets;
-  const baselineOf = (assetId: string) => confirmed.find((a) => a.id === assetId)?.amount ?? 0;
-  const fromId = gardenAssetId(args.from);
-  const toId = gardenAssetId(args.to);
-  const pb = usePendingBalance.getState();
-  // Distinct keys per leg (same tx hash, for failure detection on the source leg).
-  pb.addSend({
-    key: `${args.orderId}-from`,
-    txHash: args.txHash,
-    assetId: fromId,
-    chainKind: gardenChainKind(args.from),
-    chainId: gardenChainId(args.from),
-    baseline: baselineOf(fromId),
-    amount: args.paidAmount,
-    meta: gardenMeta(args.from),
-  });
-  pb.addReceive({
-    key: `${args.orderId}-to`,
-    txHash: args.txHash,
-    assetId: toId,
-    chainKind: gardenChainKind(args.to),
-    chainId: gardenChainId(args.to),
-    baseline: baselineOf(toId),
-    amount: args.receiveAmount,
-    meta: gardenMeta(args.to),
-  });
 }

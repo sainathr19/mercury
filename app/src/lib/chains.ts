@@ -13,6 +13,15 @@
 
 export type ChainEnvironment = 'testnet' | 'mainnet';
 
+export interface TokenDef {
+  symbol: string;
+  name: string;
+  address: `0x${string}`;
+  decimals: number;
+  coingeckoId: string;
+  colorHex: string;
+}
+
 export interface ChainDef {
   chainId: bigint;
   /** Display name, shown on activity rows and the networks screen. */
@@ -48,6 +57,11 @@ export interface ChainDef {
   circleDomain?: number;
   /** USDC contract, where Circle issues it natively. */
   usdc?: `0x${string}`;
+  /** Uniswap V2-compatible deployment, where this chain has one. */
+  uniswap?: { router: `0x${string}`; factory: `0x${string}` };
+  /** ERC-20s this wallet can trade on this chain. The native coin is described
+   *  by the `native*` fields above; this is everything else. */
+  tokens?: TokenDef[];
 }
 
 const ETH = { nativeCoingeckoId: 'ethereum', nativeColorHex: '#627EEA' } as const;
@@ -137,7 +151,21 @@ export const CHAINS: ChainDef[] = [
     nativeSymbol: 'USDC', nativeDecimals: 18, nativeCoingeckoId: 'usd-coin',
     nativeName: 'USD Coin',
     nativeColorHex: '#2980D9', hasNativeAsset: true, subgraphEnv: 'arc',
-    circleDomain: 26, usdc: '0x3600000000000000000000000000000000000000' },
+    circleDomain: 26, usdc: '0x3600000000000000000000000000000000000000',
+    // Uniswap V2 on Arc testnet. Re-verified on-chain: the router reports this
+    // factory, and factory.getPair(USDC, EURC) resolves to a funded pool.
+    // NOTE: router.WETH() points at an address with NO CODE, so every ETH-path
+    // helper (swapExactETHForTokens et al) reverts here — token-to-token only.
+    uniswap: {
+      router: '0xe27d5d256b370604f1ff060fb489c6a8e3f8a6d9',
+      factory: '0x7483847d46db2920dd64efa676cf72dcf765814f',
+    },
+    tokens: [
+      { symbol: 'USDC', name: 'USD Coin', address: '0x3600000000000000000000000000000000000000',
+        decimals: 6, coingeckoId: 'usd-coin', colorHex: '#2775CA' },
+      { symbol: 'EURC', name: 'Euro Coin', address: '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a',
+        decimals: 6, coingeckoId: 'euro-coin', colorHex: '#1AA68C' },
+    ] },
 
   { chainId: 42431n, name: 'Tempo Testnet', environment: 'testnet',
     rpcUrl: 'https://rpc.moderato.tempo.xyz', explorerUrl: 'https://explore.testnet.tempo.xyz',
@@ -200,3 +228,17 @@ export function chainNativeMeta(chainId: bigint): { symbol: string; coingeckoId:
     colorHex: c?.nativeColorHex ?? '#627EEA',
   };
 }
+
+/** Chains in this environment with a Uniswap V2-compatible DEX. */
+export const swapChainsForEnvironment = (env: ChainEnvironment): ChainDef[] =>
+  chainsForEnvironment(env).filter((c) => c.uniswap && (c.tokens?.length ?? 0) >= 2);
+
+/** The ERC-20s tradeable on a chain. Empty where we have no DEX for it. */
+export const tokensForChain = (chainId: bigint): TokenDef[] =>
+  chainById(chainId)?.tokens ?? [];
+
+export const tokenOnChain = (chainId: bigint, address: string): TokenDef | undefined =>
+  tokensForChain(chainId).find((t) => t.address.toLowerCase() === address.toLowerCase());
+
+/** Uniswap V2 router/factory for a chain, when it has one. */
+export const uniswapFor = (chainId: bigint): ChainDef['uniswap'] => chainById(chainId)?.uniswap;

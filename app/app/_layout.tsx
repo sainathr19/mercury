@@ -17,7 +17,6 @@ import { useNetworks } from '../src/stores/networkStore';
 import { usePortfolio } from '../src/stores/portfolioStore';
 import { useActivity } from '../src/stores/activityStore';
 import { useStealth } from '../src/stores/stealthStore';
-import { useSwap } from '../src/stores/swapStore';
 import { useWallets } from '../src/stores/walletsStore';
 import { useRegistry } from '../src/stores/registryStore';
 import { useTokenPrefs } from '../src/stores/tokenPrefsStore';
@@ -118,13 +117,6 @@ export default function RootLayout() {
     if (status !== 'locked') return;
     void useAuth.getState().signOut().catch(() => {});
     useSession.setState({ status: 'onboarding', wallet: null, addresses: null, error: null });
-  }, [status]);
-
-  // Preload the Garden swap asset list in the background once the wallet is open,
-  // so the Swap sheet opens with its tokens + balances already in place (no
-  // load-on-open flash). `loadAssets` is idempotent + cached across the session.
-  useEffect(() => {
-    if (status === 'ready') void useSwap.getState().loadAssets();
   }, [status]);
 
   // App-lock: arm ONLY on a real 'background' (not 'inactive'), evaluate on
