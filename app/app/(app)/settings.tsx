@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, Linking, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
@@ -9,7 +9,7 @@ import { useSession } from '../../src/stores/session';
 export default function Settings() {
   const router = useRouter();
   const theme = UnistylesRuntime.getTheme();
-  const { address, vault } = useSession();
+  const { address, vault, wipeWallet } = useSession();
   const [phrase, setPhrase] = useState<string | null>(null);
 
   function reveal() {
@@ -19,6 +19,21 @@ export default function Settings() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Show', style: 'destructive', onPress: async () => setPhrase((await vault?.loadPhrase()) ?? null) },
+      ],
+    );
+  }
+
+  function confirmWipe() {
+    Alert.alert(
+      'Remove this wallet?',
+      'The recovery phrase is erased from this device. Without your written copy the funds are gone for good.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => { await wipeWallet(); router.replace('/'); },
+        },
       ],
     );
   }
@@ -33,7 +48,7 @@ export default function Settings() {
         <View style={{ width: 22 }} />
       </View>
 
-      <View style={styles.body}>
+      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <Text variant="caption" color={theme.colors.muted}>ARC ADDRESS</Text>
         <Card style={styles.card}>
           <Text variant="mono" selectable>{address}</Text>
@@ -57,7 +72,16 @@ export default function Settings() {
             onPress={() => Linking.openURL(`https://testnet.arcscan.app/address/${address}`)}
           />
         </Card>
-      </View>
+
+        <Text variant="caption" color={theme.colors.danger}>DANGER ZONE</Text>
+        <Card style={styles.card}>
+          <Text variant="subhead" color={theme.colors.muted}>
+            Start over with a new wallet. Make sure your recovery phrase is
+            written down first — this cannot be undone.
+          </Text>
+          <Button title="Remove wallet" variant="danger" onPress={confirmWipe} />
+        </Card>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -68,6 +92,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.screen, paddingVertical: theme.spacing.md,
   },
-  body: { paddingHorizontal: theme.spacing.screen, gap: theme.spacing.sm },
+  body: { paddingHorizontal: theme.spacing.screen, gap: theme.spacing.sm, paddingBottom: theme.spacing.xxl },
   card: { marginBottom: theme.spacing.md, gap: theme.spacing.sm },
 }));

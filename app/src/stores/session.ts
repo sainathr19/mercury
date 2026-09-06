@@ -16,6 +16,8 @@ interface SessionState {
   createWallet(): Promise<string>;
   importWallet(phrase: string): Promise<void>;
   enableLock(): Promise<void>;
+  /** Erase the wallet from this device and return to onboarding. */
+  wipeWallet(): Promise<void>;
   reset(): void;
 }
 
@@ -52,6 +54,17 @@ export const useSession = create<SessionState>((set, get) => ({
     const v = get().vault!;
     await v.setLockEnabled(true);
     await refresh(set, v);
+  },
+
+  /**
+   * Destroys the seed in SecureStore. There is no undo and no backup: without
+   * the recovery phrase the funds are gone. Callers MUST confirm first.
+   */
+  async wipeWallet() {
+    const v = get().vault;
+    if (v) await v.wipe();
+    // Keep the vault handle so the app can immediately create a new wallet.
+    set({ ...EMPTY, vault: v, ready: true });
   },
 
   reset() { set({ ...EMPTY }); },
