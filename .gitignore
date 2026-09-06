@@ -1,6 +1,7 @@
 *.log
 *.tsbuildinfo
 .DS_Store
+.demo-wallet.local
 .env
 .env.local
 .expo-shared/
@@ -15,9 +16,10 @@ contracts/cache/
 contracts/out/
 dist/
 env.filled
+hub/.env
+hub/node_modules/
 ios/
 node_modules/
 subgraph/build/
 subgraph/generated/
 subgraph/node_modules/
-.demo-wallet.local
