@@ -18,6 +18,10 @@ test('decodeAbiString returns empty for too-short input', () => {
 });
 
 test('chainNames maps known ids', () => {
-  expect(chainNames([1, 42161])).toBe('Ethereum, Arbitrum');
+  // 'Arbitrum One' is the chain's real name and what the registry uses
+  // everywhere else (activity rows, the networks screen). Chain names come from
+  // that one registry now; asserting the old hand-written label here would put
+  // a second source of names back.
+  expect(chainNames([1, 42161])).toBe('Ethereum, Arbitrum One');
   expect(chainNames([999])).toBe('Chain 999');
 });
