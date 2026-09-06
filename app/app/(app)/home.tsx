@@ -27,6 +27,7 @@ import { hasSeenPrivateIntro, markPrivateIntroSeen } from '../../src/lib/private
 import { DashLoadingBar } from '../../src/components/DashLoadingBar';
 import { Shimmer } from '../../src/components/Shimmer';
 import { useSession } from '../../src/stores/session';
+import { UnifiedBalance } from '../../src/components/UnifiedBalance';
 import { useSettings } from '../../src/stores/settingsStore';
 import {
   usePortfolio,
@@ -297,6 +298,7 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
   const theme = UnistylesRuntime.getTheme();
   useSettings((s) => s.fxTick); // re-render when the display-currency rate/symbol changes
   const { assets, market, status, refresh } = usePortfolio();
+  const addresses = useSession((st) => st.addresses);
   // Normal home shows ONLY non-private activity; private receives/sends live in
   // the Private dashboard + private-activity screen.
   const recentActivity = useActivity((s) => s.items).filter((t) => !t.private);
@@ -398,6 +400,11 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
             </PressableScale>
           </View>
 
+          {/* Circle Gateway: one spendable USDC balance across every domain.
+              Renders nothing until there is a balance, so an empty wallet is
+              not left with a blank card. */}
+          <UnifiedBalance address={addresses?.eth ?? null} />
+
           {/* 24px gap to the Cash/Investments row = content gap (16) + 8. */}
           <View style={[styles.accountRow, { marginTop: 8 }]}>
             <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} />
@@ -411,6 +418,8 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
             <ActionButton icon="swap" onPress={() => router.push('/(app)/swap')} />
             <ActionButton icon="receive" onPress={() => router.push('/(app)/receive')} />
           </View>
+
+          <UnifiedBalance address={addresses?.eth ?? null} />
 
           <View style={styles.accountRow}>
             <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} />
