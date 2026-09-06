@@ -1,9 +1,0 @@
-{
-  "platforms": ["apple", "android"],
-  "apple": {
-    "modules": ["StandardNfcModule"]
-  },
-  "android": {
-    "modules": ["expo.modules.standardnfc.StandardNfcModule"]
-  }
-}

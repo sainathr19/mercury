@@ -64,8 +64,8 @@ export function buildPaymentLink(uri: string): string {
 /** The payment URI inside an incoming link, or null if it is not one of ours. */
 export function paymentUriFromLink(url: string): string | null {
   const s = url.trim();
-  // Our own wrapper first — path form, plus the older query form.
-  const m = /^mercury:\/\/pay\/(.+)$/i.exec(s) ?? /^mercury:\/\/pay\?uri=(.+)$/i.exec(s);
+  // Our own wrapper first.
+  const m = /^mercury:\/\/pay\/(.+)$/i.exec(s);
   if (m) {
     try { return decodeURIComponent(m[1]); } catch { return m[1]; }
   }

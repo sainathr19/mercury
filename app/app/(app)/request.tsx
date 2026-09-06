@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import { dismiss } from '../../src/lib/nav';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import * as Sharing from 'expo-sharing';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Button, Card, Field, Icon, PressableScale, Text, useToast } from '../../src/ui';
 import { AddressQR } from '../../src/components/AddressQR';
@@ -59,14 +58,6 @@ export default function Request() {
     await Clipboard.setStringAsync(buildPaymentLink(uri));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     show('Payment link copied', 'success');
-  }
-
-  async function share() {
-    if (!uri) return;
-    if (!(await Sharing.isAvailableAsync())) return copy();
-    // Sharing.shareAsync wants a file; a payment link is text, so the clipboard
-    // is the honest fallback rather than writing a throwaway file.
-    return copy();
   }
 
   if (!chain || !token) {
@@ -129,7 +120,7 @@ export default function Request() {
       <Text variant="caption" color={theme.colors.muted} style={styles.note} numberOfLines={2}>
         {uri}
       </Text>
-      <Button title="Copy payment link" onPress={share} shape="pill" />
+      <Button title="Copy payment link" onPress={copy} shape="pill" />
     </SafeAreaView>
   );
 }

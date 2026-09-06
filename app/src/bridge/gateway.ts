@@ -11,6 +11,7 @@
 import type { WalletInterface } from 'standard-rn';
 import {
   ensureAllowance,
+  erc20BalanceOf,
   ethCall,
   rpc,
   sendCall,
@@ -144,21 +145,6 @@ export interface WalletUsdc {
   balance: number;
 }
 
-/** ERC-20 balanceOf(address) — the only call we need against a USDC contract. */
-const BALANCE_OF = '0x70a08231';
-
-async function erc20Balance(rpcUrl: string, token: string, owner: string): Promise<number> {
-  const data = BALANCE_OF + owner.replace(/^0x/, '').toLowerCase().padStart(64, '0');
-  const res = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: token, data }, 'latest'] }),
-  });
-  const json = (await res.json()) as { result?: string };
-  if (!json.result || json.result === '0x') return 0;
-  return Number(BigInt(json.result)) / 1e6; // USDC is 6dp on every chain, Arc included
-}
-
 /**
  * USDC sitting in the user's own address, per Circle chain.
  *
@@ -178,7 +164,8 @@ export async function walletUsdc(address: string, env: ChainEnvironment): Promis
         return {
           chainId: c.chainId,
           domain: c.circleDomain!,
-          balance: await erc20Balance(c.rpcUrl, c.usdc!, address),
+          // USDC is 6dp on every chain, Arc included.
+          balance: Number(await erc20BalanceOf(c.rpcUrl, c.usdc!, address)) / 1e6,
         };
       } catch {
         return null; // a chain that failed to answer is unknown, not zero
