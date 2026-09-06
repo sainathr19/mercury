@@ -45,7 +45,7 @@ const CHAIN_NAMES: Record<string, string> = {
   '421614': 'Arbitrum Sepolia',
   '84532': 'Base Sepolia',
 };
-function evmNetworkName(chainId: bigint): string {
+export function evmNetworkName(chainId: bigint): string {
   return CHAIN_NAMES[chainId.toString()] ?? `Chain ${chainId.toString()}`;
 }
 
