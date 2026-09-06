@@ -8,6 +8,7 @@ import { useSession } from '../../src/stores/session';
 import { useGateway } from '../../src/stores/gatewayStore';
 import { gatewaySend, type SendResult } from '../../src/bridge/gateway';
 import { getActiveEnvironment } from '../../src/bridge/activeEnv';
+import { getActiveAccount } from '../../src/bridge/account';
 import { circleChainsForEnvironment, type ChainDef } from '../../src/lib/chains';
 
 /**
@@ -24,7 +25,9 @@ export default function GatewaySend() {
   const show = useToast((s) => s.show);
   const addresses = useSession((s) => s.addresses);
   const wallet = useSession((s) => s.wallet);
-  const { total, perDomain, refresh } = useGateway();
+  // `spendable` — NOT the wallet's total USDC. Only money already settled into
+  // Gateway can be sent cross-chain; the rest has to be deposited first.
+  const { spendable, perDomain, refresh, noteSent } = useGateway();
 
   const env = getActiveEnvironment();
   const destinations = circleChainsForEnvironment(env);
@@ -37,7 +40,7 @@ export default function GatewaySend() {
   const [fault, setFault] = useState<string | null>(null);
 
   const value = Number(amount);
-  const valid = Number.isFinite(value) && value > 0 && value <= total;
+  const valid = Number.isFinite(value) && value > 0 && value <= spendable;
   const ready = valid && !!dest && !!wallet && /^0x[0-9a-fA-F]{40}$/.test(to.trim());
 
   async function submit() {
@@ -53,7 +56,7 @@ export default function GatewaySend() {
     try {
       const r = await gatewaySend({
         wallet,
-        account: 0,
+        account: getActiveAccount(),
         address: addresses.eth,
         toChainId: dest.chainId,
         amount: value,
@@ -66,6 +69,9 @@ export default function GatewaySend() {
       setResult(r);
       if (r.ok) {
         show(`Sent $${value.toFixed(2)} in ${((r.attestMs + r.relayMs) / 1000).toFixed(1)}s`, 'success');
+        // The contract keeps reporting this money for a few minutes; tell the
+        // store so the balance drops now rather than after settlement.
+        noteSent(value);
         void refresh(addresses.eth);
       } else if (r.unclaimed) {
         show('Sent, but delivery is pending — funds are safe.', 'info');
@@ -94,7 +100,7 @@ export default function GatewaySend() {
       <View style={styles.amount}>
         <CurrencyText amount={value || 0} size={48} fitWidth={320} />
         <Text variant="subhead" color={theme.colors.muted}>
-          ${total.toFixed(2)} spendable across {destinations.length} networks
+          ${spendable.toFixed(2)} spendable across {destinations.length} networks
         </Text>
       </View>
 
@@ -105,7 +111,7 @@ export default function GatewaySend() {
           onChangeText={(v) => { if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v); }}
           keyboardType="decimal-pad"
           placeholder="0.00"
-          error={value > total ? 'More than your balance.' : undefined}
+          error={value > spendable ? 'More than your spendable balance.' : undefined}
         />
       </Card>
 

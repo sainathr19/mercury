@@ -27,7 +27,6 @@ import { hasSeenPrivateIntro, markPrivateIntroSeen } from '../../src/lib/private
 import { DashLoadingBar } from '../../src/components/DashLoadingBar';
 import { Shimmer } from '../../src/components/Shimmer';
 import { useSession } from '../../src/stores/session';
-import { UnifiedBalance } from '../../src/components/UnifiedBalance';
 import { useSettings } from '../../src/stores/settingsStore';
 import {
   usePortfolio,
@@ -40,6 +39,8 @@ import {
   groupedAssets as calcGrouped,
 } from '../../src/stores/portfolioStore';
 import { useActivity } from '../../src/stores/activityStore';
+import { useGateway } from '../../src/stores/gatewayStore';
+import { getActiveAccount } from '../../src/bridge/account';
 import { useTokenPrefs } from '../../src/stores/tokenPrefsStore';
 import { ActivityRow } from '../../src/components/ActivityRow';
 import { ExploreContent } from '../../src/components/ExploreContent';
@@ -299,6 +300,15 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
   useSettings((s) => s.fxTick); // re-render when the display-currency rate/symbol changes
   const { assets, market, status, refresh } = usePortfolio();
   const addresses = useSession((st) => st.addresses);
+  const wallet = useSession((st) => st.wallet);
+  // USDC settled into Circle Gateway. It lives in Gateway's contract rather than
+  // the user's address, so the portfolio scan cannot see it — it has to be added
+  // here or the wallet's own headline understates what the user owns.
+  const gwSpendable = useGateway((g) => g.spendable);
+  const gwPending = useGateway((g) => g.pending);
+  const gwStuck = useGateway((g) => g.stuck);
+  const refreshGateway = useGateway((g) => g.refresh);
+  const settleGateway = useGateway((g) => g.settle);
   // Normal home shows ONLY non-private activity; private receives/sends live in
   // the Private dashboard + private-activity screen.
   const recentActivity = useActivity((s) => s.items).filter((t) => !t.private);
@@ -315,12 +325,35 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
     hydrateActivity().then(refreshActivity);
   }, [refresh, hydrateActivity, refreshActivity]);
 
+  // Keep USDC settled into Gateway so it is always spendable on any chain. Read
+  // first, then sweep — the read is what the balance needs, and the sweep is
+  // best-effort on top of it.
+  useEffect(() => {
+    const addr = addresses?.eth;
+    if (!addr) return;
+    void refreshGateway(addr).then(() => {
+      if (wallet) void settleGateway(wallet, getActiveAccount(), addr);
+    });
+  }, [addresses?.eth, wallet, refreshGateway, settleGateway]);
+
   // Grouped holdings, sorted by USD value (biggest first).
   const shown = calcGrouped(assets, hiddenTokens).sort((a, b) => liveValue(b, market) - liveValue(a, market));
-  const total = calcTotal(assets, market);
+  // Gateway holdings are USDC, so they are Cash — and they must be added to the
+  // headline too. `pending` counts: a deposit that has not finalised is still
+  // the user's money, and leaving it out would make the total dip every time
+  // they settled.
+  const inGateway = gwSpendable + gwPending;
+  const total = calcTotal(assets, market) + inGateway;
   const change = calcChange(assets, market);
-  const cash = calcCash(assets, market);
+  const cash = calcCash(assets, market) + inGateway;
   const invest = calcInvest(assets, market);
+  // Said only when some of Cash is not yet usable everywhere. Silent in the
+  // normal case, so the card stays a single number.
+  const cashNote = gwPending > 0
+    ? `$${gwPending.toFixed(2)} arriving`
+    : gwStuck.length > 0
+      ? 'Some needs gas to settle'
+      : undefined;
   const isEmpty = shown.length === 0 || shown.every((a) => a.amount === 0);
   const positive = change >= 0;
 
@@ -328,7 +361,11 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
     // Haptic on every pull — even when there's nothing to load — so the gesture confirms.
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setRefreshing(true);
-    await Promise.all([refresh(), refreshActivity()]);
+    await Promise.all([
+      refresh(),
+      refreshActivity(),
+      addresses?.eth ? refreshGateway(addresses.eth) : Promise.resolve(),
+    ]);
     setRefreshing(false);
   }
 
@@ -400,14 +437,9 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
             </PressableScale>
           </View>
 
-          {/* Circle Gateway: one spendable USDC balance across every domain.
-              Renders nothing until there is a balance, so an empty wallet is
-              not left with a blank card. */}
-          <UnifiedBalance address={addresses?.eth ?? null} />
-
           {/* 24px gap to the Cash/Investments row = content gap (16) + 8. */}
           <View style={[styles.accountRow, { marginTop: 8 }]}>
-            <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} />
+            <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} note={cashNote} onPress={() => router.push('/(app)/gateway-send')} />
             <AccountCard title="Investments" icon={require('../../assets/icons/investmentIcon.svg')} balance={invest} masked={hidden || privateMode} />
           </View>
         </>
@@ -419,10 +451,8 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
             <ActionButton icon="receive" onPress={() => router.push('/(app)/receive')} />
           </View>
 
-          <UnifiedBalance address={addresses?.eth ?? null} />
-
           <View style={styles.accountRow}>
-            <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} />
+            <AccountCard title="Cash" icon={require('../../assets/icons/cashIcon.svg')} balance={cash} masked={hidden || privateMode} note={cashNote} onPress={() => router.push('/(app)/gateway-send')} />
             <AccountCard title="Investments" icon={require('../../assets/icons/investmentIcon.svg')} balance={invest} masked={hidden || privateMode} />
           </View>
 
@@ -504,17 +534,43 @@ function ActionButton({ icon, onPress }: { icon: 'send' | 'swap' | 'receive'; on
   );
 }
 
-function AccountCard({ title, icon, balance, masked }: { title: string; icon: number; balance: number; masked: boolean }) {
+function AccountCard({
+  title,
+  icon,
+  balance,
+  masked,
+  note,
+  onPress,
+}: {
+  title: string;
+  icon: number;
+  balance: number;
+  masked: boolean;
+  /** Shown under the figure ONLY when part of it is not yet usable. */
+  note?: string;
+  onPress?: () => void;
+}) {
   const theme = UnistylesRuntime.getTheme();
-  return (
-    <View style={styles.accountCard}>
+  const body = (
+    <>
       <View style={styles.accountTop}>
         <RNText style={styles.accountCardTitle}>{title}</RNText>
         {/* tintColor follows the theme text color so the SVG adapts to light/dark. */}
         <ExpoImage source={icon} style={styles.accountIcon} tintColor={theme.colors.text} contentFit="contain" />
       </View>
-      <CurrencyText amount={balance} size={21} fractionColor="#B0B0B0" masked={masked} />
-    </View>
+      <View>
+        <CurrencyText amount={balance} size={21} fractionColor="#B0B0B0" masked={masked} />
+        {!!note && !masked && (
+          <Text variant="caption" color={theme.colors.muted}>{note}</Text>
+        )}
+      </View>
+    </>
+  );
+  if (!onPress) return <View style={styles.accountCard}>{body}</View>;
+  return (
+    <PressableScale style={styles.accountCard} onPress={onPress}>
+      {body}
+    </PressableScale>
   );
 }
 

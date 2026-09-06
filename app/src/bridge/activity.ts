@@ -14,6 +14,10 @@ export interface ActivityItem {
   coingeckoId: string;
   colorHex: string;
   type: TxType;
+  /** Overrides the row's Sent/Received heading. Set only where "Sent" would be
+   *  actively misleading — moving money into your own Gateway balance is not a
+   *  payment, and reading it as one makes savings look like spending. */
+  title?: string;
   label: string;
   amountText: string;
   usdText: string;

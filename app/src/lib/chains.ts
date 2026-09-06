@@ -144,6 +144,21 @@ export const CHAINS: ChainDef[] = [
     nativeSymbol: 'USD', nativeDecimals: 18, hasNativeAsset: false },
 ];
 
+/**
+ * Circle Gateway contracts. The SAME address on every domain, so they are chain
+ * facts rather than per-chain config. Kept here (not in the Gateway client) so
+ * the activity mapper can recognise a deposit without importing the bridge.
+ */
+export const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9';
+export const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B';
+
+/** True when `addr` is a Gateway contract — i.e. a transfer to/from it is the
+ *  user moving their OWN money in or out of the unified balance, not a payment. */
+export const isGatewayContract = (addr: string): boolean => {
+  const a = addr.toLowerCase();
+  return a === GATEWAY_WALLET.toLowerCase() || a === GATEWAY_MINTER.toLowerCase();
+};
+
 // ── Derived lookups. Nothing below is hand-maintained. ───────────────────────
 
 const BY_ID = new Map(CHAINS.map((c) => [c.chainId.toString(), c]));

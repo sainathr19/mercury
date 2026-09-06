@@ -9,14 +9,20 @@
 //  contracts (circlefin/evm-gateway-contracts) — see the notes on each.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { WalletInterface } from 'standard-rn';
-import { chainCircleDomain, chainUsdc, circleChainsForEnvironment, type ChainEnvironment } from '../lib/chains';
+import {
+  chainById,
+  chainCircleDomain,
+  chainUsdc,
+  circleChainsForEnvironment,
+  GATEWAY_MINTER,
+  GATEWAY_WALLET,
+  type ChainEnvironment,
+} from '../lib/chains';
 
 const API_TESTNET = 'https://gateway-api-testnet.circle.com';
 const API_MAINNET = 'https://gateway-api.circle.com';
 
-/** Same address on every EVM domain. */
-export const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9';
-export const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B';
+export { GATEWAY_WALLET, GATEWAY_MINTER } from '../lib/chains';
 
 export const gatewayApi = (env: ChainEnvironment): string =>
   env === 'testnet' ? API_TESTNET : API_MAINNET;
@@ -118,6 +124,373 @@ export async function unifiedBalance(
   } catch {
     return empty;
   }
+}
+
+// ── Wallet-held USDC ─────────────────────────────────────────────────────────
+
+export interface WalletUsdc {
+  chainId: bigint;
+  domain: number;
+  /** Human USDC units sitting in the user's OWN address on this chain. */
+  balance: number;
+}
+
+/** ERC-20 balanceOf(address) — the only call we need against a USDC contract. */
+const BALANCE_OF = '0x70a08231';
+
+async function erc20Balance(rpcUrl: string, token: string, owner: string): Promise<number> {
+  const data = BALANCE_OF + owner.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+  const res = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: token, data }, 'latest'] }),
+  });
+  const json = (await res.json()) as { result?: string };
+  if (!json.result || json.result === '0x') return 0;
+  return Number(BigInt(json.result)) / 1e6; // USDC is 6dp on every chain, Arc included
+}
+
+/**
+ * USDC sitting in the user's own address, per Circle chain.
+ *
+ * This is the money that has NOT been settled into Gateway yet. It still belongs
+ * to the user and must be counted, but it cannot be spent on another chain until
+ * it is deposited — which is the distinction the balance UI has to get right.
+ *
+ * On Arc the USDC contract is a 6dp ERC-20 view over the native 18dp balance, so
+ * the same `balanceOf` call is correct there too.
+ */
+export async function walletUsdc(address: string, env: ChainEnvironment): Promise<WalletUsdc[]> {
+  if (!address) return [];
+  const chains = circleChainsForEnvironment(env);
+  const rows = await Promise.all(
+    chains.map(async (c) => {
+      try {
+        return {
+          chainId: c.chainId,
+          domain: c.circleDomain!,
+          balance: await erc20Balance(c.rpcUrl, c.usdc!, address),
+        };
+      } catch {
+        return null; // a chain that failed to answer is unknown, not zero
+      }
+    }),
+  );
+  return rows.filter((r): r is WalletUsdc => r !== null);
+}
+
+// ── Everything the user owns in USDC ─────────────────────────────────────────
+
+/** totalBalance(address token, address depositor) on GatewayWallet. */
+const SEL_TOTAL_BALANCE = '0x1453b987';
+
+/**
+ * What the Gateway contract itself says it holds for this user, per chain.
+ *
+ * Measured, and the reason this exists: Circle's /v1/balances API and the
+ * contract lag in OPPOSITE directions. The contract credits a deposit the moment
+ * it is mined but keeps showing a burn Circle has already attested; the API
+ * drops that burn immediately but does not see a fresh deposit for a while.
+ * Reading only the API made a just-settled deposit vanish from the balance —
+ * the wallet showed $7.78 over $18.72 of real money.
+ *
+ * So: the contract answers "what do I own", the API answers "what can I spend".
+ */
+async function gatewayOnchain(
+  address: string,
+  env: ChainEnvironment,
+): Promise<Map<number, number | null>> {
+  const chains = circleChainsForEnvironment(env);
+  const out = new Map<number, number | null>();
+  await Promise.all(
+    chains.map(async (c) => {
+      if (c.circleDomain === undefined) return;
+      if (!c.usdc) {
+        out.set(c.circleDomain, 0);
+        return;
+      }
+      const read = async () => {
+        const hex = await rpc<string>(c.rpcUrl, 'eth_call', [
+          { to: GATEWAY_WALLET, data: SEL_TOTAL_BALANCE + word(c.usdc!) + word(address) },
+          'latest',
+        ]);
+        return hex && hex !== '0x' ? Number(BigInt(hex)) / 1e6 : 0;
+      };
+      try {
+        out.set(c.circleDomain, await read());
+      } catch {
+        // One retry — these public RPCs rate-limit, and a dropped read must not
+        // be mistaken for a real answer.
+        try {
+          out.set(c.circleDomain, await read());
+        } catch {
+          out.set(c.circleDomain, null); // unknown, NOT zero
+        }
+      }
+    }),
+  );
+  return out;
+}
+
+export interface UsdcHoldings {
+  /** Every USDC the user owns, wherever it sits. THE number the wallet shows. */
+  total: number;
+  /** Spendable on any Circle chain right now, with no bridge wait. */
+  spendable: number;
+  /** Owned but not yet spendable — a deposit still settling. Shown as "arriving". */
+  pending: number;
+  /** Still in the user's own address, not yet settled into Gateway. */
+  inWallet: number;
+  perDomain: DomainBalance[];
+  perChain: WalletUsdc[];
+}
+
+/**
+ * One USDC number for the whole wallet.
+ *
+ * Gateway holdings and wallet holdings are two pots that must be ADDED, never
+ * shown as alternatives: settling moves money from one to the other, so a
+ * headline counting only one falls whenever the user settles.
+ *
+ * `inFlightSent` is USDC this app has already burnt through Gateway but which
+ * the contract has not caught up on yet. Without subtracting it the total would
+ * keep counting money that is already on its way to someone else.
+ */
+export async function usdcHoldings(
+  address: string,
+  env: ChainEnvironment,
+  inFlightSent = 0,
+): Promise<UsdcHoldings> {
+  const [api, wallet, onchainByDomain] = await Promise.all([
+    unifiedBalance(address, env),
+    walletUsdc(address, env),
+    gatewayOnchain(address, env),
+  ]);
+  const inWallet = wallet.reduce((s, w) => s + w.balance, 0);
+  const apiHeld = api.total + api.pending;
+  // A chain we could not read falls back to what the API says for it. Counting
+  // an unreachable chain as ZERO silently tells the user they own less than they
+  // do — observed live: one dropped Base read wiped $1.00 off the balance.
+  const onchain = [...onchainByDomain.entries()].reduce((sum, [domain, value]) => {
+    if (value !== null) return sum + value;
+    const row = api.perDomain.find((d) => d.domain === domain);
+    return sum + (row ? row.balance + row.pending : 0);
+  }, 0);
+  // Never report less than Circle will actually let the user spend.
+  const inGateway = Math.max(apiHeld, onchain - inFlightSent);
+  return {
+    total: inGateway + inWallet,
+    spendable: api.total,
+    pending: Math.max(0, inGateway - api.total),
+    inWallet,
+    perDomain: api.perDomain,
+    perChain: wallet,
+  };
+}
+
+// ── Settling wallet USDC into Gateway ────────────────────────────────────────
+
+// Verified against the deployed GatewayWallet on Arc (proxy 0x0077777d…,
+// implementation 0xa33d52b4…): all four selectors are present in its bytecode.
+const SEL_APPROVE = '0x095ea7b3'; // approve(address,uint256)
+const SEL_ALLOWANCE = '0xdd62ed3e'; // allowance(address,address)
+const SEL_DEPOSIT = '0x47e7ef24'; // deposit(address,uint256)
+
+const word = (hex: string): string => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+const uint = (n: bigint): string => word(n.toString(16));
+
+function hexToBytes(hex: string): ArrayBuffer {
+  const h = hex.replace(/^0x/, '');
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  return out.buffer;
+}
+
+async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  const json = (await res.json()) as { result?: T; error?: { message?: string } };
+  if (json.error) throw new Error(json.error.message ?? `${method} failed`);
+  return json.result as T;
+}
+
+/** Node estimate + 25% headroom, mirroring the send path. */
+async function estimateGas(url: string, from: string, to: string, data: string): Promise<bigint> {
+  const r = await rpc<string>(url, 'eth_estimateGas', [{ from, to, value: '0x0', data }]);
+  return (BigInt(r) * 125n) / 100n;
+}
+
+/** Poll until mined. Returns false on revert OR on timeout — the caller must not
+ *  treat "we stopped waiting" as success, because the next step would revert. */
+async function waitForReceipt(url: string, hash: string, timeoutMs = 90_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await rpc<{ status?: string } | null>(url, 'eth_getTransactionReceipt', [hash]);
+    if (r) return r.status === '0x1';
+    await new Promise((res) => setTimeout(res, 1200));
+  }
+  return false;
+}
+
+/** Build + sign + broadcast a contract call through the Rust core. */
+async function sendCall(
+  wallet: WalletInterface,
+  account: number,
+  chainId: bigint,
+  url: string,
+  from: string,
+  to: string,
+  data: string,
+): Promise<string> {
+  const gasLimit = await estimateGas(url, from, to, data);
+  const fees = await wallet.evmEstimateFees(chainId, account);
+  const maxPriorityFeePerGas = fees.mediumPriorityFee;
+  const maxFeePerGas = (BigInt(fees.baseFeePerGas) * 2n + BigInt(maxPriorityFeePerGas)).toString();
+  return wallet.evmSendTx(chainId, account, {
+    to,
+    value: '0',
+    data: hexToBytes(data),
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+  } as never);
+}
+
+export interface DepositResult {
+  ok: boolean;
+  txHash?: string;
+  error?: string;
+  ms: number;
+}
+
+/**
+ * Move USDC out of the user's own address and into their Gateway balance.
+ *
+ * Two transactions, and the approve MUST be mined before the deposit — they come
+ * from the same account, so firing both at once risks a reused nonce and a
+ * guaranteed revert.
+ *
+ * The allowance is set to EXACTLY this deposit rather than the usual unlimited
+ * approval. An infinite allowance to any contract is a standing risk on a wallet
+ * holding real money, and on Arc the approve costs 0.0013 USDC — far too little
+ * to buy that risk with.
+ */
+export async function gatewayDeposit(opts: {
+  wallet: WalletInterface;
+  account: number;
+  chainId: bigint;
+  /** Human USDC units. */
+  amount: number;
+}): Promise<DepositResult> {
+  const t0 = Date.now();
+  const { wallet, account, chainId, amount } = opts;
+  const chain = chainById(chainId);
+  const token = chainUsdc(chainId);
+  if (!chain?.rpcUrl || !token) {
+    return { ok: false, error: 'Chain does not support Gateway', ms: Date.now() - t0 };
+  }
+  const url = chain.rpcUrl;
+  const value = BigInt(Math.round(amount * 1e6)); // USDC is 6dp
+  if (value <= 0n) return { ok: false, error: 'Nothing to settle', ms: Date.now() - t0 };
+
+  try {
+    const from = await wallet.evmAddress(account);
+
+    const allowanceHex = await rpc<string>(url, 'eth_call', [
+      { to: token, data: SEL_ALLOWANCE + word(from) + word(GATEWAY_WALLET) },
+      'latest',
+    ]);
+    const allowance = allowanceHex && allowanceHex !== '0x' ? BigInt(allowanceHex) : 0n;
+
+    if (allowance < value) {
+      const approveTx = await sendCall(
+        wallet, account, chainId, url, from, token,
+        SEL_APPROVE + word(GATEWAY_WALLET) + uint(value),
+      );
+      if (!(await waitForReceipt(url, approveTx))) {
+        return { ok: false, error: 'Approval did not confirm', ms: Date.now() - t0 };
+      }
+    }
+
+    const depositTx = await sendCall(
+      wallet, account, chainId, url, from, GATEWAY_WALLET,
+      SEL_DEPOSIT + word(token) + uint(value),
+    );
+    const mined = await waitForReceipt(url, depositTx);
+    return {
+      ok: mined,
+      txHash: depositTx,
+      error: mined ? undefined : 'Deposit did not confirm',
+      ms: Date.now() - t0,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Deposit failed', ms: Date.now() - t0 };
+  }
+}
+
+/**
+ * USDC left behind on a chain whose GAS IS USDC (Arc). Settling the last cent
+ * would leave the wallet unable to pay for its own next transaction — including
+ * the withdrawal that would get the money back. At Arc's measured prices an
+ * approve + deposit costs ~0.0045 USDC, so this covers ~50 more of them.
+ */
+export const GAS_RESERVE_USDC = 0.25;
+
+/** Below this, settling costs more attention than it saves. */
+export const MIN_SETTLE_USDC = 0.5;
+
+export interface SettleOutcome {
+  chainId: bigint;
+  amount: number;
+  ok: boolean;
+  skipped?: 'dust' | 'no-gas';
+  txHash?: string;
+  error?: string;
+}
+
+/**
+ * Sweep wallet-held USDC into the unified balance, chain by chain.
+ *
+ * Skips rather than fails where it must: a chain whose gas token is ETH needs
+ * ETH to deposit, and a wallet without any still OWNS that USDC — it just can't
+ * move it yet. The balance UI counts it either way, which is why this can be
+ * best-effort without ever losing sight of the money.
+ */
+export async function settleUsdcToGateway(opts: {
+  wallet: WalletInterface;
+  account: number;
+  address: string;
+  env: ChainEnvironment;
+}): Promise<SettleOutcome[]> {
+  const { wallet, account, address, env } = opts;
+  const held = await walletUsdc(address, env);
+  const out: SettleOutcome[] = [];
+
+  for (const row of held) {
+    const chain = chainById(row.chainId);
+    if (!chain) continue;
+    // Arc pays gas in USDC itself, so the reserve comes out of this balance.
+    // Everywhere else gas is a separate coin and none needs holding back.
+    const gasIsUsdc = chain.nativeSymbol === 'USDC';
+    const amount = row.balance - (gasIsUsdc ? GAS_RESERVE_USDC : 0);
+    if (amount < MIN_SETTLE_USDC) {
+      out.push({ chainId: row.chainId, amount: 0, ok: false, skipped: 'dust' });
+      continue;
+    }
+    if (!gasIsUsdc) {
+      const nativeHex = await rpc<string>(chain.rpcUrl, 'eth_getBalance', [address, 'latest']).catch(() => '0x0');
+      if (BigInt(nativeHex || '0x0') === 0n) {
+        out.push({ chainId: row.chainId, amount, ok: false, skipped: 'no-gas' });
+        continue;
+      }
+    }
+    const r = await gatewayDeposit({ wallet, account, chainId: row.chainId, amount });
+    out.push({ chainId: row.chainId, amount, ok: r.ok, txHash: r.txHash, error: r.error });
+  }
+  return out;
 }
 
 // ── Transfer ─────────────────────────────────────────────────────────────────

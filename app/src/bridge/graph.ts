@@ -12,7 +12,7 @@
 import type { ActivityItem } from './activity';
 import { evmExplorerTxUrl } from './evmChain';
 import { evmNetworkName } from '../lib/evm-activity';
-import { chainHasOwnSubgraph, chainTokenApiNetwork, chainName } from '../lib/chains';
+import { chainHasOwnSubgraph, chainTokenApiNetwork, chainName, isGatewayContract } from '../lib/chains';
 
 const TOKEN_API = 'https://api.pinax.network/v1';
 const TOKEN_API_JWT = process.env.EXPO_PUBLIC_TOKEN_API_JWT ?? '';
@@ -196,6 +196,7 @@ export async function arcTransfers(address: string, chainId: bigint, first = 40)
         coingeckoId: t.symbol === 'EURC' ? 'euro-coin' : 'usd-coin',
         colorHex: t.symbol === 'EURC' ? '#1AA68C' : '#2980D9',
         type: sent ? 'sent' : 'received',
+        ...gatewayTitle(sent, sent ? t.to : t.from),
         label: sent ? 'Sent' : 'Received',
         amountText: `${sign}${amount.toFixed(2)} ${t.symbol}`,
         // USDC/EURC are dollar-denominated, so the amount IS the USD figure.
@@ -209,6 +210,12 @@ export async function arcTransfers(address: string, chainId: bigint, first = 40)
   } catch {
     return [];
   }
+}
+
+/** A heading for a move in or out of the unified balance, or nothing. */
+export function gatewayTitle(sent: boolean, other: string): { title?: string } {
+  if (!isGatewayContract(other)) return {};
+  return { title: sent ? 'Added to spendable' : 'Moved to wallet' };
 }
 
 /** Graph-backed history for any chain it covers. Empty when it doesn't. */

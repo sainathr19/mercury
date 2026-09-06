@@ -68,7 +68,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
               ? item.type === 'received'
                 ? 'Received'
                 : 'Sent'
-              : TYPE_LABEL[item.type]}
+              : (item.title ?? TYPE_LABEL[item.type])}
         </Text>
         <Text style={[styles.sub, failed && styles.subFailed]} numberOfLines={1}>
           {subtitle}

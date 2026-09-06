@@ -1,4 +1,4 @@
-import { CHAINS, chainName, chainNativeMeta } from './chains';
+import { CHAINS, chainName, chainNativeMeta, isGatewayContract } from './chains';
 import { evmExplorerTxUrl } from '../bridge/evmChain';
 import type { ActivityItem } from '../bridge/activity';
 
@@ -101,6 +101,13 @@ function fmt(v: number, dec: number): string {
 function usd(v: number, sign: string): string {
   return `${sign}$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+/** Moving money in or out of the unified balance is not a payment, so the row
+ *  must not read "Sent". */
+function gatewayHeading(sent: boolean, other: string): { title?: string } {
+  if (!isGatewayContract(other)) return {};
+  return { title: sent ? 'Added to spendable' : 'Moved to wallet' };
+}
+
 function counterparty(sent: boolean, other: string): string {
   const short = other.length > 12 ? `${other.slice(0, 6)}…${other.slice(-4)}` : other;
   return `${sent ? 'To' : 'From'} ${short}`;
@@ -153,6 +160,7 @@ export function mapEvmActivity(opts: EvmMapOptions): ActivityItem[] {
       coingeckoId: chain.coingeckoId,
       colorHex: chain.colorHex,
       type: sent ? 'sent' : 'received',
+      ...gatewayHeading(sent, sent ? to : from),
       label: counterparty(sent, sent ? to : from),
       amountText: `${sent ? '-' : '+'}${fmt(amt, 6)} ${chain.symbol}`,
       usdText: opts.ethPrice > 0 ? usd(amt * opts.ethPrice, sent ? '-' : '+') : '',
@@ -183,6 +191,7 @@ export function mapEvmActivity(opts: EvmMapOptions): ActivityItem[] {
       coingeckoId: cg,
       colorHex: (cg && TOKEN_COLOR[cg]) || DEFAULT_TOKEN_COLOR,
       type: sent ? 'sent' : 'received',
+      ...gatewayHeading(sent, sent ? to : from),
       label: counterparty(sent, sent ? to : from),
       amountText: `${sent ? '-' : '+'}${fmt(amt, Math.min(decimals, 6))} ${symbol}`,
       usdText: price > 0 ? usd(amt * price, sent ? '-' : '+') : '',
