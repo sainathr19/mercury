@@ -7,6 +7,7 @@
 .expo/
 NOTES.local.md
 android/
+build-sim/
 build/
 contracts/broadcast/
 contracts/cache/

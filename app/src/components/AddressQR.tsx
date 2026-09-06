@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import { View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-// Ported from @shopify/react-native-skia to react-native-svg: Skia is a
-// native module Expo Go cannot load. Same geometry, same look.
-import Svg, { Path, Rect } from 'react-native-svg';
+import { Canvas, Path, RoundedRect, Skia } from '@shopify/react-native-skia';
 import QRCode from 'qrcode';
 import { UnistylesRuntime } from 'react-native-unistyles';
 import { CryptoGlyph, CRYPTO_GLYPH_IDS } from './CryptoGlyph';
@@ -40,7 +38,7 @@ export function AddressQR({ data, size, coingeckoId, bg, logo, version, ecl = 'H
     try {
       // `version` isn't in the local qrcode typings but is honored at runtime;
       // build via a variable so the extra key isn't excess-property-checked.
-      const opts: { errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'; version?: number } = { errorCorrectionLevel: ecl };
+      const opts: { errorCorrectionLevel: string; version?: number } = { errorCorrectionLevel: ecl };
       if (version) opts.version = version;
       const qr = QRCode.create(data, opts);
       const count = qr.modules.size;
@@ -54,16 +52,12 @@ export function AddressQR({ data, size, coingeckoId, bg, logo, version, ecl = 'H
       const inLogo = (row: number, col: number) =>
         row >= center - half && row <= center + half && col >= center - half && col <= center + half;
 
-      // One path of circles: two half-arcs per dot. Far cheaper than a few
-      // hundred <Circle> elements.
-      let dots = '';
+      const dots = Skia.Path.Make();
       for (let row = 0; row < count; row++) {
         for (let col = 0; col < count; col++) {
           if (inFinder(row, col) || inLogo(row, col)) continue;
           if (!bits[row * count + col]) continue;
-          const cx = col * m + m / 2;
-          const cy = row * m + m / 2;
-          dots += `M${cx - r},${cy}a${r},${r} 0 1,0 ${r * 2},0a${r},${r} 0 1,0 ${-r * 2},0`;
+          dots.addCircle(col * m + m / 2, row * m + m / 2, r);
         }
       }
       return { dots, count, m };
@@ -86,8 +80,8 @@ export function AddressQR({ data, size, coingeckoId, bg, logo, version, ecl = 'H
 
   return (
     <View style={{ width: size, height: size }}>
-      <Svg width={size} height={size}>
-        <Path d={dots} fill={theme.colors.text} />
+      <Canvas style={{ flex: 1 }}>
+        <Path path={dots} color={theme.colors.text} />
         {finders.map(([oc, or], i) => {
           const x = oc * m;
           const y = or * m;
@@ -95,7 +89,7 @@ export function AddressQR({ data, size, coingeckoId, bg, logo, version, ecl = 'H
             <FinderPattern key={i} x={x} y={y} m={m} fg={theme.colors.text} bg={surface} />
           );
         })}
-      </Svg>
+      </Canvas>
       {logo != null ? (
         <View style={{ position: 'absolute', left: size / 2 - logoSize / 2, top: size / 2 - logoSize / 2 }}>
           <ExpoImage
@@ -117,9 +111,9 @@ function FinderPattern({ x, y, m, fg, bg }: { x: number; y: number; m: number; f
   const outer = m * 1.8;
   return (
     <>
-      <Rect x={x} y={y} width={m * 7} height={m * 7} rx={outer} fill={fg} />
-      <Rect x={x + m} y={y + m} width={m * 5} height={m * 5} rx={outer * 0.65} fill={bg} />
-      <Rect x={x + m * 2} y={y + m * 2} width={m * 3} height={m * 3} rx={outer * 0.4} fill={fg} />
+      <RoundedRect x={x} y={y} width={m * 7} height={m * 7} r={outer} color={fg} />
+      <RoundedRect x={x + m} y={y + m} width={m * 5} height={m * 5} r={outer * 0.65} color={bg} />
+      <RoundedRect x={x + m * 2} y={y + m * 2} width={m * 3} height={m * 3} r={outer * 0.4} color={fg} />
     </>
   );
 }

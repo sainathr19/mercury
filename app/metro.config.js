@@ -1,26 +1,33 @@
+// Learn more https://docs.expo.io/guides/customizing-metro
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-// Unistyles v3 needs react-native-nitro-modules (a NATIVE module), which Expo
-// Go cannot load. While developing in Expo Go we resolve it to a plain-JS shim
-// (src/theme/unistyles-shim.ts). Set this to false once running on a dev
-// client to use the real library — no other change is needed.
-const USE_UNISTYLES_SHIM = true;
+const projectRoot = __dirname;
+// The `standard-rn` turbo module lives in the parent directory and is linked
+// via `file:..` (symlinked into node_modules). Its real source path is OUTSIDE
+// the app project root, so Metro needs the parent added as a watch folder and
+// node_modules resolution rooted at both locations.
+const moduleRoot = path.resolve(projectRoot, '..');
 
-const config = getDefaultConfig(__dirname);
+const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [path.resolve(__dirname, '../shared')];
-config.resolver.extraNodeModules = { '@shared': path.resolve(__dirname, '../shared') };
+config.watchFolders = [moduleRoot];
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(moduleRoot, 'node_modules'),
+];
+// Follow the file:.. symlink to the module's real location.
+config.resolver.unstable_enableSymlinks = true;
 
-if (USE_UNISTYLES_SHIM) {
-  const shim = path.resolve(__dirname, 'src/theme/unistyles-shim.ts');
-  const upstream = config.resolver.resolveRequest;
-  config.resolver.resolveRequest = (context, moduleName, platform) => {
-    if (moduleName === 'react-native-unistyles') {
-      return { type: 'sourceFile', filePath: shim };
-    }
-    return (upstream ?? context.resolveRequest)(context, moduleName, platform);
-  };
-}
+// The ubrn `async public` codegen issue is fixed on-disk by
+// scripts/fix-bindings.js (run as part of `ubrn:ios`/`release:ios`). But that
+// leaves a race: during a rebuild ubrn writes the bad modifier order and Metro
+// can re-transform + cache the broken file in the window before fix-bindings
+// runs, producing "SyntaxError: Unexpected token, expected '('" on the bindings.
+// So we ALSO reorder the modifiers in-memory at transform time (belt-and-
+// suspenders — this transformer delegates to Expo's default, so Unistyles +
+// Reanimated plugins still apply). Together they make the bindings bundle
+// regardless of cache/rebuild timing.
+config.transformer.babelTransformerPath = path.resolve(projectRoot, 'ubrn-babel-transformer.js');
 
 module.exports = config;

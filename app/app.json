@@ -1,18 +1,28 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
-    "version": "1.0.0",
+    "name": "Mercury",
+    "slug": "mercury",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "Mercury uses Face ID to unlock your wallet."
+      "requireFullScreen": true,
+      "bundleIdentifier": "run.mercury.wallet",
+      "buildNumber": "2",
+      "icon": "./assets/Standard.icon",
+      "entitlements": {
+        "com.apple.developer.icloud-container-identifiers": [
+          "iCloud.fi.garden.standard"
+        ],
+        "com.apple.developer.icloud-services": [
+          "CloudKit"
+        ]
       }
     },
     "android": {
+      "package": "run.mercury.wallet",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,11 +36,29 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store",
-      "expo-image",
+      "expo-status-bar",
+      "expo-splash-screen",
       "expo-font",
-      "expo-splash-screen"
+      "expo-image",
+      "expo-local-authentication",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Standard uses the camera to scan recipient QR codes."
+        }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      "./plugins/withoutPush",
+      "./plugins/withNfc",
+      "@react-native-google-signin/google-signin",
+      "expo-apple-authentication",
+      "expo-web-browser",
+      "expo-localization"
     ],
-    "scheme": "mercury"
+    "scheme": "mercury",
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

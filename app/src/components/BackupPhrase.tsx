@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { PostHogMaskView } from 'posthog-react-native';
 import { Button, Card, Icon, Text, useToast } from '../ui';
 
 /** Security-critical recovery-phrase backup UI: shows the BIP-39 words, requires
@@ -50,7 +51,7 @@ export function BackupPhrase({
 
       {words.length > 0 ? (
         // Never let the recovery phrase reach a session replay recording.
-        <View>
+        <PostHogMaskView>
           <Card flush style={styles.grid}>
             {words.map((word, idx) => (
               <View key={idx} style={styles.wordCell}>
@@ -61,7 +62,7 @@ export function BackupPhrase({
               </View>
             ))}
           </Card>
-        </View>
+        </PostHogMaskView>
       ) : (
         <Text variant="bodyMedium" color={theme.colors.muted}>
           Recovery phrase not available.

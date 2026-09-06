@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["CloudBackupModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.cloudbackup.CloudBackupModule"]
+  }
+}
