@@ -1,0 +1,29 @@
+"""
+A USDC/EURC movement on Arc.
+
+Immutable: a log is a fact and is never revised, which lets the indexer skip
+load-before-write. `amount` is ALWAYS 6dp minor units regardless of which
+emitter produced it — see the native handler for why that matters.
+"""
+type Transfer @entity(immutable: true) {
+  id: Bytes!                 # txHash-logIndex
+  from: Bytes!
+  to: Bytes!
+  token: Bytes!
+  symbol: String!
+  amount: BigInt!            # 6dp minor units, normalised
+  native: Boolean!           # emitted by the native emitter rather than the ERC-20
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+"""Running per-address totals so history questions don't need to page every transfer."""
+type Account @entity(immutable: false) {
+  id: Bytes!                 # address
+  sentMinor: BigInt!
+  receivedMinor: BigInt!
+  txCount: Int!
+  firstSeen: BigInt!
+  lastSeen: BigInt!
+}

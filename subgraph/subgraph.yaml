@@ -1,0 +1,53 @@
+specVersion: 1.0.0
+description: Mercury — USDC/EURC payments on Arc
+schema:
+  file: ./schema.graphql
+dataSources:
+  # ── USDC via the NATIVE emitter only.
+  #
+  #    Verified on Arc testnet: a plain value send emits ONE log, from
+  #    0xffff…fffe. An ERC-20 transfer() emits logs from BOTH 0xffff…fffe and
+  #    the USDC contract at 0x3600…. The native emitter is therefore a superset
+  #    of every USDC movement, and indexing 0x3600 as well would double-count
+  #    every ERC-20-initiated payment. Amounts here are 18dp and scaled to 6dp
+  #    in the handler.
+  - kind: ethereum
+    name: NativeUSDC
+    network: arc-testnet
+    source:
+      address: "0xfffffffffffffffffffffffffffffffffffffffe"
+      abi: ERC20
+      startBlock: 60500409
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/native.ts
+      entities: [Transfer, Account]
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleNativeTransfer
+  # ── EURC is an ordinary ERC-20 at 6dp. The native emitter only mirrors USDC
+  #    (the gas coin), so EURC must be indexed from its own contract.
+  - kind: ethereum
+    name: EURC
+    network: arc-testnet
+    source:
+      address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a"
+      abi: ERC20
+      startBlock: 60500409
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/erc20.ts
+      entities: [Transfer, Account]
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleErc20Transfer
