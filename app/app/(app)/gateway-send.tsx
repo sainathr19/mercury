@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { dismiss } from '../../src/lib/nav';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Button, Card, CurrencyText, Field, Icon, PressableScale, Text, useToast } from '../../src/ui';
 import { useSession } from '../../src/stores/session';
@@ -92,7 +93,7 @@ export default function GatewaySend() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Text variant="titleLarge">Send instantly</Text>
-        <PressableScale haptic={false} onPress={() => router.back()}>
+        <PressableScale haptic={false} onPress={() => dismiss(router)}>
           <Icon name="close" size={22} color={theme.colors.muted} />
         </PressableScale>
       </View>

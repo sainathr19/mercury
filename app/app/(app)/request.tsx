@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { dismiss } from '../../src/lib/nav';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
@@ -71,7 +72,7 @@ export default function Request() {
   if (!chain || !token) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <Header onClose={() => router.back()} />
+        <Header onClose={() => dismiss(router)} />
         <Text variant="subhead" color={theme.colors.muted}>
           No network available to request on yet.
         </Text>
@@ -81,7 +82,7 @@ export default function Request() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <Header onClose={() => router.back()} />
+      <Header onClose={() => dismiss(router)} />
 
       <View style={styles.qrWrap}>
         <AddressQR data={uri} size={220} coingeckoId={token.coingeckoId} />
