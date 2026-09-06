@@ -12,7 +12,7 @@ import {
   type RegistryAsset,
 } from "../lib/registry";
 import { colorForSymbol } from "../lib/asset-color";
-import { chainById } from "../lib/chains";
+import { chainById, tokensForChain as registryTokens } from "../lib/chains";
 import { evmChainHasNativeAsset } from "../lib/tempo";
 import { formatUnits } from "../lib/format";
 import { fetchSolBalance, fetchSolTokenBalances } from "./solTokens";
@@ -345,6 +345,53 @@ export function loadPortfolioChains(
               tokensOk = false;
             }
           }),
+        );
+
+        // ── Our own chain registry's tokens ──────────────────────────────
+        // The core registry does not know Arc's EURC and Token API does not
+        // index Arc at all, so an asset the wallet can SWAP INTO would never
+        // show up in the balance — you could trade into it and then not see it.
+        //
+        // Skips the chain's native coin: on Arc the USDC ERC-20 is a view over
+        // the same balance the native row already counts, so including it here
+        // would double the user's money.
+        await Promise.all(
+          registryTokens(chainId)
+            .filter((t) => !(hasNative && t.symbol === gasSymbol))
+            .filter(
+              (t) =>
+                !assets.some(
+                  (a) =>
+                    a.evmChainId === chainId &&
+                    a.tokenContract?.toLowerCase() === t.address.toLowerCase(),
+                ),
+            )
+            .map(async (t) => {
+              try {
+                const amt = parseFloat(
+                  formatUnits(await wallet.evmBalance(chainId, account, t.address), t.decimals),
+                );
+                if (amt <= 0) return;
+                assets.push({
+                  id: evmTokenId(t.coingeckoId, chainId),
+                  name: t.name,
+                  symbol: t.symbol,
+                  amount: amt,
+                  decimals: t.decimals,
+                  coingeckoId: t.coingeckoId,
+                  chain: "ethereum",
+                  colorHex: t.colorHex,
+                  imageUrl: "",
+                  tokenContract: t.address,
+                  evmChainId: chainId,
+                  networkName,
+                  feeSymbol: gasSymbol,
+                  feeCoingeckoId: gasCoingeckoId,
+                });
+              } catch {
+                tokensOk = false;
+              }
+            }),
         );
 
         // User-added custom tokens on this chain.

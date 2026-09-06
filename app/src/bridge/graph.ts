@@ -186,30 +186,89 @@ export async function arcTransfers(address: string, chainId: bigint, first = 40)
     const json = (await res.json()) as { data?: { transfers?: ArcTransfer[] } };
     const rows = json.data?.transfers ?? [];
     const addr = address.toLowerCase();
-    return rows.map((t) => {
-      const sent = t.from.toLowerCase() === addr;
-      const sign = sent ? '-' : '+';
-      const amount = Number(t.amount) / 1e6; // 6dp minor units
-      return {
-        id: t.txHash,
-        symbol: t.symbol,
-        coingeckoId: t.symbol === 'EURC' ? 'euro-coin' : 'usd-coin',
-        colorHex: t.symbol === 'EURC' ? '#1AA68C' : '#2980D9',
-        type: sent ? 'sent' : 'received',
-        ...gatewayTitle(sent, sent ? t.to : t.from),
-        label: sent ? 'Sent' : 'Received',
-        amountText: `${sign}${amount.toFixed(2)} ${t.symbol}`,
-        // USDC/EURC are dollar-denominated, so the amount IS the USD figure.
-        usdText: `${sign}$${amount.toFixed(2)}`,
-        timestamp: Number(t.timestamp),
-        status: 'confirmed' as const,
-        explorerUrl: evmExplorerTxUrl(chainId, t.txHash),
-        network: chainName(chainId),
-      };
-    });
+
+    // One transaction can move more than one token — a swap moves two. Group by
+    // transaction first, because the rows are only meaningful together.
+    const byTx = new Map<string, ArcTransfer[]>();
+    for (const t of rows) {
+      const legs = byTx.get(t.txHash);
+      if (legs) legs.push(t); else byTx.set(t.txHash, [t]);
+    }
+
+    const out: ActivityItem[] = [];
+    for (const [txHash, legs] of byTx) {
+      const paid = legs.filter((l) => l.from.toLowerCase() === addr);
+      const got = legs.filter((l) => l.to.toLowerCase() === addr);
+
+      // A swap: exactly one token out and a different one back, in one tx. It is
+      // ONE event to the user, and rendering it as two rows (or, as this did
+      // before, silently dropping a leg to an id collision on the shared tx
+      // hash) misrepresents what happened.
+      if (legs.length === 2 && paid.length === 1 && got.length === 1 && paid[0].symbol !== got[0].symbol) {
+        out.push(swapRow(txHash, paid[0], got[0], chainId));
+        continue;
+      }
+
+      // Anything else stays per-leg. A multi-leg transaction needs the
+      // subgraph's own id to stay unique; a lone transfer keeps the tx hash so
+      // an optimistic just-sent row still reconciles onto it.
+      const unique = legs.length > 1;
+      for (const l of legs) out.push(transferRow(l, addr, chainId, unique ? l.id : txHash));
+    }
+    return out;
   } catch {
     return [];
   }
+}
+
+const cgFor = (symbol: string): string => (symbol === 'EURC' ? 'euro-coin' : 'usd-coin');
+const colorFor = (symbol: string): string => (symbol === 'EURC' ? '#1AA68C' : '#2980D9');
+const amt = (t: ArcTransfer): number => Number(t.amount) / 1e6; // already 6dp minor units
+
+function transferRow(t: ArcTransfer, addr: string, chainId: bigint, id: string): ActivityItem {
+  const sent = t.from.toLowerCase() === addr;
+  const sign = sent ? '-' : '+';
+  const amount = amt(t);
+  return {
+    id,
+    symbol: t.symbol,
+    coingeckoId: cgFor(t.symbol),
+    colorHex: colorFor(t.symbol),
+    type: sent ? 'sent' : 'received',
+    ...gatewayTitle(sent, sent ? t.to : t.from),
+    label: sent ? 'Sent' : 'Received',
+    amountText: `${sign}${amount.toFixed(2)} ${t.symbol}`,
+    // USDC/EURC are dollar-denominated, so the amount IS the USD figure.
+    usdText: `${sign}$${amount.toFixed(2)}`,
+    timestamp: Number(t.timestamp),
+    status: 'confirmed',
+    explorerUrl: evmExplorerTxUrl(chainId, t.txHash),
+    network: chainName(chainId),
+  };
+}
+
+/** One row for a swap: the token received on top, the token paid beneath. */
+function swapRow(txHash: string, paid: ArcTransfer, got: ArcTransfer, chainId: bigint): ActivityItem {
+  return {
+    id: txHash,
+    symbol: got.symbol,
+    coingeckoId: cgFor(got.symbol),
+    colorHex: colorFor(got.symbol),
+    type: 'swapped',
+    label: 'Swapped',
+    amountText: `+${amt(got).toFixed(2)} ${got.symbol}`,
+    secondaryAmountText: `-${amt(paid).toFixed(2)} ${paid.symbol}`,
+    fromSymbol: paid.symbol,
+    fromCoingeckoId: cgFor(paid.symbol),
+    fromColorHex: colorFor(paid.symbol),
+    // The swap row shows both token legs; a dollar figure would have to pick a
+    // side, and on a testnet pool the two sides disagree.
+    usdText: '',
+    timestamp: Number(got.timestamp),
+    status: 'confirmed',
+    explorerUrl: evmExplorerTxUrl(chainId, txHash),
+    network: chainName(chainId),
+  };
 }
 
 /** A heading for a move in or out of the unified balance, or nothing. */
