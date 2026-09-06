@@ -1,3 +1,4 @@
+import { chainIdsForEnvironment } from './chains';
 // The global network environment. The whole app runs in exactly ONE of these:
 // either all-testnet (Sepolia / Devnet / Testnet4 + test L2s) or all-mainnet
 // (the production chains). A user flips between them with a single toggle.
@@ -40,17 +41,7 @@ export const APP_ENVIRONMENT: Environment =
 export const DEFAULT_EVM_CHAIN_ID: bigint = APP_ENVIRONMENT === 'mainnet' ? 1n : 11155111n;
 
 /** Well-known EVM testnet chain ids. Everything else is treated as mainnet. */
-export const TESTNET_EVM_CHAIN_IDS: bigint[] = [
-  11155111n, // Ethereum Sepolia
-  421614n, // Arbitrum Sepolia
-  84532n, // Base Sepolia
-  11155420n, // Optimism Sepolia
-  80002n, // Polygon Amoy
-  97n, // BNB Smart Chain Testnet
-  43113n, // Avalanche Fuji
-  42431n, // Tempo Testnet (Moderato)
-  5042002n, // Arc Testnet
-];
+export const TESTNET_EVM_CHAIN_IDS: bigint[] = chainIdsForEnvironment('testnet');
 
 const TESTNET_SET = new Set(TESTNET_EVM_CHAIN_IDS.map((id) => id.toString()));
 

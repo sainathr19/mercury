@@ -1,3 +1,4 @@
+import { chainsForEnvironment, type ChainDef } from '../lib/chains';
 import { BtcNetwork, type EvmChainConfig, type WalletInterface } from 'standard-rn';
 import { setActiveEvmChainId } from './evmChain';
 import { configureGarden } from './swap';
@@ -123,54 +124,26 @@ export function solRpcForEnv(env: Environment): string {
   return SOL_NETWORKS[choicesForEnv(env).sol].rpc;
 }
 
-/** Build an EVM chain config (camelCase as the core's UniFFI record expects). */
-function chainCfg(
-  chainId: bigint,
-  name: string,
-  rpcUrl: string,
-  explorerUrl: string,
-  nativeSymbol = 'ETH',
-): EvmChainConfig {
+
+/** Managed EVM chains per environment — DERIVED from the registry in
+ *  lib/chains.ts. Add a chain there and it appears here automatically. */
+function toEvmChainConfig(c: ChainDef): EvmChainConfig {
   return {
-    chainId,
-    name,
-    rpcUrl,
-    explorerUrl,
-    nativeSymbol,
-    nativeDecimals: 18,
+    chainId: c.chainId,
+    name: c.name,
+    rpcUrl: c.rpcUrl,
+    explorerUrl: c.explorerUrl,
+    nativeSymbol: c.nativeSymbol,
+    nativeDecimals: c.nativeDecimals,
     eip7702Delegate: undefined,
     eip1559Supported: true,
     enabled: true,
   };
 }
 
-/** Managed EVM chains per environment. The app ensures these exist in the core
- *  (seeding testnets the core doesn't ship) and enables exactly one env's set. */
-export const TESTNET_EVM_CHAINS: EvmChainConfig[] = [
-  chainCfg(11155111n, 'Sepolia', 'https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.etherscan.io'),
-  chainCfg(421614n, 'Arbitrum Sepolia', 'https://arbitrum-sepolia-rpc.publicnode.com', 'https://sepolia.arbiscan.io'),
-  chainCfg(84532n, 'Base Sepolia', 'https://base-sepolia-rpc.publicnode.com', 'https://sepolia.basescan.org'),
-  // Tempo Testnet (Moderato). Stablecoin payments chain — no native gas token;
-  // currency is USD and fees are paid in a stablecoin. See lib/tempo.ts.
-  // Arc testnet. Like Tempo it's a stablecoin chain — but unlike Tempo it HAS
-  // a real native coin: USDC itself, at 18dp, which is also the gas token. So
-  // native balance rows are correct here and must NOT be suppressed.
-  chainCfg(5042002n, 'Arc Testnet', 'https://rpc.testnet.arc.io', 'https://testnet.arcscan.app', 'USDC'),
-  chainCfg(42431n, 'Tempo Testnet', 'https://rpc.moderato.tempo.xyz', 'https://explore.testnet.tempo.xyz', 'USD'),
-];
+export const TESTNET_EVM_CHAINS: EvmChainConfig[] = chainsForEnvironment('testnet').map(toEvmChainConfig);
 
-export const MAINNET_EVM_CHAINS: EvmChainConfig[] = [
-  chainCfg(1n, 'Ethereum', 'https://ethereum-rpc.publicnode.com', 'https://etherscan.io'),
-  chainCfg(42161n, 'Arbitrum One', 'https://arbitrum-one-rpc.publicnode.com', 'https://arbiscan.io'),
-  chainCfg(10n, 'Optimism', 'https://optimism-rpc.publicnode.com', 'https://optimistic.etherscan.io'),
-  chainCfg(8453n, 'Base', 'https://base-rpc.publicnode.com', 'https://basescan.org'),
-  chainCfg(137n, 'Polygon', 'https://polygon-bor-rpc.publicnode.com', 'https://polygonscan.com', 'POL'),
-  chainCfg(56n, 'BNB Smart Chain', 'https://bsc-rpc.publicnode.com', 'https://bscscan.com', 'BNB'),
-  chainCfg(43114n, 'Avalanche C-Chain', 'https://avalanche-c-chain-rpc.publicnode.com', 'https://snowtrace.io', 'AVAX'),
-  // Tempo Mainnet. Stablecoin payments chain — no native gas token; currency is
-  // USD and fees are paid in a stablecoin. See lib/tempo.ts.
-  chainCfg(4217n, 'Tempo', 'https://rpc.tempo.xyz', 'https://explore.tempo.xyz', 'USD'),
-];
+export const MAINNET_EVM_CHAINS: EvmChainConfig[] = chainsForEnvironment('mainnet').map(toEvmChainConfig);
 
 /** Ensure the env's EVM chains exist + are enabled, and disable the other env's.
  *  Idempotent and preserves any user-customized RPC for chains already present. */

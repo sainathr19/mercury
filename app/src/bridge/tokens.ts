@@ -1,3 +1,4 @@
+import { CHAINS } from '../lib/chains';
 // Custom + built-in ERC-20 token support (mirrors iOS TokensView / KnownEvmToken).
 // Custom tokens are stored locally; metadata is fetched from the chain by contract.
 
@@ -14,16 +15,11 @@ export interface CustomToken {
   imageUrl?: string;
 }
 
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  137: 'Polygon',
-  8453: 'Base',
-  42161: 'Arbitrum',
-  11155111: 'Sepolia',
-  421614: 'Arb Sepolia',
-  84532: 'Base Sepolia',
-};
+// Derived from the chain registry (lib/chains.ts) — custom-token management
+// offers exactly the chains the wallet actually knows about.
+const CHAIN_NAMES: Record<number, string> = Object.fromEntries(
+  CHAINS.map((c) => [Number(c.chainId), c.name]),
+);
 
 export const SUPPORTED_TOKEN_CHAINS: { id: number; name: string }[] = Object.entries(CHAIN_NAMES).map(
   ([id, name]) => ({ id: Number(id), name }),
@@ -33,16 +29,9 @@ export function chainNames(ids: number[]): string {
   return ids.map((id) => CHAIN_NAMES[id] ?? `Chain ${id}`).join(', ');
 }
 
-const RPCS: Record<number, string> = {
-  1: 'https://ethereum-rpc.publicnode.com',
-  10: 'https://mainnet.optimism.io',
-  137: 'https://polygon-rpc.com',
-  8453: 'https://mainnet.base.org',
-  42161: 'https://arb1.arbitrum.io/rpc',
-  11155111: 'https://ethereum-sepolia-rpc.publicnode.com',
-  421614: 'https://sepolia-rollup.arbitrum.io/rpc',
-  84532: 'https://sepolia.base.org',
-};
+const RPCS: Record<number, string> = Object.fromEntries(
+  CHAINS.map((c) => [Number(c.chainId), c.rpcUrl]),
+);
 
 export interface TokenMetadata {
   name: string;
@@ -55,15 +44,9 @@ export interface TokenMetadata {
 
 // chainId → CoinGecko asset-platform id (for the contract lookup). Testnets are
 // omitted (CoinGecko doesn't index them → custom tokens there keep the chip).
-const CG_PLATFORM: Record<number, string> = {
-  1: 'ethereum',
-  10: 'optimistic-ethereum',
-  137: 'polygon-pos',
-  8453: 'base',
-  42161: 'arbitrum-one',
-  56: 'binance-smart-chain',
-  43114: 'avalanche',
-};
+const CG_PLATFORM: Record<number, string> = Object.fromEntries(
+  CHAINS.filter((c) => c.coingeckoPlatform).map((c) => [Number(c.chainId), c.coingeckoPlatform!]),
+);
 
 /** Resolve an ERC-20 contract to its CoinGecko coin (id + icon). Best-effort:
  *  returns null on unknown token, unsupported chain, rate-limit, or network error. */

@@ -1,3 +1,4 @@
+import { CHAINS, chainName, chainNativeMeta } from './chains';
 import { evmExplorerTxUrl } from '../bridge/evmChain';
 import type { ActivityItem } from '../bridge/activity';
 
@@ -8,46 +9,17 @@ import type { ActivityItem } from '../bridge/activity';
 // src/bridge/activity.ts which calls into here.
 
 /** Keyless Blockscout REST base per EVM chain id (Etherscan-compatible `/api`). */
-export const BLOCKSCOUT_BASES: Record<string, string> = {
-  // Mainnets
-  '1': 'https://eth.blockscout.com',
-  '10': 'https://optimism.blockscout.com',
-  '137': 'https://polygon.blockscout.com',
-  '8453': 'https://base.blockscout.com',
-  '42161': 'https://arbitrum.blockscout.com',
-  // Testnets
-  '11155111': 'https://eth-sepolia.blockscout.com',
-  '421614': 'https://arbitrum-sepolia.blockscout.com',
-  '84532': 'https://base-sepolia.blockscout.com',
-};
+/** Derived from the chain registry — see lib/chains.ts. */
+export const BLOCKSCOUT_BASES: Record<string, string> = Object.fromEntries(
+  CHAINS.filter((c) => c.blockscoutBase).map((c) => [c.chainId.toString(), c.blockscoutBase!]),
+);
 
 /** Native-gas token per chain id (defaults to ETH). */
-const NATIVE: Record<string, { symbol: string; coingeckoId: string; colorHex: string }> = {
-  '1': { symbol: 'ETH', coingeckoId: 'ethereum', colorHex: '#627EEA' },
-  '11155111': { symbol: 'ETH', coingeckoId: 'ethereum', colorHex: '#627EEA' },
-  '10': { symbol: 'ETH', coingeckoId: 'ethereum', colorHex: '#627EEA' },
-  '8453': { symbol: 'ETH', coingeckoId: 'ethereum', colorHex: '#627EEA' },
-  '42161': { symbol: 'ETH', coingeckoId: 'ethereum', colorHex: '#627EEA' },
-  '137': { symbol: 'POL', coingeckoId: 'matic-network', colorHex: '#8247E5' },
-};
-const DEFAULT_NATIVE = NATIVE['1'];
+const DEFAULT_NATIVE = chainNativeMeta(1n);
 
-/** Human network name per chain id (for the activity row's subtitle). */
-const CHAIN_NAMES: Record<string, string> = {
-  '5042002': 'Arc Testnet',
-  '1': 'Ethereum',
-  '10': 'Optimism',
-  '137': 'Polygon',
-  '8453': 'Base',
-  '42161': 'Arbitrum One',
-  '56': 'BNB Smart Chain',
-  '43114': 'Avalanche',
-  '11155111': 'Sepolia',
-  '421614': 'Arbitrum Sepolia',
-  '84532': 'Base Sepolia',
-};
+
 export function evmNetworkName(chainId: bigint): string {
-  return CHAIN_NAMES[chainId.toString()] ?? `Chain ${chainId.toString()}`;
+  return chainName(chainId);
 }
 
 const TOKEN_COLOR: Record<string, string> = {
@@ -159,7 +131,7 @@ function evmFeeFields(gasUsed: string | undefined, gasPrice: string | undefined,
  */
 export function mapEvmActivity(opts: EvmMapOptions): ActivityItem[] {
   const addr = opts.address.toLowerCase();
-  const chain = NATIVE[opts.chainId.toString()] ?? DEFAULT_NATIVE;
+  const chain = chainNativeMeta(opts.chainId);
   const network = evmNetworkName(opts.chainId);
   const now = Math.floor(Date.now() / 1000);
   const out: ActivityItem[] = [];

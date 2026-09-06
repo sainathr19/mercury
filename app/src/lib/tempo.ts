@@ -1,3 +1,4 @@
+import { chainHasNativeAsset } from './chains';
 // Tempo network identity. Tempo is an EVM-compatible stablecoin payments chain
 // with a crucial quirk: it has NO native gas token. `eth_getBalance` returns a
 // large placeholder value, fees are denominated in USD and paid in a stablecoin
@@ -33,5 +34,7 @@ export function isTempoChainId(chainId: bigint): boolean {
  * would otherwise render as a bogus balance); true for every other EVM chain.
  */
 export function evmChainHasNativeAsset(chainId: bigint): boolean {
-  return !isTempoChainId(chainId);
+  // Registry-driven: a chain declares whether it has a native gas coin worth
+  // showing. Tempo does not; Arc does (its native coin is USDC).
+  return chainHasNativeAsset(chainId);
 }

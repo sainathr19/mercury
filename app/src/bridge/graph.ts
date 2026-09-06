@@ -12,6 +12,7 @@
 import type { ActivityItem } from './activity';
 import { evmExplorerTxUrl } from './evmChain';
 import { evmNetworkName } from '../lib/evm-activity';
+import { chainHasOwnSubgraph, chainTokenApiNetwork, chainName } from '../lib/chains';
 
 const TOKEN_API = 'https://api.pinax.network/v1';
 const TOKEN_API_JWT = process.env.EXPO_PUBLIC_TOKEN_API_JWT ?? '';
@@ -24,26 +25,15 @@ const ARC_SUBGRAPH = process.env.EXPO_PUBLIC_ARC_SUBGRAPH_URL ?? '';
  */
 const MAX_PAGE = 10;
 
-/** chainId → Token API `network` slug. Absent = not covered (use a subgraph). */
-const TOKEN_API_NETWORKS: Record<string, string> = {
-  '1': 'mainnet',
-  '8453': 'base',
-  '42161': 'arbitrum-one',
-  '10': 'optimism',
-  '137': 'polygon',
-  '56': 'bsc',
-  '43114': 'avalanche',
-};
 
-export const ARC_TESTNET_CHAIN_ID = 5042002n;
-export const ARC_MAINNET_CHAIN_ID = 5042n;
 
+/** True when we index this chain with our own subgraph (registry-driven). */
 export function isArcChainId(chainId: bigint): boolean {
-  return chainId === ARC_TESTNET_CHAIN_ID || chainId === ARC_MAINNET_CHAIN_ID;
+  return chainHasOwnSubgraph(chainId);
 }
 
 export function tokenApiNetworkFor(chainId: bigint): string | undefined {
-  return TOKEN_API_NETWORKS[chainId.toString()];
+  return chainTokenApiNetwork(chainId);
 }
 
 /** True when The Graph can serve this chain at all (either product). */
@@ -213,7 +203,7 @@ export async function arcTransfers(address: string, first = 40): Promise<Activit
         timestamp: Number(t.timestamp),
         status: 'confirmed' as const,
         explorerUrl: `https://testnet.arcscan.app/tx/${t.txHash}`,
-        network: 'Arc Testnet',
+        network: chainName(5042002n),
       };
     });
   } catch {

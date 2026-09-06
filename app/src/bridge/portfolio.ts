@@ -1,6 +1,7 @@
 import { type WalletInterface } from "standard-rn";
 import { getActiveEvmChainId } from "./evmChain";
 import { getActiveAccount } from "./account";
+import { tokenBalances } from "./graph";
 import type { CustomToken } from "./tokens";
 import {
   nativeForChain,
@@ -379,6 +380,47 @@ export function loadPortfolioChains(
               }
             }),
         );
+
+        // ── The Graph, Token API: DISCOVER held tokens ────────────────────
+        // Everything above needs the contract address up front — RPC balanceOf
+        // can only answer "how much of THIS token", never "what do I hold". So a
+        // token that isn't in the registry and wasn't added by hand is invisible.
+        // Token API indexes holdings, so it finds them. Additive: anything RPC
+        // already returned wins (it's authoritative and fresher), and this fills
+        // in the rest. Silent no-op on chains Token API doesn't index (Arc,
+        // every testnet) and on any failure.
+        try {
+          const seen = new Set(
+            assets
+              .filter((a) => a.evmChainId === chainId && a.tokenContract)
+              .map((a) => a.tokenContract!.toLowerCase()),
+          );
+          const evmAddr = await wallet.evmAddress(account);
+          for (const b of await tokenBalances(evmAddr, chainId)) {
+            const contract = b.contract?.toLowerCase();
+            if (!contract || seen.has(contract) || !(b.value > 0)) continue;
+            seen.add(contract);
+            const cg = coingeckoId(b.symbol, contract);
+            assets.push({
+              id: evmTokenId(cg, chainId),
+              name: b.name || b.symbol,
+              symbol: b.symbol,
+              amount: b.value,
+              decimals: b.decimals,
+              coingeckoId: cg,
+              chain: "ethereum",
+              colorHex: colorForSymbol(b.symbol),
+              imageUrl: "",
+              tokenContract: b.contract,
+              evmChainId: chainId,
+              networkName,
+              feeSymbol: gasSymbol,
+              feeCoingeckoId: gasCoingeckoId,
+            });
+          }
+        } catch {
+          // Discovery is a bonus, never a requirement — RPC balances stand.
+        }
 
         // Chain fully synced (native + every token call succeeded) → the merge
         // may drop this chain's assets that are now absent (drained to 0).
