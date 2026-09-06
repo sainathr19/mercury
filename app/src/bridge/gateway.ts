@@ -148,10 +148,35 @@ const HEIGHT_BUFFER = 1000n;
 export interface TransferResult {
   ok: boolean;
   transferId?: string;
+  /** Circle-signed payload + signature. Worthless to anyone else — the payload
+   *  names its own recipient — but REQUIRED to claim on the destination. */
+  attestation?: string;
+  signature?: string;
   /** Set when Circle rejects — surfaced verbatim, its messages are specific. */
   error?: string;
   /** Round-trip milliseconds, for the "is it actually instant" question. */
   ms: number;
+}
+
+export interface RelayResult {
+  ok: boolean;
+  txHash?: string;
+  explorerUrl?: string;
+  error?: string;
+  ms: number;
+}
+
+/** Combined result of the two halves: Circle attests, the relayer delivers. */
+export interface SendResult {
+  ok: boolean;
+  transferId?: string;
+  txHash?: string;
+  explorerUrl?: string;
+  error?: string;
+  /** Attested but not yet claimed — the money is burnt and recoverable, not lost. */
+  unclaimed?: boolean;
+  attestMs: number;
+  relayMs: number;
 }
 
 /**
@@ -234,9 +259,81 @@ export async function gatewayTransfer(opts: {
       const msg = (() => { try { return JSON.parse(body).message as string; } catch { return body.slice(0, 200); } })();
       return { ok: false, error: msg, ms: Date.now() - t0 };
     }
-    const json = JSON.parse(body) as { transferId?: string };
-    return { ok: true, transferId: json.transferId, ms: Date.now() - t0 };
+    const json = JSON.parse(body) as { transferId?: string; attestation?: string; signature?: string };
+    return {
+      ok: true,
+      transferId: json.transferId,
+      attestation: json.attestation,
+      signature: json.signature,
+      ms: Date.now() - t0,
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Transfer failed', ms: Date.now() - t0 };
   }
+}
+
+
+// ── Relay + send ─────────────────────────────────────────────────────────────
+
+const HUB_URL = process.env.EXPO_PUBLIC_HUB_URL ?? '';
+
+/**
+ * Ask the hub to submit an attestation on the destination chain.
+ *
+ * Without this the recipient needs gas on the destination to claim their own
+ * money, which breaks the wallet's "no gas token" promise at the worst possible
+ * moment. The relayer cannot redirect or skim the funds — the recipient is named
+ * inside Circle's signed payload — so handing it over is safe.
+ */
+export async function relayMint(
+  attestation: string,
+  signature: string,
+  destinationDomain: number,
+): Promise<RelayResult> {
+  const t0 = Date.now();
+  if (!HUB_URL) return { ok: false, error: 'Relayer is not configured', ms: 0 };
+  try {
+    const res = await fetch(`${HUB_URL}/gateway/relay`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ attestation, signature, destinationDomain }),
+    });
+    const json = (await res.json()) as RelayResult;
+    return { ...json, ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Relay failed', ms: Date.now() - t0 };
+  }
+}
+
+/**
+ * One tap: move USDC out of the unified balance and have it delivered.
+ *
+ * Two steps that fail differently. If the attestation fails, nothing moved. If
+ * the RELAY fails, the money has already been burnt on the source and is sitting
+ * in a valid unclaimed attestation — recoverable by resubmitting, but the user
+ * must be told that plainly rather than shown a generic error, which is why
+ * `unclaimed` exists.
+ */
+export async function gatewaySend(opts: Parameters<typeof gatewayTransfer>[0]): Promise<SendResult> {
+  const transfer = await gatewayTransfer(opts);
+  if (!transfer.ok || !transfer.attestation || !transfer.signature) {
+    return { ok: false, error: transfer.error ?? 'Transfer failed', attestMs: transfer.ms, relayMs: 0 };
+  }
+
+  const destinationDomain = chainCircleDomain(opts.toChainId);
+  if (destinationDomain === undefined) {
+    return { ok: false, error: 'Unsupported destination', unclaimed: true, attestMs: transfer.ms, relayMs: 0 };
+  }
+
+  const relay = await relayMint(transfer.attestation, transfer.signature, destinationDomain);
+  return {
+    ok: relay.ok,
+    transferId: transfer.transferId,
+    txHash: relay.txHash,
+    explorerUrl: relay.explorerUrl,
+    error: relay.error,
+    unclaimed: !relay.ok,
+    attestMs: transfer.ms,
+    relayMs: relay.ms,
+  };
 }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Text } from '../ui/Text';
 import { PressableScale } from '../ui/PressableScale';
@@ -21,6 +22,7 @@ import { chainName } from '../lib/chains';
  */
 export function UnifiedBalance({ address }: { address: string | null }) {
   const theme = UnistylesRuntime.getTheme();
+  const router = useRouter();
   const { total, pending, perDomain, loadedAt, refresh } = useGateway();
 
   useEffect(() => { if (address) void refresh(address); }, [address, refresh]);
@@ -30,7 +32,7 @@ export function UnifiedBalance({ address }: { address: string | null }) {
   const funded = perDomain.filter((d) => d.balance > 0 || d.pending > 0);
 
   return (
-    <View style={styles.card}>
+    <PressableScale style={styles.card} onPress={() => router.push('/(app)/gateway-send')}>
       <View style={styles.head}>
         <Text variant="caption" color={theme.colors.muted}>SPENDABLE ANYWHERE</Text>
         {pending > 0 && (
@@ -56,7 +58,7 @@ export function UnifiedBalance({ address }: { address: string | null }) {
           ))}
         </View>
       )}
-    </View>
+    </PressableScale>
   );
 }
 

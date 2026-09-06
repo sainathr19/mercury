@@ -27,6 +27,8 @@ export default function AppLayout() {
     // native sheets (send, receive, swap, activity push, …) all render opaque.
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.appBackground } }}>
       {/* Swap slides up from the bottom as a full-screen sheet (mirrors iOS). */}
+      {/* Gateway: send from the unified balance, delivered by the relayer. */}
+      <Stack.Screen name="gateway-send" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="swap" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       {/* Send is a native iOS form sheet — large detent only (the multi-step
           flow needs the height; no half-size option). Gap at the top, grabber,
