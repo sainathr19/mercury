@@ -20,3 +20,4 @@ node_modules/
 subgraph/build/
 subgraph/generated/
 subgraph/node_modules/
+.demo-wallet.local
