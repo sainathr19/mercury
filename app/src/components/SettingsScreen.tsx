@@ -1,4 +1,5 @@
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
@@ -6,6 +7,7 @@ import { Text, useToast } from '../ui';
 import { fontFamily } from '../theme/fonts';
 import { posthog } from '../lib/posthog';
 import { useAuth } from '../stores/authStore';
+import { signInWithApple, signInWithGoogle, isGoogleConfigured } from '../bridge/providerSignIn';
 
 /**
  * "More" tab. A claim-username banner up top, then grouped sections (Security /
@@ -21,6 +23,34 @@ export function SettingsScreen() {
   // Only prompt to claim a username when the user hasn't set one yet.
   const hasHandle = !!useAuth((s) => s.user?.handle);
 
+  // The account is OPTIONAL: the wallet works fully without one. Connecting it
+  // buys the username registry and encrypted backup, never custody.
+  const authStatus = useAuth((s) => s.status);
+  const account = useAuth((s) => s.user);
+  const signIn = useAuth((s) => s.signIn);
+  const [connecting, setConnecting] = useState(false);
+
+  async function connectAccount() {
+    if (connecting) return;
+    setConnecting(true);
+    try {
+      const useApple = Platform.OS === 'ios';
+      if (!useApple && !isGoogleConfigured()) {
+        show('Google sign-in isn\u2019t set up yet.', 'info');
+        return;
+      }
+      const tok = useApple ? await signInWithApple() : await signInWithGoogle();
+      if (!tok) return; // cancelled
+      await signIn(useApple ? 'apple' : 'google', tok.idToken, { nonce: tok.nonce });
+      show('Account connected.', 'success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (!/cancel/i.test(msg)) show('Could not connect the account. Try again.', 'error');
+    } finally {
+      setConnecting(false);
+    }
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       {/* Claim-username banner — hidden once a username is set. */}
@@ -34,6 +64,19 @@ export function SettingsScreen() {
           <Chevron />
         </Pressable>
       )}
+
+      <Section title="Account">
+        {authStatus === 'authed' ? (
+          <Row title="Connected" subtitle={account?.email ?? account?.handle ?? 'Signed in'} onPress={() => {}} />
+        ) : (
+          <Row
+            title={Platform.OS === 'ios' ? 'Connect Apple Account' : 'Connect Google Account'}
+            subtitle="Optional \u2014 enables your username and encrypted backup"
+            onPress={connectAccount}
+            busy={connecting}
+          />
+        )}
+      </Section>
 
       <Section title="Security">
         <Row title="Backups" onPress={() => router.push('/(app)/cloud-backup')} />
@@ -68,7 +111,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ title, onPress }: { title: string; onPress: () => void }) {
+function Row({ title, subtitle, onPress, busy }: {
+  title: string; subtitle?: string; onPress: () => void; busy?: boolean;
+}) {
   // Track which settings rows users open so bottlenecks / drop-off in the
   // settings flow show up in PostHog (funnels + trends over `settings_row_opened`).
   const handlePress = () => {
@@ -76,9 +121,12 @@ function Row({ title, onPress }: { title: string; onPress: () => void }) {
     onPress();
   };
   return (
-    <Pressable style={styles.row} onPress={handlePress}>
-      <Text style={styles.rowTitle}>{title}</Text>
-      <Chevron />
+    <Pressable style={styles.row} onPress={handlePress} disabled={busy}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
+      </View>
+      {busy ? <ActivityIndicator /> : <Chevron />}
     </Pressable>
   );
 }
@@ -111,6 +159,7 @@ const styles = StyleSheet.create((theme) => ({
   section: { gap: 18, marginBottom: 32 },
   sectionTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text },
   card: { backgroundColor: theme.colors.cardBackground, borderRadius: 12, overflow: 'hidden' },
+  rowSubtitle: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, color: theme.colors.muted, marginTop: 2 },
   // Rows — standard 12y/18x padding, 15px text.
   row: {
     flexDirection: 'row',

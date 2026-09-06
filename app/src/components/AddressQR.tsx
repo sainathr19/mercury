@@ -38,7 +38,7 @@ export function AddressQR({ data, size, coingeckoId, bg, logo, version, ecl = 'H
     try {
       // `version` isn't in the local qrcode typings but is honored at runtime;
       // build via a variable so the extra key isn't excess-property-checked.
-      const opts: { errorCorrectionLevel: string; version?: number } = { errorCorrectionLevel: ecl };
+      const opts: { errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'; version?: number } = { errorCorrectionLevel: ecl };
       if (version) opts.version = version;
       const qr = QRCode.create(data, opts);
       const count = qr.modules.size;

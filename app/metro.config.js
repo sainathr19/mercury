@@ -1,13 +1,19 @@
 // Learn more https://docs.expo.io/guides/customizing-metro
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const fs = require('fs');
 
 const projectRoot = __dirname;
 // The `standard-rn` turbo module lives in the parent directory and is linked
 // via `file:..` (symlinked into node_modules). Its real source path is OUTSIDE
 // the app project root, so Metro needs the parent added as a watch folder and
 // node_modules resolution rooted at both locations.
-const moduleRoot = path.resolve(projectRoot, '..');
+// In the reference repo the app lives INSIDE standard-rn, so '..' was the
+// module root. Here the app is its own project and standard-rn is symlinked in
+// from another checkout, so point at its real location instead.
+const moduleRoot = path.resolve(
+  fs.realpathSync(path.resolve(projectRoot, 'node_modules/standard-rn')),
+);
 
 const config = getDefaultConfig(projectRoot);
 

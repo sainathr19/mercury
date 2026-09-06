@@ -237,14 +237,11 @@ export default function RootLayout() {
     if (status === 'loading' || authStatus === 'loading') return;
     const inAuth = segments[0] === '(auth)';
     const inApp = segments[0] === '(app)';
-    // Mandatory sign-in: an unauthenticated user must be in the auth flow,
-    // regardless of whether a local wallet exists (spec: auth is mandatory,
-    // wallet creation is local-first).
-    if (authStatus === 'anon') {
-      if (!inAuth) router.replace('/(auth)/onboarding');
-      return;
-    }
-    // Authenticated → existing wallet-status routing.
+    // WALLET-FIRST. The reference app gated everything behind hub sign-in; here
+    // an account is OPTIONAL and connected later from Settings, so routing is
+    // driven purely by whether a local wallet exists. Nothing about custody
+    // changed — the seed was always generated and held on-device.
+    // Wallet-status routing:
     if (status === 'onboarding') {
       if (!inAuth) router.replace('/(auth)/onboarding');
       return;
