@@ -9,6 +9,8 @@ import { useActivity } from '../../src/stores/activityStore';
 import { useSession } from '../../src/stores/session';
 import { useSendNotice } from '../../src/stores/sendNoticeStore';
 import { bumpBtcFee } from '../../src/bridge/transfer';
+import { formatUsd } from '../../src/lib/format';
+import { useSettings } from '../../src/stores/settingsStore';
 import { fontFamily } from '../../src/theme/fonts';
 import type { ActivityItem } from '../../src/bridge/activity';
 
@@ -17,6 +19,7 @@ const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
 export default function TransactionDetail() {
   const theme = UnistylesRuntime.getTheme();
+  useSettings((s) => s.fxTick); // re-render when the display currency changes
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const item = useActivity((s) => s.items.find((i) => i.id === id));
@@ -78,7 +81,11 @@ export default function TransactionDetail() {
               <Text style={styles.label}>Amount</Text>
               <Text style={styles.valueMid} numberOfLines={1}>
                 {stripSign(item.amountText)}
-                {item.usdText ? <Text style={styles.valueDark}>{`  ${stripSign(item.usdText)}`}</Text> : null}
+                {item.usd !== undefined || item.usdText ? (
+                  <Text style={styles.valueDark}>
+                    {`  ${item.usd !== undefined ? formatUsd(Math.abs(item.usd)) : stripSign(item.usdText)}`}
+                  </Text>
+                ) : null}
               </Text>
             </View>
 

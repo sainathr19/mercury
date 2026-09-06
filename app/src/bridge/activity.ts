@@ -20,6 +20,14 @@ export interface ActivityItem {
   title?: string;
   label: string;
   amountText: string;
+  /**
+   * Signed USD value of the row. `usdText` is baked at scan time with a hard
+   * "$", so it cannot follow the display-currency setting — switching to EUR
+   * converted every balance but left activity in dollars. Renderers format THIS
+   * through the currency helpers instead; `usdText` remains for rows restored
+   * from a cache written before this field existed.
+   */
+  usd?: number;
   usdText: string;
   /** Swaps only: the SOURCE ("you paid") side. `amountText` is the destination
    *  (+received); this is the source (−paid), shown on the row's second line,
@@ -130,7 +138,7 @@ export async function loadBtcActivity(address: string, btcPrice: number): Promis
         out.push({
           id: txid, symbol: 'BTC', coingeckoId: 'bitcoin', colorHex: BTC_COLOR,
           type: 'sent', label,
-          amountText: `-${fmt(amt, 8)} BTC`, usdText: usd(amt * btcPrice, '-'),
+          amountText: `-${fmt(amt, 8)} BTC`, usd: -(amt * btcPrice), usdText: usd(amt * btcPrice, '-'),
           timestamp, status, explorerUrl, network: btcNetworkName(),
           ...(feeBtc != null ? { feeText: `${fmt(feeBtc, 8)} BTC`, feeUsdText: usd(feeBtc * btcPrice, '') } : {}),
         });
@@ -141,7 +149,7 @@ export async function loadBtcActivity(address: string, btcPrice: number): Promis
         out.push({
           id: txid, symbol: 'BTC', coingeckoId: 'bitcoin', colorHex: BTC_COLOR,
           type: 'received', label,
-          amountText: `+${fmt(amt, 8)} BTC`, usdText: usd(amt * btcPrice, '+'),
+          amountText: `+${fmt(amt, 8)} BTC`, usd: amt * btcPrice, usdText: usd(amt * btcPrice, '+'),
           timestamp, status, explorerUrl, network: btcNetworkName(),
         });
       }
@@ -197,6 +205,7 @@ export async function loadSolActivity(address: string, solPrice: number): Promis
         type: received ? 'received' : 'sent',
         label: received ? `From ${counterparty(other)}` : `To ${counterparty(other)}`,
         amountText: `${received ? '+' : '-'}${fmt(amt, 4)} SOL`,
+        usd: received ? amt * solPrice : -(amt * solPrice),
         usdText: usd(amt * solPrice, received ? '+' : '-'),
         timestamp, status: 'confirmed',
         explorerUrl: solExplorerTxUrl(sig), network: solNetworkName(),
@@ -333,6 +342,7 @@ export function pendingSendItem(args: {
     type: 'sent',
     label: args.shielded ? 'Shielded' : `To ${counterparty(args.to ?? args.id)}`,
     amountText: `-${fmt(args.amount, Math.min(meta.decimals, 6))} ${symbol}`,
+    usd: -Math.abs(args.usd),
     usdText: usd(args.usd, '-'),
     timestamp: Math.floor(Date.now() / 1000),
     status: 'pending',
@@ -367,6 +377,7 @@ export function incomingHintItem(args: {
     type: 'received',
     label: args.from ? `From ${args.from.slice(0, 6)}…` : 'Received',
     amountText: `+${fmt(args.amount, Math.min(args.decimals, 6))} ${args.symbol}`,
+    usd: Math.abs(args.usd),
     usdText: usd(args.usd, '+'),
     timestamp: Math.floor(Date.now() / 1000),
     status: 'pending',
@@ -416,6 +427,7 @@ export function stealthReceiveItem(
     type: 'received',
     label: 'Private receive',
     amountText: `+${fmt(amt, Math.min(decimals, 6))} ${symbol}`,
+    usd: Math.abs(usdValue),
     usdText: usd(usdValue, '+'),
     timestamp: nowSec,
     status: p.amount ? 'confirmed' : 'pending',
@@ -462,6 +474,7 @@ export function privateSendItem(args: {
     type: 'sent',
     label: args.label ?? 'Private payment',
     amountText: `-${fmt(args.amount, Math.min(meta.decimals, 6))} ${symbol}`,
+    usd: -Math.abs(args.usd),
     usdText: usd(args.usd, '-'),
     timestamp: Math.floor(Date.now() / 1000),
     status: args.status ?? 'confirmed',

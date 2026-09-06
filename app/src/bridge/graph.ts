@@ -144,6 +144,7 @@ function toActivityItem(
     type: sent ? 'sent' : 'received',
     label: sent ? 'Sent' : 'Received',
     amountText: `${sign}${r.value} ${r.symbol ?? ''}`.trim(),
+    ...(price > 0 ? { usd: sent ? -(r.value * price) : r.value * price } : {}),
     usdText: price > 0 ? `${sign}$${(r.value * price).toFixed(2)}` : '',
     timestamp: r.timestamp,
     status: 'confirmed',
@@ -174,7 +175,12 @@ interface ArcTransfer {
  * subgraph normalises the native emitter's 18dp before storing, so there is no
  * scaling to redo here.
  */
-export async function arcTransfers(address: string, chainId: bigint, first = 40): Promise<ActivityItem[]> {
+export async function arcTransfers(
+  address: string,
+  chainId: bigint,
+  priceOf: (coingeckoId: string) => number,
+  first = 40,
+): Promise<ActivityItem[]> {
   if (!ARC_SUBGRAPH || !address) return [];
   try {
     const res = await fetch(ARC_SUBGRAPH, {
@@ -205,7 +211,7 @@ export async function arcTransfers(address: string, chainId: bigint, first = 40)
       // before, silently dropping a leg to an id collision on the shared tx
       // hash) misrepresents what happened.
       if (legs.length === 2 && paid.length === 1 && got.length === 1 && paid[0].symbol !== got[0].symbol) {
-        out.push(swapRow(txHash, paid[0], got[0], chainId));
+        out.push(swapRow(txHash, paid[0], got[0], chainId, priceOf));
         continue;
       }
 
@@ -213,7 +219,7 @@ export async function arcTransfers(address: string, chainId: bigint, first = 40)
       // subgraph's own id to stay unique; a lone transfer keeps the tx hash so
       // an optimistic just-sent row still reconciles onto it.
       const unique = legs.length > 1;
-      for (const l of legs) out.push(transferRow(l, addr, chainId, unique ? l.id : txHash));
+      for (const l of legs) out.push(transferRow(l, addr, chainId, unique ? l.id : txHash, priceOf));
     }
     return out;
   } catch {
@@ -225,7 +231,13 @@ const cgFor = (symbol: string): string => (symbol === 'EURC' ? 'euro-coin' : 'us
 const colorFor = (symbol: string): string => (symbol === 'EURC' ? '#1AA68C' : '#2980D9');
 const amt = (t: ArcTransfer): number => Number(t.amount) / 1e6; // already 6dp minor units
 
-function transferRow(t: ArcTransfer, addr: string, chainId: bigint, id: string): ActivityItem {
+function transferRow(
+  t: ArcTransfer,
+  addr: string,
+  chainId: bigint,
+  id: string,
+  priceOf: (coingeckoId: string) => number,
+): ActivityItem {
   const sent = t.from.toLowerCase() === addr;
   const sign = sent ? '-' : '+';
   const amount = amt(t);
@@ -238,8 +250,10 @@ function transferRow(t: ArcTransfer, addr: string, chainId: bigint, id: string):
     ...gatewayTitle(sent, sent ? t.to : t.from),
     label: sent ? 'Sent' : 'Received',
     amountText: `${sign}${amount.toFixed(2)} ${t.symbol}`,
-    // USDC/EURC are dollar-denominated, so the amount IS the USD figure.
-    usdText: `${sign}$${amount.toFixed(2)}`,
+    // USDC is a dollar; EURC is NOT, so it has to be priced rather than assumed.
+    // Falls back to 1:1 only when the price feed has nothing for the symbol.
+    usd: (sent ? -amount : amount) * (priceOf(cgFor(t.symbol)) || 1),
+    usdText: `${sign}$${(amount * (priceOf(cgFor(t.symbol)) || 1)).toFixed(2)}`,
     timestamp: Number(t.timestamp),
     status: 'confirmed',
     explorerUrl: evmExplorerTxUrl(chainId, t.txHash),
@@ -248,7 +262,13 @@ function transferRow(t: ArcTransfer, addr: string, chainId: bigint, id: string):
 }
 
 /** One row for a swap: the token received on top, the token paid beneath. */
-function swapRow(txHash: string, paid: ArcTransfer, got: ArcTransfer, chainId: bigint): ActivityItem {
+function swapRow(
+  txHash: string,
+  paid: ArcTransfer,
+  got: ArcTransfer,
+  chainId: bigint,
+  priceOf: (coingeckoId: string) => number,
+): ActivityItem {
   return {
     id: txHash,
     symbol: got.symbol,
@@ -283,6 +303,6 @@ export async function graphActivity(
   chainId: bigint,
   priceOf: (coingeckoId: string) => number,
 ): Promise<ActivityItem[]> {
-  if (isArcChainId(chainId)) return arcTransfers(address, chainId);
+  if (isArcChainId(chainId)) return arcTransfers(address, chainId, priceOf);
   return tokenTransfers(address, chainId, priceOf);
 }

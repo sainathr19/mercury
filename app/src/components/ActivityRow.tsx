@@ -4,7 +4,8 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../ui/Text';
 import { CryptoIcon } from './CryptoIcon';
 import { fontFamily } from '../theme/fonts';
-import { txTime } from '../lib/format';
+import { formatUsd, txTime } from '../lib/format';
+import { useSettings } from '../stores/settingsStore';
 import type { ActivityItem } from '../bridge/activity';
 
 const TYPE_LABEL: Record<ActivityItem['type'], string> = {
@@ -17,12 +18,21 @@ const TYPE_LABEL: Record<ActivityItem['type'], string> = {
  *  already conveyed by Sent/Received and the token line keeps its + on receives). */
 const noSign = (s: string) => s.replace(/^[+-]/, '');
 
+/** The row's fiat figure in the user's display currency. Prefers the stored
+ *  NUMBER so a currency switch re-renders in the new currency; falls back to the
+ *  baked dollar string only for rows cached before `usd` existed. */
+const fiat = (item: ActivityItem): string =>
+  item.usd !== undefined ? formatUsd(Math.abs(item.usd)) : noSign(item.usdText);
+
 /** A single Activity row (shared by Home, Asset and the Activity page so they all
  *  match). Left: 32px token icon. Middle: "Sent"/"Received" over the counterparty
  *  ("From …") for receives or the time for sends. Right: for a receive the token
  *  amount sits on top with the fiat below; for a send the fiat sits on top with the
  *  token below. Top line is bold/dark, bottom is grey/medium in both columns. */
 export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: () => void }) {
+  // Re-render when the display currency (or its rate) changes — this row renders
+  // fiat, and Asset/Activity screens do not subscribe on its behalf.
+  useSettings((s) => s.fxTick);
   const failed = item.status === 'failed';
   const received = item.type === 'received';
   const isSwap = item.type === 'swapped';
@@ -33,8 +43,8 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
   // is still surfaced (the one state the user must actually see).
   const subtitle = failed ? `Failed · ${txTime(item.timestamp)}` : txTime(item.timestamp);
   // Swap: +destination on top, −source below. Otherwise the sent/received layout.
-  const topRight = isSwap ? item.amountText : received ? item.amountText : noSign(item.usdText);
-  const bottomRight = isSwap ? (item.secondaryAmountText ?? '') : received ? noSign(item.usdText) : noSign(item.amountText);
+  const topRight = isSwap ? item.amountText : received ? item.amountText : fiat(item);
+  const bottomRight = isSwap ? (item.secondaryAmountText ?? '') : received ? fiat(item) : noSign(item.amountText);
 
   // Basic tap (no spring scale — that bounced too much): a light haptic + a
   // subtle pressed dim is all the feedback these rows need.
