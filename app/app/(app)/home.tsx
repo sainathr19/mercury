@@ -307,6 +307,7 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
   const gwSpendable = useGateway((g) => g.spendable);
   const gwPending = useGateway((g) => g.pending);
   const gwStuck = useGateway((g) => g.stuck);
+  const gwNetworks = useGateway((g) => g.perDomain.length);
   const refreshGateway = useGateway((g) => g.refresh);
   const settleGateway = useGateway((g) => g.settle);
   // Normal home shows ONLY non-private activity; private receives/sends live in
@@ -456,6 +457,10 @@ function Dashboard({ privateMode }: { privateMode: boolean }) {
             <AccountCard title="Investments" icon={require('../../assets/icons/investmentIcon.svg')} balance={invest} masked={hidden || privateMode} />
           </View>
 
+          {/* The settlement rail is what makes Cash spendable on any network, and
+              it runs silently — this is the only place it is visible. */}
+          <SettlementStrip spendable={gwSpendable} networks={gwNetworks} onPress={() => router.push('/(app)/settlement')} />
+
           {/* One measured-height drawer drives both directions, so collapsing is a
               true mirror of expanding (content height + opacity on a single timeline)
               instead of a detached exit-overlay that fades while the card clips it. */}
@@ -530,6 +535,40 @@ function ActionButton({ icon, onPress }: { icon: 'send' | 'swap' | 'receive'; on
   return (
     <PressableScale style={styles.actionBtn} onPress={onPress}>
       <Icon name={icon} size={18} color={theme.colors.text} />
+    </PressableScale>
+  );
+}
+
+/**
+ * One line saying the balance above is already settled and spendable anywhere.
+ *
+ * The settling happens automatically and silently, so without this the rail that
+ * makes Cash work on any network is invisible in the product. Renders nothing
+ * until there is something settled to describe.
+ */
+function SettlementStrip({
+  spendable,
+  networks,
+  onPress,
+}: {
+  spendable: number;
+  networks: number;
+  onPress: () => void;
+}) {
+  const theme = UnistylesRuntime.getTheme();
+  if (spendable <= 0 || networks <= 0) return null;
+  return (
+    <PressableScale style={styles.settleStrip} onPress={onPress}>
+      <Icon name="swap" size={14} color={theme.colors.muted} />
+      <RNText style={styles.settleText}>
+        {`${formatUsd(spendable)} settled — spendable on ${networks} networks`}
+      </RNText>
+      <ExpoImage
+        source={require('../../assets/icons/UpIcon.svg')}
+        style={styles.settleChevron}
+        tintColor={theme.colors.muted}
+        contentFit="contain"
+      />
     </PressableScale>
   );
 }
@@ -770,6 +809,18 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
   },
   accountRow: { flexDirection: 'row', gap: theme.spacing.md },
+  settleStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBackground,
+  },
+  settleText: { flex: 1, fontFamily: fontFamily.medium, fontSize: 13, letterSpacing: -0.26, color: theme.colors.muted },
+  settleChevron: { width: 14, height: 14, transform: [{ rotate: '90deg' }] },
   accountCard: {
     flex: 1,
     backgroundColor: '#EBEBEB',

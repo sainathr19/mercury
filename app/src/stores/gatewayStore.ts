@@ -9,6 +9,28 @@ import {
 import { getActiveEnvironment } from '../bridge/activeEnv';
 
 /**
+ * One completed settlement operation, with the time it actually took.
+ *
+ * The durations are measured, not estimated — every deposit and every send
+ * already returns its own wall-clock and the app was throwing it away after the
+ * toast. Keeping the last few is what lets the settlement view state a number
+ * instead of a claim.
+ */
+export interface SettlementEvent {
+  /** `settled` = wallet USDC deposited into Gateway on this chain.
+   *  `delivered` = spent out of the unified balance onto this chain. */
+  kind: 'settled' | 'delivered';
+  amount: number;
+  chainId: bigint;
+  ms: number;
+  at: number;
+}
+
+/** Session-scoped, and deliberately short: this is evidence of how the rail
+ *  behaves right now, not a second transaction history. */
+const MAX_EVENTS = 8;
+
+/**
  * The wallet's USDC, wherever it sits.
  *
  * `total` is what the user owns and is what the balance UI shows. `spendable` is
@@ -28,6 +50,9 @@ interface GatewayState extends UsdcHoldings {
    *  owned total so a sent amount is not counted twice while it settles. */
   inFlightSent: number;
   inFlightAt: number;
+  /** Recent settlement operations, newest first. */
+  events: SettlementEvent[];
+  noteEvent(e: Omit<SettlementEvent, 'at'>): void;
   /** Record a completed send so the balance stops counting it immediately. */
   noteSent(amount: number): void;
   refresh(address: string): Promise<void>;
@@ -50,6 +75,7 @@ const EMPTY = {
   stuck: [],
   inFlightSent: 0,
   inFlightAt: 0,
+  events: [],
 };
 
 /** How long to keep discounting a sent amount. Circle settles burns on-chain
@@ -58,6 +84,10 @@ const IN_FLIGHT_TTL_MS = 10 * 60_000;
 
 export const useGateway = create<GatewayState>((set, get) => ({
   ...EMPTY,
+
+  noteEvent(e) {
+    set({ events: [{ ...e, at: Date.now() }, ...get().events].slice(0, MAX_EVENTS) });
+  },
 
   noteSent(amount) {
     set({ inFlightSent: get().inFlightSent + amount, inFlightAt: Date.now() });
@@ -87,6 +117,9 @@ export const useGateway = create<GatewayState>((set, get) => ({
         env: getActiveEnvironment(),
       });
       set({ stuck: outcomes.filter((o) => o.skipped === 'no-gas') });
+      for (const o of outcomes) {
+        if (o.ok && o.ms) get().noteEvent({ kind: 'settled', amount: o.amount, chainId: o.chainId, ms: o.ms });
+      }
       // A deposit lands in `pendingBatch` before it is spendable, so re-reading
       // here is what moves the money from "in wallet" to "arriving" on screen.
       await get().refresh(address);

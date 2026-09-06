@@ -242,3 +242,7 @@ export const tokenOnChain = (chainId: bigint, address: string): TokenDef | undef
 
 /** Uniswap V2 router/factory for a chain, when it has one. */
 export const uniswapFor = (chainId: bigint): ChainDef['uniswap'] => chainById(chainId)?.uniswap;
+
+/** The chain behind a Circle domain id, within an environment. */
+export const chainForDomain = (domain: number, env: ChainEnvironment): ChainDef | undefined =>
+  chainsForEnvironment(env).find((c) => c.circleDomain === domain);

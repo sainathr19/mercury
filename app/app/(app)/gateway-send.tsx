@@ -28,7 +28,7 @@ export default function GatewaySend() {
   const wallet = useSession((s) => s.wallet);
   // `spendable` — NOT the wallet's total USDC. Only money already settled into
   // Gateway can be sent cross-chain; the rest has to be deposited first.
-  const { spendable, perDomain, refresh, noteSent } = useGateway();
+  const { spendable, perDomain, refresh, noteSent, noteEvent } = useGateway();
 
   const env = getActiveEnvironment();
   const destinations = circleChainsForEnvironment(env);
@@ -73,6 +73,7 @@ export default function GatewaySend() {
         // The contract keeps reporting this money for a few minutes; tell the
         // store so the balance drops now rather than after settlement.
         noteSent(value);
+        noteEvent({ kind: 'delivered', amount: value, chainId: dest.chainId, ms: r.attestMs + r.relayMs });
         void refresh(addresses.eth);
       } else if (r.unclaimed) {
         show('Sent, but delivery is pending — funds are safe.', 'info');

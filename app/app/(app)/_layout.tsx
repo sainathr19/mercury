@@ -29,6 +29,8 @@ export default function AppLayout() {
       {/* Swap slides up from the bottom as a full-screen sheet (mirrors iOS). */}
       {/* Gateway: send from the unified balance, delivered by the relayer. */}
       <Stack.Screen name="gateway-send" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="settlement" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="request" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="swap" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       {/* Send is a native iOS form sheet — large detent only (the multi-step
           flow needs the height; no half-size option). Gap at the top, grabber,

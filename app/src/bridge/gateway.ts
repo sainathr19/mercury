@@ -367,6 +367,9 @@ export interface SettleOutcome {
   chainId: bigint;
   amount: number;
   ok: boolean;
+  /** Measured wall-clock for the deposit, so the UI can show what settling
+   *  actually costs in time rather than asserting it is fast. */
+  ms?: number;
   skipped?: 'dust' | 'no-gas';
   txHash?: string;
   error?: string;
@@ -409,7 +412,7 @@ export async function settleUsdcToGateway(opts: {
       }
     }
     const r = await gatewayDeposit({ wallet, account, chainId: row.chainId, amount });
-    out.push({ chainId: row.chainId, amount, ok: r.ok, txHash: r.txHash, error: r.error });
+    out.push({ chainId: row.chainId, amount, ok: r.ok, txHash: r.txHash, error: r.error, ms: r.ms });
   }
   return out;
 }
