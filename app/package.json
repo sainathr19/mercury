@@ -80,5 +80,18 @@
     "typecheck": "tsc --noEmit",
     "registry:build": "node scripts/registry/generate.mjs"
   },
-  "private": true
+  "private": true,
+  "jest": {
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native[\\w-]*|@react-native(-community)?/.*|expo[\\w-]*|@expo[\\w-]*/.*|@unimodules/.*|unimodules|@react-navigation/.*|react-navigation)/)"
+    ],
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ],
+    "moduleNameMapper": {
+      "^expo-secure-store$": "<rootDir>/src/test/mocks/expo-secure-store.js",
+      "^expo-file-system$": "<rootDir>/src/test/mocks/expo-file-system.js",
+      "^posthog-react-native$": "<rootDir>/src/test/mocks/posthog-react-native.js"
+    }
+  }
 }
