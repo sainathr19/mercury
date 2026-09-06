@@ -152,6 +152,10 @@ export const TESTNET_EVM_CHAINS: EvmChainConfig[] = [
   chainCfg(84532n, 'Base Sepolia', 'https://base-sepolia-rpc.publicnode.com', 'https://sepolia.basescan.org'),
   // Tempo Testnet (Moderato). Stablecoin payments chain — no native gas token;
   // currency is USD and fees are paid in a stablecoin. See lib/tempo.ts.
+  // Arc testnet. Like Tempo it's a stablecoin chain — but unlike Tempo it HAS
+  // a real native coin: USDC itself, at 18dp, which is also the gas token. So
+  // native balance rows are correct here and must NOT be suppressed.
+  chainCfg(5042002n, 'Arc Testnet', 'https://rpc.testnet.arc.io', 'https://testnet.arcscan.app', 'USDC'),
   chainCfg(42431n, 'Tempo Testnet', 'https://rpc.moderato.tempo.xyz', 'https://explore.testnet.tempo.xyz', 'USD'),
 ];
 

@@ -2,6 +2,7 @@ import { btcEsploraForEnv, solRpcForEnv } from './networks';
 import { getActiveEnvironment } from './activeEnv';
 import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { BLOCKSCOUT_BASES, mapEvmActivity, type RawEvmTx, type RawEvmTokenTx } from '../lib/evm-activity';
+import { graphActivity, graphCoversChain } from './graph';
 
 export type TxType = 'sent' | 'received' | 'swapped';
 export type TxStatus = 'pending' | 'confirmed' | 'failed';
@@ -215,6 +216,17 @@ export async function loadEvmActivity(
   priceOf: (coingeckoId: string) => number,
 ): Promise<ActivityItem[]> {
   if (!address || !address.startsWith('0x')) return [];
+
+  // The Graph first, where it covers the chain: Token API for the major EVM
+  // networks, our own subgraph for Arc. Arc has NO Blockscout instance, so the
+  // subgraph is the only source there — without this branch Arc history is
+  // silently empty. Blockscout stays as the fallback for chains The Graph
+  // doesn't index, and for a transient Graph failure.
+  if (graphCoversChain(chainId)) {
+    const viaGraph = await graphActivity(address, chainId, priceOf);
+    if (viaGraph.length) return viaGraph;
+  }
+
   const base = BLOCKSCOUT_BASES[chainId.toString()];
   if (!base) return [];
   async function query<T>(action: 'txlist' | 'tokentx'): Promise<T[]> {

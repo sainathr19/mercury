@@ -34,6 +34,7 @@ const DEFAULT_NATIVE = NATIVE['1'];
 
 /** Human network name per chain id (for the activity row's subtitle). */
 const CHAIN_NAMES: Record<string, string> = {
+  '5042002': 'Arc Testnet',
   '1': 'Ethereum',
   '10': 'Optimism',
   '137': 'Polygon',

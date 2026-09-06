@@ -16,6 +16,7 @@ export function setActiveEvmChainId(id: bigint): void {
 
 /** Block-explorer base per EVM chain id (for tx links). */
 const EXPLORERS: Record<string, string> = {
+  '5042002': 'https://testnet.arcscan.app',
   // Mainnets
   '1': 'https://etherscan.io',
   '10': 'https://optimistic.etherscan.io',
