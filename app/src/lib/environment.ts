@@ -49,6 +49,7 @@ export const TESTNET_EVM_CHAIN_IDS: bigint[] = [
   97n, // BNB Smart Chain Testnet
   43113n, // Avalanche Fuji
   42431n, // Tempo Testnet (Moderato)
+  5042002n, // Arc Testnet
 ];
 
 const TESTNET_SET = new Set(TESTNET_EVM_CHAIN_IDS.map((id) => id.toString()));
