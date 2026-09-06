@@ -2,7 +2,18 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "paths": { "@shared/*": ["../shared/*"] }
+    "paths": {
+      "@shared/*": [
+        "../shared/*"
+      ],
+      "react-native-unistyles": [
+        "./src/theme/unistyles-shim.ts"
+      ]
+    }
   },
-  "include": ["**/*.ts", "**/*.tsx", "../shared/**/*.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "../shared/**/*.ts"
+  ]
 }
