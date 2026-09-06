@@ -15,7 +15,9 @@ import { activeScopeKey } from '../bridge/wallet';
 import { usePendingBalance } from './pendingBalanceStore';
 import { applyDeltas, type PendingDelta } from '../lib/pendingBalance';
 
-const STABLE_IDS = new Set(['usd-coin', 'tether', 'dai', 'frax', 'usdc', 'pathusd']);
+// Cash is 'money', not 'dollars' — EURC is as spendable as USDC here, and the
+// wallet settles and pays in both.
+const STABLE_IDS = new Set(['usd-coin', 'euro-coin', 'tether', 'dai', 'frax', 'usdc', 'pathusd']);
 
 /** True if a coin is a USD stablecoin (counts toward "Cash" rather than
  *  "Investments"). Shared by the normal + private dashboards. */

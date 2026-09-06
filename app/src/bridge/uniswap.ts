@@ -30,6 +30,8 @@ import {
 const SEL_GET_AMOUNTS_OUT = '0xd06ca61f'; // getAmountsOut(uint256,address[])
 const SEL_GET_PAIR = '0xe6a43905'; // getPair(address,address)
 const SEL_SWAP_EXACT_TOKENS = '0x38ed1739'; // swapExactTokensForTokens(uint,uint,address[],address,uint)
+const SEL_GET_AMOUNTS_IN = '0x1f00ca74'; // getAmountsIn(uint256,address[])
+const SEL_SWAP_FOR_EXACT = '0x8803dbee'; // swapTokensForExactTokens(uint,uint,address[],address,uint)
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -210,4 +212,131 @@ export async function executeSwap(opts: {
 /** The tradeable set for a chain, straight from the registry. */
 export function swappableTokens(chainId: bigint): TokenDef[] {
   return tokensForChain(chainId);
+}
+
+// ── Paying an exact amount in a currency you do not hold ─────────────────────
+
+export interface ExactOutQuote {
+  /** Atomic units the payer must spend. */
+  amountIn: bigint;
+  /** Atomic units the recipient receives — EXACTLY this, by construction. */
+  amountOut: bigint;
+  /** Human units of the input token. */
+  cost: number;
+  path: string[];
+}
+
+/**
+ * Price a payment the other way round: "they receive exactly N, what does it
+ * cost me?"
+ *
+ * An invoice names the amount the RECIPIENT gets. Quoting exact-input and hoping
+ * the output lands on 25.00 does not pay a 25.00 invoice — the recipient gets
+ * "at least" some number and the payment is short or over. getAmountsIn answers
+ * the question the invoice actually asks.
+ */
+export async function quoteExactOut(opts: {
+  chainId: bigint;
+  from: TokenDef;
+  to: TokenDef;
+  /** Human units of `to` the recipient must receive. */
+  amountOut: number;
+}): Promise<ExactOutQuote | null> {
+  const { chainId, from, to, amountOut } = opts;
+  const url = chainById(chainId)?.rpcUrl;
+  const dex = uniswapFor(chainId);
+  if (!url || !dex || amountOut <= 0) return null;
+
+  const out = toAtomic(amountOut, to.decimals);
+  if (out <= 0n) return null;
+
+  const usdc = chainById(chainId)?.usdc;
+  const candidates: string[][] = [[from.address, to.address]];
+  if (usdc && ![from.address, to.address].some((a) => a.toLowerCase() === usdc.toLowerCase())) {
+    candidates.push([from.address, usdc, to.address]);
+  }
+
+  for (const path of candidates) {
+    try {
+      const data =
+        SEL_GET_AMOUNTS_IN +
+        uint(out) +
+        uint(64n) +
+        uint(BigInt(path.length)) +
+        path.map((a) => word(a)).join('');
+      const amounts = decodeUintArray(await ethCall(url, dex.router, data));
+      const amountIn = amounts[0];
+      if (!amountIn || amountIn <= 0n) continue;
+      return { amountIn, amountOut: out, cost: fromAtomic(amountIn, from.decimals), path };
+    } catch {
+      // No route this way — try the next.
+    }
+  }
+  return null;
+}
+
+/**
+ * Pay someone in a currency you do not hold, in one transaction.
+ *
+ * Uniswap's router sends the output wherever you tell it, so this is a single
+ * swap with the RECIPIENT as the destination — not a swap followed by a
+ * transfer. That halves the gas and, more importantly, removes the window where
+ * the swapped funds sit in the payer's account and a failure leaves them holding
+ * a currency they never wanted.
+ *
+ * `slippageBps` bounds what the payer SPENDS; the recipient's amount is exact.
+ */
+export async function payWithSwap(opts: {
+  wallet: WalletInterface;
+  account: number;
+  chainId: bigint;
+  from: TokenDef;
+  quote: ExactOutQuote;
+  recipient: string;
+  slippageBps: number;
+}): Promise<SwapResult> {
+  const t0 = Date.now();
+  const { wallet, account, chainId, from, quote, recipient, slippageBps } = opts;
+  const chain = chainById(chainId);
+  const dex = uniswapFor(chainId);
+  if (!chain?.rpcUrl || !dex) {
+    return { ok: false, error: 'No exchange on this network', ms: Date.now() - t0 };
+  }
+  const url = chain.rpcUrl;
+
+  try {
+    const signer = await wallet.evmAddress(account);
+    // Cap on the input, so a moving pool cannot drain more than the payer agreed.
+    const maxIn = (quote.amountIn * BigInt(10_000 + slippageBps)) / 10_000n;
+
+    const approved = await ensureAllowance({
+      wallet, account, chainId, url, from: signer,
+      token: from.address, spender: dex.router, amount: maxIn,
+    });
+    if (!approved) return { ok: false, error: 'Approval did not confirm', ms: Date.now() - t0 };
+
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
+    // swapTokensForExactTokens(amountOut, amountInMax, path, to, deadline)
+    const data =
+      SEL_SWAP_FOR_EXACT +
+      uint(quote.amountOut) +
+      uint(maxIn) +
+      uint(160n) +
+      word(recipient) +
+      uint(deadline) +
+      uint(BigInt(quote.path.length)) +
+      quote.path.map((a) => word(a)).join('');
+
+    const tx = await sendCall(wallet, account, chainId, url, signer, dex.router, data);
+    const mined = await waitForReceipt(url, tx);
+    return {
+      ok: mined,
+      txHash: tx,
+      explorerUrl: `${chain.explorerUrl}/tx/${tx}`,
+      error: mined ? undefined : 'Payment did not confirm',
+      ms: Date.now() - t0,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Payment failed', ms: Date.now() - t0 };
+  }
 }

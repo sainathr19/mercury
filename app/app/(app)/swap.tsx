@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { dismiss } from '../../src/lib/nav';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Button, Card, Field, Icon, PressableScale, Text, useToast } from '../../src/ui';
@@ -12,7 +12,10 @@ import { getActiveAccount } from '../../src/bridge/account';
 import {
   executeSwap,
   fromAtomic,
+  payWithSwap,
+  quoteExactOut,
   quoteSwap,
+  type ExactOutQuote,
   type Quote,
   type SwapResult,
 } from '../../src/bridge/uniswap';
@@ -50,7 +53,10 @@ export default function Swap() {
   // Swapping needs tokens in the user's OWN address, but settled USDC lives in
   // Gateway. Rather than ask the user to understand that, the swap pulls what it
   // is short by out of the unified balance first.
-  const { spendable, perDomain, refresh: refreshGateway, noteSent } = useGateway();
+  const { spendable, perDomain, refresh: refreshGateway, noteSent, noteEvent } = useGateway();
+
+  // A request can route here: pay someone in a currency you do not hold.
+  const params = useLocalSearchParams<{ to?: string; token?: string; amount?: string }>();
 
   const env = getActiveEnvironment();
   const chains = useMemo(() => swapChainsForEnvironment(env), [env]);
@@ -58,8 +64,14 @@ export default function Swap() {
   const tokens = chain?.tokens ?? [];
 
   const [from, setFrom] = useState<TokenDef | null>(tokens[0] ?? null);
-  const [to, setTo] = useState<TokenDef | null>(tokens[1] ?? null);
-  const [amount, setAmount] = useState('');
+  const [to, setTo] = useState<TokenDef | null>(
+    () => tokens.find((t) => t.address.toLowerCase() === params.token?.toLowerCase()) ?? tokens[1] ?? null,
+  );
+  const [amount, setAmount] = useState(params.amount ?? '');
+  /** Empty = swap into your own wallet. Set = pay someone, and then the amount
+   *  means what THEY receive, not what you spend. */
+  const [recipient, setRecipient] = useState(params.to ?? '');
+  const [payQuote, setPayQuote] = useState<ExactOutQuote | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -90,26 +102,38 @@ export default function Swap() {
   // Re-quote as the amount settles. Debounced so a four-keystroke amount does
   // not fire four round trips, and guarded by a sequence number so a slow early
   // quote cannot land on top of a fast later one.
+  const paying = /^0x[0-9a-fA-F]{40}$/.test(recipient.trim());
+
   const seq = useRef(0);
   useEffect(() => {
-    if (!chain || !from || !to || !(value > 0)) { setQuote(null); return; }
+    if (!chain || !from || !to || !(value > 0)) { setQuote(null); setPayQuote(null); return; }
     const mine = ++seq.current;
     setQuoting(true);
     const t = setTimeout(() => {
-      void quoteSwap({ chainId: chain.chainId, from, to, amount: value })
-        .then((q) => { if (seq.current === mine) setQuote(q); })
-        .catch(() => { if (seq.current === mine) setQuote(null); })
+      // Paying an invoice asks the question the other way round: the amount is
+      // what the recipient must RECEIVE, so the quote has to be exact-output.
+      const job = paying
+        ? quoteExactOut({ chainId: chain.chainId, from, to, amountOut: value })
+            .then((q) => { if (seq.current === mine) { setPayQuote(q); setQuote(null); } })
+        : quoteSwap({ chainId: chain.chainId, from, to, amount: value })
+            .then((q) => { if (seq.current === mine) { setQuote(q); setPayQuote(null); } });
+      void job
+        .catch(() => { if (seq.current === mine) { setQuote(null); setPayQuote(null); } })
         .finally(() => { if (seq.current === mine) setQuoting(false); });
     }, 350);
     return () => clearTimeout(t);
-  }, [chain, from, to, value]);
+  }, [chain, from, to, value, paying]);
 
   // USDC can be topped up from the unified balance; anything else has to be held.
   const topUpable = !!from && !!chain && from.address.toLowerCase() === chain.usdc?.toLowerCase();
   const reachable = (balance ?? 0) + (topUpable ? spendable : 0);
-  const overBalance = balance !== null && value > reachable;
+  /** What leaves the payer's account: the typed amount when swapping, the
+   *  quoted cost when paying an exact amount to someone else. */
+  const spend = paying ? (payQuote?.cost ?? 0) : value;
+  const overBalance = balance !== null && spend > reachable;
+  const hasQuote = paying ? !!payQuote : !!quote;
   const ready =
-    !!wallet && !!chain && !!from && !!to && !!quote && value > 0 && !overBalance && !quoting;
+    !!wallet && !!chain && !!from && !!to && hasQuote && value > 0 && !overBalance && !quoting;
 
   const flip = useCallback(() => {
     setFrom(to);
@@ -120,13 +144,14 @@ export default function Swap() {
   }, [from, to]);
 
   async function submit() {
-    if (!wallet || !chain || !from || !to || !quote) return;
+    if (!wallet || !chain || !from || !to) return;
+    if (paying ? !payQuote : !quote) return;
     setBusy(true); setResult(null); setFault(null);
     try {
       // Top up from the unified balance if this address is short. Delivering to
       // ourselves on this chain mints real USDC here, which is both the swap
       // input and the gas — on Arc they are the same asset.
-      const shortfall = value - (balance ?? 0);
+      const shortfall = spend - (balance ?? 0);
       if (topUpable && shortfall > 0 && addresses?.eth) {
         setPhase('funding');
         const soldPaysGas = from.symbol === chain.nativeSymbol;
@@ -147,22 +172,40 @@ export default function Swap() {
           return;
         }
         noteSent(pulled);
+        // Pulling funds onto this chain to trade with IS a settlement operation;
+        // without this the settlement view claims nothing happened.
+        noteEvent({ kind: 'delivered', amount: pulled, chainId: chain.chainId, ms: moved.attestMs + moved.relayMs });
         void refreshGateway(addresses.eth);
       }
 
       setPhase('swapping');
-      const r = await executeSwap({
-        wallet,
-        account: getActiveAccount(),
-        chainId: chain.chainId,
-        from,
-        to,
-        quote,
-        slippageBps: SLIPPAGE_BPS,
-      });
+      const r = paying && payQuote
+        ? await payWithSwap({
+            wallet,
+            account: getActiveAccount(),
+            chainId: chain.chainId,
+            from,
+            quote: payQuote,
+            recipient: recipient.trim(),
+            slippageBps: SLIPPAGE_BPS,
+          })
+        : await executeSwap({
+            wallet,
+            account: getActiveAccount(),
+            chainId: chain.chainId,
+            from,
+            to,
+            quote: quote!,
+            slippageBps: SLIPPAGE_BPS,
+          });
       setResult(r);
       if (r.ok) {
-        show(`Swapped ${value} ${from.symbol} for ${quote.out.toFixed(4)} ${to.symbol}`, 'success');
+        show(
+          paying
+            ? `Paid ${value} ${to.symbol} with ${from.symbol}`
+            : `Swapped ${value} ${from.symbol} for ${quote!.out.toFixed(4)} ${to.symbol}`,
+          'success',
+        );
         setAmount('');
         setQuote(null);
         setReload((n) => n + 1);
@@ -201,7 +244,7 @@ export default function Swap() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text variant="titleLarge">Swap</Text>
+        <Text variant="titleLarge">{paying ? 'Pay' : 'Swap'}</Text>
         <PressableScale haptic={false} onPress={() => dismiss(router)}>
           <Icon name="close" size={22} color={theme.colors.muted} />
         </PressableScale>
@@ -209,7 +252,9 @@ export default function Swap() {
 
       <Card>
         <View style={styles.tokenRow}>
-          <Text variant="caption" color={theme.colors.muted}>YOU PAY</Text>
+          <Text variant="caption" color={theme.colors.muted}>
+            {paying ? 'PAY WITH' : 'YOU PAY'}
+          </Text>
           {balance !== null && (
             <PressableScale haptic={false} onPress={() => setAmount(String(balance))}>
               <Text variant="caption" color={theme.colors.muted}>
@@ -219,14 +264,25 @@ export default function Swap() {
           )}
         </View>
         <TokenChips tokens={tokens} selected={from} onSelect={(t) => (t.address === to.address ? flip() : setFrom(t))} />
-        <Field
-          label=""
-          value={amount}
-          onChangeText={(v) => { if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v); }}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-          error={overBalance ? `More than your ${from.symbol}.` : undefined}
-        />
+        {paying ? (
+          <>
+            <Text variant="displaySmall">
+              {quoting ? '…' : payQuote ? payQuote.cost.toFixed(4) : '0.0000'}
+            </Text>
+            {overBalance && (
+              <Text variant="caption" color={theme.colors.danger}>More than your {from.symbol}.</Text>
+            )}
+          </>
+        ) : (
+          <Field
+            label=""
+            value={amount}
+            onChangeText={(v) => { if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v); }}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            error={overBalance ? `More than your ${from.symbol}.` : undefined}
+          />
+        )}
       </Card>
 
       <PressableScale style={styles.flip} onPress={flip}>
@@ -234,26 +290,57 @@ export default function Swap() {
       </PressableScale>
 
       <Card>
-        <Text variant="caption" color={theme.colors.muted}>YOU RECEIVE</Text>
-        <TokenChips tokens={tokens} selected={to} onSelect={(t) => (t.address === from.address ? flip() : setTo(t))} />
-        <Text variant="displaySmall">
-          {quoting ? '…' : quote ? quote.out.toFixed(4) : '0.0000'}
+        <Text variant="caption" color={theme.colors.muted}>
+          {paying ? 'THEY RECEIVE' : 'YOU RECEIVE'}
         </Text>
-        {quote && !quoting && (
+        <TokenChips tokens={tokens} selected={to} onSelect={(t) => (t.address === from.address ? flip() : setTo(t))} />
+        {paying ? (
+          <Field
+            label=""
+            value={amount}
+            onChangeText={(v) => { if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v); }}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+          />
+        ) : (
+          <Text variant="displaySmall">
+            {quoting ? '…' : quote ? quote.out.toFixed(4) : '0.0000'}
+          </Text>
+        )}
+        {!paying && quote && !quoting && (
           <Text variant="caption" color={theme.colors.muted}>
             1 {from.symbol} = {quote.rate.toFixed(4)} {to.symbol} · at least {minOut.toFixed(4)} after {SLIPPAGE_BPS / 100}% slippage
           </Text>
         )}
-        {!quote && !quoting && value > 0 && (
+        {paying && payQuote && !quoting && (
+          <Text variant="caption" color={theme.colors.muted}>
+            Exactly {value} {to.symbol} arrives · costs at most{' '}
+            {(payQuote.cost * (1 + SLIPPAGE_BPS / 10_000)).toFixed(4)} {from.symbol}
+          </Text>
+        )}
+        {!hasQuote && !quoting && value > 0 && (
           <Text variant="caption" color={theme.colors.warning}>
             No pool for this pair on {chain.name}.
           </Text>
         )}
       </Card>
 
+      {/* Optional: leave empty to swap into your own wallet. Filling it turns
+          this into a payment, and the amount above becomes what the RECIPIENT
+          gets rather than what you spend. */}
+      <Card style={{ marginTop: 12 }}>
+        <Field
+          label="Send to (optional)"
+          value={recipient}
+          onChangeText={setRecipient}
+          placeholder="0x… recipient"
+          error={recipient.length > 0 && !paying ? 'Not a valid address.' : undefined}
+        />
+      </Card>
+
       {result?.ok && (
         <Card style={{ marginTop: 12 }}>
-          <Text variant="subheadBold" color={theme.colors.success}>Swapped</Text>
+          <Text variant="subheadBold" color={theme.colors.success}>{paying ? 'Paid' : 'Swapped'}</Text>
           <Text variant="caption" color={theme.colors.muted}>
             confirmed in {(result.ms / 1000).toFixed(1)}s
           </Text>
@@ -261,7 +348,7 @@ export default function Swap() {
       )}
       {fault && (
         <Card style={{ marginTop: 12 }}>
-          <Text variant="subheadBold" color={theme.colors.danger}>Could not swap</Text>
+          <Text variant="subheadBold" color={theme.colors.danger}>{paying ? 'Could not pay' : 'Could not swap'}</Text>
           <Text variant="caption" color={theme.colors.muted}>{fault}</Text>
         </Card>
       )}
@@ -272,7 +359,7 @@ export default function Swap() {
           ? 'Moving funds onto ' + chain.name + '…'
           : `Swapped on ${chain.name} via Uniswap. Gas is paid in ${chain.nativeSymbol}.`}
       </Text>
-      <Button title="Swap" onPress={submit} disabled={!ready} loading={busy} shape="pill" />
+      <Button title={paying ? 'Pay' : 'Swap'} onPress={submit} disabled={!ready} loading={busy} shape="pill" />
     </SafeAreaView>
   );
 }
