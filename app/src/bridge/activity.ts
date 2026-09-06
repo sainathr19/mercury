@@ -3,6 +3,7 @@ import { getActiveEnvironment } from './activeEnv';
 import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { BLOCKSCOUT_BASES, mapEvmActivity, type RawEvmTx, type RawEvmTokenTx } from '../lib/evm-activity';
 import { graphActivity, graphCoversChain } from './graph';
+import { chainsForEnvironment } from '../lib/chains';
 
 export type TxType = 'sent' | 'received' | 'swapped';
 export type TxStatus = 'pending' | 'confirmed' | 'failed';
@@ -252,9 +253,27 @@ export interface ActivityPrices {
 }
 
 /**
+ * The EVM chains a history scan covers: the active one, plus every chain in this
+ * environment that we index ourselves.
+ *
+ * Those extra chains are not a convenience. The unified balance can hold money
+ * on Arc, but Arc is not selectable as the active network, so scanning only the
+ * active chain makes that history unreachable from the UI — the feed reads
+ * "no recent activity" over a wallet that has been spending all day. They cost
+ * one Graph query each, not an RPC scan.
+ */
+function evmChainsToScan(activeChainId: bigint): bigint[] {
+  const extra = chainsForEnvironment(getActiveEnvironment())
+    .filter((c) => c.subgraphEnv && c.chainId !== activeChainId)
+    .map((c) => c.chainId);
+  return [activeChainId, ...extra];
+}
+
+/**
  * One-shot historical scan across chains. Runs BTC + SOL + EVM scans in parallel
  * and concatenates them (the store dedupes + sorts). EVM history goes beyond iOS
- * (which only scans BTC + SOL) by reading the active chain via Blockscout.
+ * (which only scans BTC + SOL) by reading the active chain via Blockscout, plus
+ * our own indexed chains via The Graph.
  * Never throws — each loader swallows its own errors and returns [].
  */
 export async function loadActivity(
@@ -266,7 +285,11 @@ export async function loadActivity(
   const [btc, sol, evm] = await Promise.all([
     loadBtcActivity(addresses.btc, prices.bitcoin),
     loadSolActivity(addresses.sol, prices.solana),
-    loadEvmActivity(addresses.eth, chainId, prices.ethereum, priceOf),
+    Promise.all(
+      evmChainsToScan(chainId).map((id) =>
+        loadEvmActivity(addresses.eth, id, prices.ethereum, priceOf),
+      ),
+    ).then((r) => r.flat()),
   ]);
   return [...btc, ...sol, ...evm];
 }

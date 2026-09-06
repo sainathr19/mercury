@@ -174,7 +174,7 @@ interface ArcTransfer {
  * subgraph normalises the native emitter's 18dp before storing, so there is no
  * scaling to redo here.
  */
-export async function arcTransfers(address: string, first = 40): Promise<ActivityItem[]> {
+export async function arcTransfers(address: string, chainId: bigint, first = 40): Promise<ActivityItem[]> {
   if (!ARC_SUBGRAPH || !address) return [];
   try {
     const res = await fetch(ARC_SUBGRAPH, {
@@ -202,8 +202,8 @@ export async function arcTransfers(address: string, first = 40): Promise<Activit
         usdText: `${sign}$${amount.toFixed(2)}`,
         timestamp: Number(t.timestamp),
         status: 'confirmed' as const,
-        explorerUrl: `https://testnet.arcscan.app/tx/${t.txHash}`,
-        network: chainName(5042002n),
+        explorerUrl: evmExplorerTxUrl(chainId, t.txHash),
+        network: chainName(chainId),
       };
     });
   } catch {
@@ -217,6 +217,6 @@ export async function graphActivity(
   chainId: bigint,
   priceOf: (coingeckoId: string) => number,
 ): Promise<ActivityItem[]> {
-  if (isArcChainId(chainId)) return arcTransfers(address);
+  if (isArcChainId(chainId)) return arcTransfers(address, chainId);
   return tokenTransfers(address, chainId, priceOf);
 }

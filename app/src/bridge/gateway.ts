@@ -182,6 +182,11 @@ export interface SendResult {
 /**
  * Move USDC out of the unified balance onto `toChainId`, settling instantly.
  *
+ * There is no source network to choose. A burn intent names a source domain and
+ * Circle requires THAT domain to hold the money, so the source is derived from
+ * where the balance actually sits — largest first, split across several domains
+ * only when no single one covers the amount.
+ *
  * `maxFee` cannot be known before asking: Circle quotes a minimum and rejects
  * anything under it ("expected at least 0.0035, got 0.001"). Rather than guess,
  * we send once with a low fee to LEARN the quote, then sign again at that price.
@@ -191,68 +196,126 @@ export async function gatewayTransfer(opts: {
   wallet: WalletInterface;
   account: number;
   address: string;
-  fromChainId: bigint;
   toChainId: bigint;
   /** Human USDC units. */
   amount: number;
   recipient?: string;
   env: ChainEnvironment;
+  /**
+   * Per-domain spendable balances. Fetched if omitted, but the caller usually
+   * already has them on screen — passing them saves a round trip on the path
+   * the user is watching.
+   */
+  sources?: DomainBalance[];
 }): Promise<TransferResult> {
   const t0 = Date.now();
-  const { wallet, account, address, fromChainId, toChainId, amount, env } = opts;
-  const sourceDomain = chainCircleDomain(fromChainId);
+  const { wallet, account, address, toChainId, amount, env } = opts;
   const destinationDomain = chainCircleDomain(toChainId);
-  const sourceToken = chainUsdc(fromChainId);
   const destinationToken = chainUsdc(toChainId);
-  if (sourceDomain === undefined || destinationDomain === undefined || !sourceToken || !destinationToken) {
-    return { ok: false, error: 'Circle does not support one of these chains', ms: Date.now() - t0 };
+  if (destinationDomain === undefined || !destinationToken) {
+    return { ok: false, error: 'Circle does not support that destination', ms: Date.now() - t0 };
   }
 
-  const info = await infoFor(sourceDomain, env);
-  if (!info) return { ok: false, error: 'Gateway is unavailable', ms: Date.now() - t0 };
-  const maxBlockHeight = BigInt(info.burnIntentExpirationHeight) + HEIGHT_BUFFER;
-  const recipient = opts.recipient || address;
-  const value = BigInt(Math.round(amount * 1e6)); // USDC is 6dp
+  const byDomain = new Map<number, { chainId: bigint; usdc: `0x${string}` }>();
+  for (const c of circleChainsForEnvironment(env)) {
+    if (c.circleDomain !== undefined && c.usdc) byDomain.set(c.circleDomain, { chainId: c.chainId, usdc: c.usdc });
+  }
 
-  const spec = {
-    version: 1,
-    sourceDomain,
-    destinationDomain,
-    sourceContract: b32(GATEWAY_WALLET),
-    destinationContract: b32(GATEWAY_MINTER),
-    sourceToken: b32(sourceToken),
-    destinationToken: b32(destinationToken),
-    sourceDepositor: b32(address),
-    destinationRecipient: b32(recipient),
-    sourceSigner: b32(address),
-    destinationCaller: ZERO,
-    value: value.toString(),
-    salt: `0x${Date.now().toString(16).padStart(64, '0')}`,
-    hookData: '0x',
+  const balances = opts.sources ?? (await unifiedBalance(address, env)).perDomain;
+  const funded = balances
+    .filter((b) => b.balance > 0 && byDomain.has(b.domain))
+    .sort((a, b) => b.balance - a.balance);
+  if (!funded.length) return { ok: false, error: 'No spendable balance', ms: Date.now() - t0 };
+
+  const value = BigInt(Math.round(amount * 1e6)); // USDC is 6dp
+  const recipient = opts.recipient || address;
+
+  /**
+   * Which domains to burn from. Gateway charges its fee PER intent and requires
+   * each source to cover its own leg plus that fee, so the fee is reserved on
+   * every leg rather than only on the total. Largest balance first, so the
+   * common case is one leg and one signature.
+   */
+  const allocate = (fee: bigint): { domain: number; value: bigint }[] | null => {
+    const legs: { domain: number; value: bigint }[] = [];
+    let left = value;
+    for (const b of funded) {
+      if (left <= 0n) break;
+      const spendable = BigInt(Math.round(b.balance * 1e6)) - fee;
+      if (spendable <= 0n) continue;
+      const take = spendable >= left ? left : spendable;
+      legs.push({ domain: b.domain, value: take });
+      left -= take;
+    }
+    return left === 0n ? legs : null;
   };
 
-  const submit = async (maxFee: bigint) => {
-    const message = { maxBlockHeight: maxBlockHeight.toString(), maxFee: maxFee.toString(), spec };
-    const signature = await wallet.evmSignTypedData(
-      account,
-      JSON.stringify({ domain: EIP712_DOMAIN, types: EIP712_TYPES, primaryType: 'BurnIntent', message }),
-    );
+  const heights = new Map<number, bigint>();
+  const heightFor = async (domain: number): Promise<bigint | undefined> => {
+    const cached = heights.get(domain);
+    if (cached !== undefined) return cached;
+    const info = await infoFor(domain, env);
+    if (!info) return undefined;
+    const h = BigInt(info.burnIntentExpirationHeight) + HEIGHT_BUFFER;
+    heights.set(domain, h);
+    return h;
+  };
+
+  const submit = async (legs: { domain: number; value: bigint }[], maxFee: bigint) => {
+    const intents: { burnIntent: unknown; signature: string }[] = [];
+    for (const leg of legs) {
+      const src = byDomain.get(leg.domain)!;
+      const maxBlockHeight = await heightFor(leg.domain);
+      if (maxBlockHeight === undefined) throw new Error('Gateway is unavailable');
+      const message = {
+        maxBlockHeight: maxBlockHeight.toString(),
+        maxFee: maxFee.toString(),
+        spec: {
+          version: 1,
+          sourceDomain: leg.domain,
+          destinationDomain,
+          sourceContract: b32(GATEWAY_WALLET),
+          destinationContract: b32(GATEWAY_MINTER),
+          sourceToken: b32(src.usdc),
+          destinationToken: b32(destinationToken),
+          sourceDepositor: b32(address),
+          destinationRecipient: b32(recipient),
+          sourceSigner: b32(address),
+          destinationCaller: ZERO,
+          value: leg.value.toString(),
+          salt: `0x${(Date.now() + leg.domain).toString(16).padStart(64, '0')}`,
+          hookData: '0x',
+        },
+      };
+      const signature = await wallet.evmSignTypedData(
+        account,
+        JSON.stringify({ domain: EIP712_DOMAIN, types: EIP712_TYPES, primaryType: 'BurnIntent', message }),
+      );
+      intents.push({ burnIntent: message, signature });
+    }
     const res = await fetch(`${gatewayApi(env)}/v1/transfer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify([{ burnIntent: message, signature }]),
+      body: JSON.stringify(intents),
     });
     return { res, body: await res.text() };
   };
 
   try {
     // Probe with a deliberately low fee; the rejection carries the real quote.
-    let { res, body } = await submit(1n);
+    let legs = allocate(1n);
+    if (!legs) return { ok: false, error: 'Not enough spendable balance', ms: Date.now() - t0 };
+    let { res, body } = await submit(legs, 1n);
     if (!res.ok) {
       const quoted = /expected at least ([0-9.]+)/.exec(body)?.[1];
       if (quoted) {
         const fee = BigInt(Math.ceil(Number(quoted) * 1e6));
-        ({ res, body } = await submit(fee));
+        const priced = allocate(fee);
+        if (!priced) {
+          return { ok: false, error: `Not enough to cover the ${quoted} USDC fee`, ms: Date.now() - t0 };
+        }
+        legs = priced;
+        ({ res, body } = await submit(legs, fee));
       }
     }
     if (!res.ok) {
@@ -275,7 +338,10 @@ export async function gatewayTransfer(opts: {
 
 // ── Relay + send ─────────────────────────────────────────────────────────────
 
-const HUB_URL = process.env.EXPO_PUBLIC_HUB_URL ?? '';
+// The relayer is its OWN service, not the identity/registry hub — they have
+// different lifetimes, different keys and different failure modes, so they get
+// different URLs rather than sharing one.
+const RELAYER_URL = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
 
 /**
  * Ask the hub to submit an attestation on the destination chain.
@@ -291,9 +357,9 @@ export async function relayMint(
   destinationDomain: number,
 ): Promise<RelayResult> {
   const t0 = Date.now();
-  if (!HUB_URL) return { ok: false, error: 'Relayer is not configured', ms: 0 };
+  if (!RELAYER_URL) return { ok: false, error: 'Relayer is not configured', ms: 0 };
   try {
-    const res = await fetch(`${HUB_URL}/gateway/relay`, {
+    const res = await fetch(`${RELAYER_URL}/gateway/relay`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ attestation, signature, destinationDomain }),

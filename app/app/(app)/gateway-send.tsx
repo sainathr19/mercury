@@ -24,7 +24,7 @@ export default function GatewaySend() {
   const show = useToast((s) => s.show);
   const addresses = useSession((s) => s.addresses);
   const wallet = useSession((s) => s.wallet);
-  const { total, refresh } = useGateway();
+  const { total, perDomain, refresh } = useGateway();
 
   const env = getActiveEnvironment();
   const destinations = circleChainsForEnvironment(env);
@@ -34,26 +34,34 @@ export default function GatewaySend() {
   const [dest, setDest] = useState<ChainDef | null>(destinations[0] ?? null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
+  const [fault, setFault] = useState<string | null>(null);
 
   const value = Number(amount);
   const valid = Number.isFinite(value) && value > 0 && value <= total;
   const ready = valid && !!dest && !!wallet && /^0x[0-9a-fA-F]{40}$/.test(to.trim());
 
   async function submit() {
-    if (!ready || !dest || !wallet || !addresses) return;
-    setBusy(true); setResult(null);
+    // `ready` gates the button, but it does not cover `addresses` — bail loudly
+    // rather than silently, because a Send tap that does nothing is worse than
+    // one that reports why.
+    if (!dest || !wallet || !addresses) {
+      setFault('Wallet not ready yet — reopen this screen.');
+      return;
+    }
+    if (!ready) return;
+    setBusy(true); setResult(null); setFault(null);
     try {
       const r = await gatewaySend({
         wallet,
         account: 0,
         address: addresses.eth,
-        // Source is irrelevant to the user — the balance is unified. Any Circle
-        // chain works as the burn source; the destination is what they chose.
-        fromChainId: dest.chainId,
         toChainId: dest.chainId,
         amount: value,
         recipient: to.trim(),
         env,
+        // The user picks a destination, never a source. Hand over the balances
+        // already on screen so the burn is drawn from domains that hold money.
+        sources: perDomain,
       });
       setResult(r);
       if (r.ok) {
@@ -62,8 +70,13 @@ export default function GatewaySend() {
       } else if (r.unclaimed) {
         show('Sent, but delivery is pending — funds are safe.', 'info');
       } else {
+        setFault(r.error ?? 'Send failed');
         show(r.error ?? 'Send failed', 'error');
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFault(msg);
+      show(msg, 'error');
     } finally {
       setBusy(false);
     }
@@ -140,6 +153,13 @@ export default function GatewaySend() {
             The transfer was signed and the funds left your balance. They are held
             in a valid claim and will arrive once delivery retries.
           </Text>
+        </Card>
+      )}
+
+      {fault && (
+        <Card style={{ marginTop: 12 }}>
+          <Text variant="subheadBold" color={theme.colors.danger}>Could not send</Text>
+          <Text variant="caption" color={theme.colors.muted}>{fault}</Text>
         </Card>
       )}
 

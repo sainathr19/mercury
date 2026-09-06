@@ -12,6 +12,7 @@ import {
   type RegistryAsset,
 } from "../lib/registry";
 import { colorForSymbol } from "../lib/asset-color";
+import { chainById } from "../lib/chains";
 import { evmChainHasNativeAsset } from "../lib/tempo";
 import { formatUnits } from "../lib/format";
 import { fetchSolBalance, fetchSolTokenBalances } from "./solTokens";
@@ -258,9 +259,14 @@ export function loadPortfolioChains(
         // The chain's gas coin (paid on every send on this chain) + display name.
         // The network name is the NETWORK's name ("Sepolia"), not the native coin's
         // name ("Ethereum") — `reg` above is the native coin, so look it up separately.
+        // The chain registry knows its own native coin (Arc's IS USDC), so it is
+        // consulted before the symbol switch below — that switch only covers the
+        // handful of gas coins it was written for and returns "" for anything
+        // else, which prices the asset at $0 and drops its icon.
+        const def = chainById(chainId);
         const gasSymbol = reg?.symbol ?? chain.nativeSymbol;
         const gasCoingeckoId =
-          reg?.coingeckoId ?? nativeCoingecko(chain.nativeSymbol);
+          reg?.coingeckoId ?? def?.nativeCoingeckoId ?? nativeCoingecko(chain.nativeSymbol);
         const networkName =
           networkByKey(registry, chainId.toString())?.name ?? chain.name;
 
@@ -293,13 +299,13 @@ export function loadPortfolioChains(
         if (hasNative && nativeOk && (nativeAmount > 0 || chainId === activeEvm)) {
           assets.push({
             id: evmNativeId(chainId),
-            name: reg?.name ?? chain.name,
+            name: reg?.name ?? def?.nativeName ?? chain.name,
             symbol: gasSymbol,
             amount: nativeAmount,
             decimals: nativeDecimals,
             coingeckoId: gasCoingeckoId,
             chain: "ethereum",
-            colorHex: colorForSymbol(gasSymbol),
+            colorHex: def?.nativeColorHex ?? colorForSymbol(gasSymbol),
             imageUrl: reg?.imageUrl ?? "",
             evmChainId: chainId,
             networkName,

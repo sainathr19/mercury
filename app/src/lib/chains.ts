@@ -25,6 +25,10 @@ export interface ChainDef {
   nativeDecimals: number;
   /** Coingecko id + colour for the native coin, when it has a tracked price. */
   nativeCoingeckoId?: string;
+  /** Display name of the native coin, when it differs from the chain's own name
+   *  (Arc's native coin IS USDC, so its asset row should read "USD Coin", not
+   *  "Arc Testnet"). */
+  nativeName?: string;
   nativeColorHex?: string;
   /** False when the chain has no native gas coin worth showing (Tempo). */
   hasNativeAsset: boolean;
@@ -131,6 +135,7 @@ export const CHAINS: ChainDef[] = [
   { chainId: 5042002n, name: 'Arc Testnet', environment: 'testnet',
     rpcUrl: 'https://rpc.testnet.arc.io', explorerUrl: 'https://testnet.arcscan.app',
     nativeSymbol: 'USDC', nativeDecimals: 18, nativeCoingeckoId: 'usd-coin',
+    nativeName: 'USD Coin',
     nativeColorHex: '#2980D9', hasNativeAsset: true, subgraphEnv: 'arc',
     circleDomain: 26, usdc: '0x3600000000000000000000000000000000000000' },
 

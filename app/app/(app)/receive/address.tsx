@@ -16,6 +16,8 @@ import { useNetworks } from '../../../src/stores/networkStore';
 import { shortenAddress } from '../../../src/lib/format';
 import { receiveNetwork, type ReceiveNetwork } from '../../../src/lib/receiveNetworks';
 import { BTC_NETWORKS, SOL_NETWORKS, EVM_NETWORKS, type NetworkChoices } from '../../../src/bridge/networks';
+import { getActiveEnvironment } from '../../../src/bridge/activeEnv';
+import { chainName } from '../../../src/lib/chains';
 import { localTokenIcon } from '../../../src/components/icon-assets';
 import { fontFamily } from '../../../src/theme/fonts';
 import { posthog } from '../../../src/lib/posthog';
@@ -164,6 +166,14 @@ export default function ReceiveAddress() {
 
 /** Human name for the active testnet of an on-chain receive network, e.g.
  *  "Bitcoin Testnet4" / "Ethereum Sepolia" / "Solana Devnet". */
+/**
+ * The network to name in the deposit warning.
+ *
+ * For EVM brands the registry is the authority where it knows the chain, because
+ * the fallback appends ETHEREUM's network label to every brand — which reads
+ * "Arc Sepolia" for a chain that is actually Arc Testnet. Naming a network that
+ * does not exist on a deposit warning is how people lose money.
+ */
 function testnetLabel(network: ReceiveNetwork, choices: NetworkChoices): string {
   if (network.kind !== 'address') return network.name;
   switch (network.addrKey) {
@@ -171,8 +181,11 @@ function testnetLabel(network: ReceiveNetwork, choices: NetworkChoices): string 
       return `Bitcoin ${BTC_NETWORKS[choices.btc].label}`;
     case 'sol':
       return `Solana ${SOL_NETWORKS[choices.sol].label}`;
-    case 'eth':
+    case 'eth': {
+      const id = network.chainIds?.[getActiveEnvironment()];
+      if (id !== undefined) return chainName(id);
       return `${network.name} ${EVM_NETWORKS[choices.evm].label}`;
+    }
   }
 }
 
