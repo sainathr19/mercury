@@ -36,7 +36,7 @@ export function SettingsScreen() {
     try {
       const useApple = Platform.OS === 'ios';
       if (!useApple && !isGoogleConfigured()) {
-        show('Google sign-in isn\u2019t set up yet.', 'info');
+        show('Google sign-in isn’t set up yet.', 'info');
         return;
       }
       const tok = useApple ? await signInWithApple() : await signInWithGoogle();
@@ -71,7 +71,7 @@ export function SettingsScreen() {
         ) : (
           <Row
             title={Platform.OS === 'ios' ? 'Connect Apple Account' : 'Connect Google Account'}
-            subtitle="Optional \u2014 enables your username and encrypted backup"
+            subtitle="Optional — enables your username and encrypted backup"
             onPress={connectAccount}
             busy={connecting}
           />
