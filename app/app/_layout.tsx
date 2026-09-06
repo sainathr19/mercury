@@ -20,6 +20,8 @@ import { useStealth } from '../src/stores/stealthStore';
 import { useWallets } from '../src/stores/walletsStore';
 import { useRegistry } from '../src/stores/registryStore';
 import { useTokenPrefs } from '../src/stores/tokenPrefsStore';
+import { paymentUriFromLink } from '../src/lib/paymentRequest';
+import { useScan } from '../src/stores/scanStore';
 import { useWalletConnect } from '../src/stores/walletConnectStore';
 import { useDappApproval } from '../src/stores/dappApprovalStore';
 import { LockScreen } from '../src/components/LockScreen';
@@ -205,8 +207,24 @@ export default function RootLayout() {
   useEffect(() => {
     if (status !== 'ready') return;
     useWalletConnect.getState().init();
+    // `mercury://` links are the /pay route's job. Handling them here TOO makes
+    // both fire, and whichever navigates first consumes the payment — the second
+    // then lands on an empty amount step. Only a bare payment URI from another
+    // app (no route to match) is handled here.
+    const openPayment = (url: string) => {
+      if (url.startsWith('mercury://')) return;
+      const uri = paymentUriFromLink(url);
+      if (!uri) return;
+      // Same channel the camera scanner feeds, so the send flow resolves the
+      // token, pins the chain and pre-fills the amount by the tested path.
+      useScan.getState().setResult(uri);
+      // `step: 'pick'` skips the Shield/Send chooser and lands on the step that
+      // auto-resolves a scanned payment.
+      router.push({ pathname: '/(app)/send', params: { step: 'pick' } });
+    };
     const sub = Linking.addEventListener('url', ({ url }) => {
-      if (url.startsWith('wc:')) useWalletConnect.getState().pair(url).catch(() => {});
+      if (url.startsWith('wc:')) { useWalletConnect.getState().pair(url).catch(() => {}); return; }
+      openPayment(url);
     });
     return () => sub.remove();
   }, [status]);
@@ -236,7 +254,11 @@ export default function RootLayout() {
       const inSetup =
         segments[0] === '(auth)' &&
         (segments[1] === 'restore' || segments[1] === 'enable-faceid' || segments[1] === 'backup-prompt');
-      if (!mnemonic && !inApp && !inSetup) router.replace('/(app)/home');
+      // `/pay` is a deep-link landing route that immediately forwards into
+      // (app). Without this it is neither inApp nor inSetup, so the guard sent
+      // every payment link straight to home and the payment was lost.
+      const inPay = segments[0] === 'pay';
+      if (!mnemonic && !inApp && !inSetup && !inPay) router.replace('/(app)/home');
     }
   }, [status, authStatus, mnemonic, segments, router]);
 

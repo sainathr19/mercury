@@ -71,6 +71,20 @@ export default function AddFunds() {
             <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
           </PressableScale>
 
+          {/* Ask for a specific amount. The wallet could only push money before
+              this; a payments product with no way to request it is half a
+              product. */}
+          <PressableScale style={styles.row} onPress={() => { tap(); router.push('/(app)/request'); }}>
+            <View style={styles.iconWrap}>
+              <Icon name="receive" size={20} color={theme.colors.text} />
+            </View>
+            <View style={styles.mid}>
+              <Text style={styles.rowTitle}>Request</Text>
+              <Text style={styles.rowSub}>Ask for an amount in USDC or EURC</Text>
+            </View>
+            <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
+          </PressableScale>
+
           <PressableScale style={styles.row} onPress={chooseCrypto}>
             <View style={styles.iconWrap}>
               <Icon name="wallet" size={20} color={theme.colors.text} />
