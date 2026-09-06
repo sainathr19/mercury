@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Image, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { Button, Text } from '../../src/ui';
+import { OnboardingProgress } from '../../src/components/OnboardingProgress';
 import { useSession } from '../../src/stores/session';
-import { Screen, Button } from '../../src/ui/kit';
-import { c, t, sp } from '../../src/ui/theme';
 
 export default function Lock() {
   const router = useRouter();
+  const theme = UnistylesRuntime.getTheme();
   const enableLock = useSession((s) => s.enableLock);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,33 +31,33 @@ export default function Lock() {
         if (!res.success) { setError('Not confirmed. Try again.'); return; }
       }
       await enableLock();
-      router.replace('/(app)/home' as never);
+      router.replace('/(app)/home');
     } finally { setBusy(false); }
   }
 
   return (
-    <Screen>
-      <View style={s.hero}>
-        <View style={s.icon}><Ionicons name="finger-print" size={34} color={c.accent} /></View>
-        <Text style={t.h1}>Lock your wallet</Text>
-        <Text style={[t.sub, { marginTop: sp(1) }]}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.progress}><OnboardingProgress step={3} total={3} /></View>
+      <View style={styles.body}>
+        <Image source={require('../../assets/FaceIdBanner.png')} style={styles.banner} resizeMode="contain" />
+        <Text variant="titleMedium">Lock your wallet</Text>
+        <Text variant="subhead" color={theme.colors.muted} style={styles.sub}>
           Your recovery phrase is stored on this device only. A lock keeps it that
           way if someone else picks up your phone.
         </Text>
-        {error && <Text style={s.err}>{error}</Text>}
+        {error ? <Text variant="subhead" color={theme.colors.danger}>{error}</Text> : null}
+        <View style={{ flex: 1 }} />
+        <Button title="Enable" onPress={() => proceed(false)} loading={busy} shape="pill" />
+        <Button title="Not now" variant="ghost" onPress={() => proceed(true)} shape="pill" />
       </View>
-      <Button title="Enable" onPress={() => proceed(false)} loading={busy} />
-      <Button title="Not now" kind="ghost" onPress={() => proceed(true)} />
-      <View style={{ height: sp(3) }} />
-    </Screen>
+    </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
-  hero: { flex: 1, justifyContent: 'center' },
-  icon: {
-    width: 68, height: 68, borderRadius: 22, backgroundColor: c.accentDim,
-    alignItems: 'center', justifyContent: 'center', marginBottom: sp(3),
-  },
-  err: { color: c.bad, fontSize: 14, marginTop: sp(2) },
-});
+const styles = StyleSheet.create((theme) => ({
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground },
+  progress: { paddingHorizontal: theme.spacing.screen, paddingVertical: theme.spacing.md },
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.lg },
+  banner: { width: '100%', height: 180, marginBottom: theme.spacing.lg },
+  sub: { marginTop: 6 },
+}));

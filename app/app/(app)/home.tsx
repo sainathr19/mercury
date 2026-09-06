@@ -1,97 +1,131 @@
 import { useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable, Linking, StyleSheet } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { Card, CurrencyText, Icon, PressableScale, Text } from '../../src/ui';
+import { ActivityRow } from '../../src/components/ActivityRow';
 import { useSession } from '../../src/stores/session';
 import { useWallet } from '../../src/stores/wallet';
+import { toActivityItem } from '../../src/lib/activity-adapter';
 import { formatMinor } from '@shared/chains';
-import { Screen, Card, Row, Empty, Button } from '../../src/ui/kit';
-import { c, t, sp, r } from '../../src/ui/theme';
-import { ActivityRow } from '../../src/ui/ActivityRow';
 
 export default function Home() {
   const router = useRouter();
+  const theme = UnistylesRuntime.getTheme();
   const { address, hasName } = useSession();
-  const { balanceMinor, activity, loading, error, refresh } = useWallet();
+  const { balanceMinor, activity, loading, refresh } = useWallet();
 
   useEffect(() => { void refresh(); }, [refresh]);
   const onRefresh = useCallback(() => { void refresh(); }, [refresh]);
 
+  const balance = Number(balanceMinor) / 1e6;
+  const recent = activity.slice(0, 5).map(toActivityItem);
   const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '—';
-  const recent = activity.slice(0, 4);
 
   return (
-    <Screen>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={c.fg3} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={theme.colors.muted} />}
       >
-        {!hasName && (
-          <Pressable style={s.banner}>
-            <Ionicons name="at" size={18} color={c.accent} />
-            <Text style={s.bannerText}>
-              Claim your name so people can pay you without an address.
-            </Text>
-          </Pressable>
-        )}
-
-        <View style={s.balanceBlock}>
-          <Text style={t.cap}>Balance</Text>
-          <Row style={{ alignItems: 'flex-end' }}>
-            <Text style={t.display}>${formatMinor(balanceMinor)}</Text>
-            <Text style={[t.h2, { color: c.fg3, marginBottom: 10, marginLeft: 8 }]}>USDC</Text>
-          </Row>
-          <Text style={t.mono}>{short}</Text>
+        <View style={styles.header}>
+          <Text variant="headline">Mercury</Text>
+          <PressableScale onPress={() => router.push('/(app)/settings')} haptic={false}>
+            <Icon name="settings" size={22} color={theme.colors.text} />
+          </PressableScale>
         </View>
 
-        {error && <Text style={[t.sub, { color: c.bad, marginBottom: sp(1) }]}>{error}</Text>}
-
-        <Row style={{ gap: sp(1.5), marginBottom: sp(3) }}>
-          <Button title="Send" onPress={() => router.push('/(app)/send' as never)} style={{ flex: 1 }} />
-          <Button title="Receive" kind="secondary" onPress={() => router.push('/(app)/receive' as never)} style={{ flex: 1 }} />
-        </Row>
-
-        {balanceMinor === 0n && activity.length === 0 ? (
-          <Card>
-            <Empty
-              title="No USDC yet"
-              body="On Arc, USDC is also the gas token — so the moment you receive some, you can spend it. No second asset to buy first."
-              action={
-                <Button
-                  title="Get testnet USDC"
-                  kind="secondary"
-                  onPress={() => Linking.openURL('https://faucet.circle.com')}
-                />
-              }
-            />
-          </Card>
-        ) : (
-          <>
-            <Row style={{ justifyContent: 'space-between', marginBottom: sp(1) }}>
-              <Text style={t.h2}>Recent</Text>
-              <Pressable onPress={() => router.push('/(app)/activity' as never)}>
-                <Text style={{ color: c.accent, fontSize: 15 }}>See all</Text>
-              </Pressable>
-            </Row>
-            <Card style={{ padding: 0 }}>
-              {recent.map((a, i) => (
-                <ActivityRow key={a.hash} item={a} last={i === recent.length - 1} />
-              ))}
-            </Card>
-          </>
+        {!hasName && (
+          <PressableScale style={styles.claim} haptic={false} onPress={() => {}}>
+            <Icon name="link" size={16} color={theme.colors.accent} />
+            <Text variant="subhead" color={theme.colors.text} style={{ flex: 1 }}>
+              Claim your name so people can pay you without an address.
+            </Text>
+          </PressableScale>
         )}
-        <View style={{ height: sp(4) }} />
+
+        <View style={styles.balance}>
+          <Text variant="subhead" color={theme.colors.muted}>Total balance</Text>
+          <CurrencyText amount={balance} size={48} fitWidth={320} />
+          <Text variant="mono" color={theme.colors.muted}>{short}</Text>
+        </View>
+
+        <View style={styles.actions}>
+          <PressableScale style={styles.action} onPress={() => router.push('/(app)/send')}>
+            <Icon name="send" size={20} color={theme.colors.primaryLabel} />
+            <Text variant="bodyBold" color={theme.colors.primaryLabel}>Send</Text>
+          </PressableScale>
+          <PressableScale style={[styles.action, styles.actionAlt]} onPress={() => router.push('/(app)/receive')}>
+            <Icon name="receive" size={20} color={theme.colors.text} />
+            <Text variant="bodyBold" color={theme.colors.text}>Receive</Text>
+          </PressableScale>
+        </View>
+
+        <Text variant="subheadBold" color={theme.colors.muted} style={styles.sectionLabel}>ASSETS</Text>
+        <Card>
+          <View style={styles.assetRow}>
+            <View style={[styles.assetDot, { backgroundColor: theme.colors.usdc }]}>
+              <Text variant="captionBold" color="#FFFFFF">$</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="headlineSmall">USDC</Text>
+              <Text variant="subhead" color={theme.colors.muted}>Arc · pays its own gas</Text>
+            </View>
+            <Text variant="headlineSmall">${formatMinor(balanceMinor)}</Text>
+          </View>
+        </Card>
+
+        <View style={styles.sectionHead}>
+          <Text variant="subheadBold" color={theme.colors.muted}>ACTIVITY</Text>
+          {activity.length > 0 && (
+            <PressableScale haptic={false} onPress={() => router.push('/(app)/activity')}>
+              <Text variant="subhead" color={theme.colors.accent}>See all</Text>
+            </PressableScale>
+          )}
+        </View>
+        <Card flush>
+          {recent.length === 0 ? (
+            <View style={styles.empty}>
+              <Text variant="bodyBold" color={theme.colors.muted}>No payments yet</Text>
+              <Text variant="subhead" color={theme.colors.faint} style={styles.emptyBody}>
+                Receive USDC and you can spend it straight away — no second token to buy first.
+              </Text>
+            </View>
+          ) : (
+            recent.map((item) => <ActivityRow key={item.id} item={item} />)
+          )}
+        </Card>
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </Screen>
+    </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
-  banner: {
+const styles = StyleSheet.create((theme) => ({
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground },
+  scroll: { paddingHorizontal: theme.spacing.screen },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md },
+  claim: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: c.accentDim, borderRadius: r.md,
-    padding: sp(1.75), marginTop: sp(1), marginBottom: sp(2),
+    backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md,
+    padding: theme.spacing.md, marginBottom: theme.spacing.md,
   },
-  bannerText: { color: c.fg, fontSize: 14, flex: 1, lineHeight: 19 },
-  balanceBlock: { paddingTop: sp(2), paddingBottom: sp(3), gap: 6 },
-});
+  balance: { paddingVertical: theme.spacing.lg, gap: 6 },
+  actions: { flexDirection: 'row', gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
+  action: {
+    flex: 1, height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary,
+  },
+  actionAlt: { backgroundColor: theme.colors.cardBackground },
+  sectionLabel: { marginBottom: theme.spacing.sm },
+  sectionHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: theme.spacing.lg, marginBottom: theme.spacing.sm,
+  },
+  assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  assetDot: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  empty: { padding: theme.spacing.lg, alignItems: 'center', gap: 6 },
+  emptyBody: { textAlign: 'center' },
+}));

@@ -1,50 +1,73 @@
 import { useState } from 'react';
-import { Text, View, Alert, Linking } from 'react-native';
+import { Alert, Linking, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { Button, Card, Icon, PressableScale, Text } from '../../src/ui';
 import { useSession } from '../../src/stores/session';
-import { Screen, Card, Button, Row } from '../../src/ui/kit';
-import { c, t, sp } from '../../src/ui/theme';
 
 export default function Settings() {
+  const router = useRouter();
+  const theme = UnistylesRuntime.getTheme();
   const { address, vault } = useSession();
   const [phrase, setPhrase] = useState<string | null>(null);
 
-  async function reveal() {
+  function reveal() {
     Alert.alert(
       'Show recovery phrase?',
       'Anyone who sees these 12 words can take your money. Make sure nobody is looking.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Show', style: 'destructive', onPress: async () => setPhrase(await vault!.loadPhrase()) },
+        { text: 'Show', style: 'destructive', onPress: async () => setPhrase((await vault?.loadPhrase()) ?? null) },
       ],
     );
   }
 
   return (
-    <Screen>
-      <Text style={[t.h1, { paddingVertical: sp(2) }]}>Settings</Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.header}>
+        <PressableScale haptic={false} onPress={() => router.back()}>
+          <Icon name="chevronLeft" size={22} color={theme.colors.text} />
+        </PressableScale>
+        <Text variant="titleLarge">Settings</Text>
+        <View style={{ width: 22 }} />
+      </View>
 
-      <Card>
-        <Text style={t.cap}>Arc address</Text>
-        <Text style={[t.mono, { marginTop: 6 }]} selectable>{address}</Text>
-      </Card>
+      <View style={styles.body}>
+        <Text variant="caption" color={theme.colors.muted}>ARC ADDRESS</Text>
+        <Card style={styles.card}>
+          <Text variant="mono" selectable>{address}</Text>
+        </Card>
 
-      <Card style={{ marginTop: sp(1.5) }}>
-        <Text style={t.cap}>Recovery phrase</Text>
-        {phrase
-          ? <Text style={[t.body, { marginTop: 8, lineHeight: 26 }]} selectable>{phrase}</Text>
-          : <Button title="Reveal" kind="secondary" onPress={reveal} style={{ marginTop: 8 }} />}
-      </Card>
+        <Text variant="caption" color={theme.colors.muted}>RECOVERY PHRASE</Text>
+        <Card style={styles.card}>
+          {phrase ? (
+            <Text variant="bodyMedium" selectable style={{ lineHeight: 26 }}>{phrase}</Text>
+          ) : (
+            <Button title="Reveal" variant="secondary" onPress={reveal} />
+          )}
+        </Card>
 
-      <Card style={{ marginTop: sp(1.5) }}>
-        <Text style={t.cap}>Network</Text>
-        <Text style={[t.body, { marginTop: 6 }]}>Arc Testnet · gas paid in USDC</Text>
-        <Button
-          title="Open explorer"
-          kind="ghost"
-          onPress={() => Linking.openURL(`https://testnet.arcscan.app/address/${address}`)}
-          style={{ marginTop: 4 }}
-        />
-      </Card>
-    </Screen>
+        <Text variant="caption" color={theme.colors.muted}>NETWORK</Text>
+        <Card style={styles.card}>
+          <Text variant="bodyMedium">Arc Testnet · gas paid in USDC</Text>
+          <Button
+            title="Open explorer"
+            variant="ghost"
+            onPress={() => Linking.openURL(`https://testnet.arcscan.app/address/${address}`)}
+          />
+        </Card>
+      </View>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.screen, paddingVertical: theme.spacing.md,
+  },
+  body: { paddingHorizontal: theme.spacing.screen, gap: theme.spacing.sm },
+  card: { marginBottom: theme.spacing.md, gap: theme.spacing.sm },
+}));

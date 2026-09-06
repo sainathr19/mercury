@@ -1,35 +1,60 @@
 import { useCallback, useEffect } from 'react';
-import { Text, ScrollView, RefreshControl, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { Card, Icon, PressableScale, Text } from '../../src/ui';
+import { ActivityRow } from '../../src/components/ActivityRow';
 import { useWallet } from '../../src/stores/wallet';
-import { Screen, Card, Empty } from '../../src/ui/kit';
-import { ActivityRow } from '../../src/ui/ActivityRow';
-import { c, t, sp } from '../../src/ui/theme';
+import { toActivityItem } from '../../src/lib/activity-adapter';
 
 export default function ActivityScreen() {
+  const router = useRouter();
+  const theme = UnistylesRuntime.getTheme();
   const { activity, loading, refresh } = useWallet();
+
   useEffect(() => { void refresh(); }, [refresh]);
   const onRefresh = useCallback(() => { void refresh(); }, [refresh]);
+  const items = activity.map(toActivityItem);
 
   return (
-    <Screen>
-      <Text style={[t.h1, { paddingVertical: sp(2) }]}>Activity</Text>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.header}>
+        <PressableScale haptic={false} onPress={() => router.back()}>
+          <Icon name="chevronLeft" size={22} color={theme.colors.text} />
+        </PressableScale>
+        <Text variant="titleLarge">Activity</Text>
+        <View style={{ width: 22 }} />
+      </View>
       <ScrollView
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={c.fg3} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={theme.colors.muted} />}
       >
-        {activity.length === 0 ? (
-          <Card>
-            <Empty title="Nothing yet" body="Payments you send and receive will show up here." />
-          </Card>
-        ) : (
-          <Card style={{ padding: 0 }}>
-            {activity.map((a, i) => (
-              <ActivityRow key={a.hash} item={a} last={i === activity.length - 1} />
-            ))}
-          </Card>
-        )}
-        <View style={{ height: sp(4) }} />
+        <Card flush>
+          {items.length === 0 ? (
+            <View style={styles.empty}>
+              <Text variant="bodyBold" color={theme.colors.muted}>Nothing yet</Text>
+              <Text variant="subhead" color={theme.colors.faint}>
+                Payments you send and receive show up here.
+              </Text>
+            </View>
+          ) : (
+            items.map((item) => <ActivityRow key={item.id} item={item} />)
+          )}
+        </Card>
+        <View style={{ height: 40 }} />
       </ScrollView>
-    </Screen>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.screen, paddingVertical: theme.spacing.md,
+  },
+  scroll: { paddingHorizontal: theme.spacing.screen },
+  empty: { padding: theme.spacing.xl, alignItems: 'center', gap: 6 },
+}));

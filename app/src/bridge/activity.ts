@@ -68,3 +68,31 @@ export async function fetchActivity(address: string, limit = 25): Promise<Activi
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, limit);
 }
+
+
+// The shape the copied ActivityRow renders. Re-exported from here because that
+// component imports it from this module.
+export type TxType = 'sent' | 'received' | 'swapped';
+export type TxStatus = 'confirmed' | 'pending' | 'failed';
+
+export interface ActivityItem {
+  id: string;
+  symbol: string;
+  coingeckoId: string;
+  colorHex: string;
+  type: TxType;
+  label: string;
+  amountText: string;
+  usdText: string;
+  secondaryAmountText?: string;
+  fromSymbol?: string;
+  fromCoingeckoId?: string;
+  fromColorHex?: string;
+  timestamp: number;
+  status: TxStatus;
+  explorerUrl: string;
+  network?: string;
+  /** Stealth-address receipt (v2). Rendered as a shield on the row. */
+  shielded?: boolean;
+  private?: boolean;
+}

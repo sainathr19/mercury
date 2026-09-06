@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { useSession } from '../src/stores/session';
-import { c } from '../src/ui/theme';
 
 const DESTINATION = {
   'welcome': '/(auth)/welcome',
@@ -15,11 +15,15 @@ export default function Gate() {
   const router = useRouter();
   const { ready, route } = useSession();
   useEffect(() => {
-    if (ready) router.replace(DESTINATION[route] as never);
+    if (ready) router.replace(DESTINATION[route]);
   }, [ready, route, router]);
-  return <View style={s.center}><ActivityIndicator color={c.accent} /></View>;
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator color={UnistylesRuntime.getTheme().colors.muted} />
+    </View>
+  );
 }
 
-const s = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg },
-});
+const styles = StyleSheet.create((theme) => ({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.appBackground },
+}));

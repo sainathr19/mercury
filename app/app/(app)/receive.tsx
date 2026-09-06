@@ -1,64 +1,63 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Linking, StyleSheet } from 'react-native';
+import { Linking, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import QRCode from 'react-native-qrcode-svg';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import { Button, Card, Icon, PressableScale, Text, useToast } from '../../src/ui';
+import { AddressQR } from '../../src/components/AddressQR';
 import { useSession } from '../../src/stores/session';
-import { Screen, Card, Button, Row } from '../../src/ui/kit';
-import { c, t, sp } from '../../src/ui/theme';
 
 export default function Receive() {
   const router = useRouter();
+  const theme = UnistylesRuntime.getTheme();
+  const show = useToast((s) => s.show);
   const { address } = useSession();
-  const [copied, setCopied] = useState(false);
 
   async function copy() {
     if (!address) return;
     await Clipboard.setStringAsync(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    show('Address copied', 'success');
   }
 
   return (
-    <Screen>
-      <Row style={{ justifyContent: 'space-between', paddingVertical: sp(2) }}>
-        <Text style={t.h1}>Receive</Text>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="close" size={26} color={c.fg2} />
-        </Pressable>
-      </Row>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <Text variant="titleLarge">Receive</Text>
+        <PressableScale haptic={false} onPress={() => router.back()}>
+          <Icon name="close" size={22} color={theme.colors.muted} />
+        </PressableScale>
+      </View>
 
-      <Card style={{ alignItems: 'center', paddingVertical: sp(3) }}>
-        <View style={s.qr}>
-          {address ? <QRCode value={address} size={196} backgroundColor="#fff" color="#000" /> : null}
-        </View>
-        <Text style={[t.cap, { marginTop: sp(2) }]}>Your Arc address</Text>
-        <Text style={[t.mono, { marginTop: 6, textAlign: 'center', paddingHorizontal: sp(2) }]} selectable>
-          {address}
-        </Text>
-        <Button
-          title={copied ? 'Copied' : 'Copy address'}
-          kind="secondary"
-          onPress={copy}
-          style={{ alignSelf: 'stretch', marginTop: sp(2) }}
-        />
+      <Card style={styles.qrCard}>
+        {address ? (
+          <AddressQR data={address} size={220} coingeckoId="usd-coin" bg={theme.colors.cardBackground} />
+        ) : null}
+        <Text variant="caption" color={theme.colors.muted} style={styles.label}>YOUR ARC ADDRESS</Text>
+        <Text variant="mono" style={styles.addr} selectable>{address}</Text>
       </Card>
 
-      <Text style={[t.sub, { marginTop: sp(2.5) }]}>
+      <Text variant="subhead" color={theme.colors.muted} style={styles.note}>
         Anything sent here is spendable straight away — on Arc, USDC pays its own gas.
       </Text>
 
+      <View style={{ flex: 1 }} />
+      <Button title="Copy address" onPress={copy} shape="pill" />
       <Button
         title="Get testnet USDC"
-        kind="ghost"
+        variant="ghost"
+        shape="pill"
         onPress={() => Linking.openURL('https://faucet.circle.com')}
-        style={{ marginTop: sp(1) }}
       />
-    </Screen>
+    </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
-  qr: { padding: sp(1.5), backgroundColor: '#fff', borderRadius: 14 },
-});
+const styles = StyleSheet.create((theme) => ({
+  safe: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md },
+  qrCard: { alignItems: 'center', paddingVertical: theme.spacing.lg, gap: theme.spacing.md },
+  label: { marginTop: theme.spacing.sm },
+  addr: { textAlign: 'center', paddingHorizontal: theme.spacing.md },
+  note: { marginTop: theme.spacing.md, textAlign: 'center' },
+}));
