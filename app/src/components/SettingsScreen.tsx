@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -7,6 +7,8 @@ import { Text, useToast } from '../ui';
 import { fontFamily } from '../theme/fonts';
 import { posthog } from '../lib/posthog';
 import { useAuth } from '../stores/authStore';
+import { isHardwareBacked } from '../bridge/keystore';
+import { getActiveAlias } from '../bridge/wallet';
 import { useMercuryName } from '../stores/mercuryNameStore';
 import { signInWithApple, signInWithGoogle, isGoogleConfigured } from '../bridge/providerSignIn';
 
@@ -26,6 +28,16 @@ export function SettingsScreen() {
 
   // The account is OPTIONAL: the wallet works fully without one. Connecting it
   // buys the username registry and encrypted backup, never custody.
+  // null while unknown — "Checking…" is honest, `false` would not be.
+  const [hardwareBacked, setHardwareBacked] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    isHardwareBacked(getActiveAlias()).then((v) => live && setHardwareBacked(v));
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const authStatus = useAuth((s) => s.status);
   const account = useAuth((s) => s.user);
   const signIn = useAuth((s) => s.signIn);
@@ -82,6 +94,21 @@ export function SettingsScreen() {
       <Section title="Security">
         <Row title="Backups" onPress={() => router.push('/(app)/cloud-backup')} />
         <Row title="Recovery phrase" onPress={() => router.push('/(app)/recovery')} />
+        {/* Key generation falls back to a software keychain key when the Secure
+            Enclave refuses, and the biometric prompt is identical either way.
+            Stated here so a downgraded device is visible to its owner and to
+            anyone helping them, rather than only to the code. */}
+        <Row
+          title="Key protection"
+          subtitle={
+            hardwareBacked === null
+              ? 'Checking…'
+              : hardwareBacked
+                ? 'Secure Enclave — the key cannot leave this device'
+                : 'Software keychain — this device has no Secure Enclave'
+          }
+          onPress={() => {}}
+        />
       </Section>
 
       <Section title="General">
