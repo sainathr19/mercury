@@ -1,5 +1,5 @@
 /** Networks shown in the Receive → "Choose Network" list. Either an on-chain
- *  address (BTC / EVM / SOL), or the Standard "username" network (receive by
+ *  address (BTC / EVM / SOL), or the "username" network (receive by
  *  @username across chains). Shared by the receive chooser and the detail screen. */
 export type ReceiveNetwork =
   | {

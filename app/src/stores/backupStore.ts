@@ -57,7 +57,7 @@ let manifestVersion = 1;
 /** Build the non-secret descriptor for the wallet to back up (v1 backs up a
  *  single wallet). We back up the ACTIVE wallet, not a hardcoded `primary`: the
  *  primary wallet may have been deleted (leaving an imported wallet under a
- *  generated alias as the only one), in which case `standard-wallet.db.seed`
+ *  generated alias as the only one), in which case the primary wallet’s seed sidecar
  *  no longer exists. `dbPath` must point at the active wallet's real DB so the
  *  Rust core reads the seed sidecar that actually exists. The manifest still
  *  labels it `primary`/`isPrimary` because restore re-homes it as the device's

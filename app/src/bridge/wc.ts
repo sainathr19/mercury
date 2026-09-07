@@ -11,9 +11,9 @@ const PROJECT_ID = 'e4a554893ca957238233d31750f28144';
 const METADATA = {
   name: 'Mercury',
   description: 'Multi-chain self-custody wallet',
-  url: 'https://standardwallet.xyz',
-  icons: ['https://standardwallet.xyz/icon.png'],
-  redirect: { native: 'standard://wc', universal: '' },
+  url: 'https://mercurywallet.xyz',
+  icons: ['https://mercurywallet.xyz/icon.png'],
+  redirect: { native: 'mercury://wc', universal: '' },
 };
 
 const METHODS = [

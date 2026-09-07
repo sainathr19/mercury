@@ -279,7 +279,7 @@ const BrowserTab = forwardRef<TabHandle, { initialUrl: string; active: boolean; 
       webRef.current?.injectJavaScript(js + '\ntrue;');
     }
     function emit(event: string, data: unknown) {
-      inject(`window.__standardEmit && window.__standardEmit(${JSON.stringify(event)}, ${JSON.stringify(data)});`);
+      inject(`window.__mercuryEmit && window.__mercuryEmit(${JSON.stringify(event)}, ${JSON.stringify(data)});`);
     }
 
     useImperativeHandle(ref, () => ({
@@ -306,12 +306,12 @@ const BrowserTab = forwardRef<TabHandle, { initialUrl: string; active: boolean; 
           msg.method,
           msg.params,
         );
-        inject(`window.__standardResolve && window.__standardResolve(${id}, ${JSON.stringify(result ?? null)}, null);`);
+        inject(`window.__mercuryResolve && window.__mercuryResolve(${id}, ${JSON.stringify(result ?? null)}, null);`);
       } catch (err) {
         const code = err instanceof RpcError ? err.code : -32603;
         const message = err instanceof Error ? err.message : String(err);
         if (id !== undefined)
-          inject(`window.__standardResolve && window.__standardResolve(${id}, null, ${JSON.stringify({ code, message })});`);
+          inject(`window.__mercuryResolve && window.__mercuryResolve(${id}, null, ${JSON.stringify({ code, message })});`);
       }
     }
 
@@ -329,7 +329,7 @@ const BrowserTab = forwardRef<TabHandle, { initialUrl: string; active: boolean; 
         <WebView
           ref={webRef}
           source={{ uri: resolveUrl(initialUrl) ?? initialUrl }}
-          applicationNameForUserAgent="StandardWallet"
+          applicationNameForUserAgent="MercuryWallet"
           userAgent={UA}
           injectedJavaScriptBeforeContentLoaded={EVM_PROVIDER_SCRIPT}
           onMessage={onMessage}

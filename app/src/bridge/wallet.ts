@@ -10,6 +10,10 @@ import { getActiveAccount } from './account';
 // The first/default wallet keeps its original on-disk identifiers so existing
 // installs are never disturbed. Additional wallets use distinct aliases + files.
 export const PRIMARY_ALIAS = 'primary';
+// NOT renamed on purpose. This names a live SQLite database with `-wal`, `-shm`
+// and `.seed` companions; renaming it means moving four files that must stay
+// consistent with each other, and getting it wrong loses the wallet. The name is
+// an on-disk identifier, not branding — leave it.
 const PRIMARY_DB = 'standard-wallet.db';
 /** Shared Secure-Enclave keystore handle (also used by cloud backup/restore). */
 export const keystore = new SecureEnclaveKeystore();

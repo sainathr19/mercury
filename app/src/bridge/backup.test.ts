@@ -12,7 +12,7 @@ const PRIMARY: WalletDescriptor = {
   alias: 'primary',
   name: 'Main',
   isPrimary: true,
-  dbPath: '/docs/standard-wallet.db',
+  dbPath: '/docs/wallet.db',
   wordCount: 12,
   hasPassphrase: false,
   accounts: [
@@ -26,7 +26,7 @@ test('assembleManifest maps descriptors to the snake_case Rust record', () => {
   const m = assembleManifest([PRIMARY], 'primary', 7);
   expect(m.version).toBe(7);
   expect(m.activeWallet).toBe('primary');
-  expect(m.wallets[0]).toMatchObject({ alias: 'primary', dbPath: '/docs/standard-wallet.db', isPrimary: true, wordCount: 12 });
+  expect(m.wallets[0]).toMatchObject({ alias: 'primary', dbPath: '/docs/wallet.db', isPrimary: true, wordCount: 12 });
   expect(m.wallets[0].accounts[1]).toEqual({ index: 1, name: 'Savings', hidden: true });
 });
 
@@ -62,7 +62,7 @@ test('backup encrypts via the core and uploads the blob; restore reads it back',
   expect(cloud.map.get(MANIFEST_ID)).toEqual(new Uint8Array([1, 2, 3]));
   expect(await b.exists()).toBe(true);
 
-  const meta = await b.restore('pw', [{ alias: 'primary', dbPath: '/new/standard-wallet.db' }]);
+  const meta = await b.restore('pw', [{ alias: 'primary', dbPath: '/new/wallet.db' }]);
   expect(meta?.wallets[0].alias).toBe('primary');
 });
 

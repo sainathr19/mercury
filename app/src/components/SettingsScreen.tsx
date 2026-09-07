@@ -95,7 +95,7 @@ export function SettingsScreen() {
       </Section>
 
       {/* About is intentionally empty until Mercury has its own support channel.
-          These rows used to open mailto:support@standard.xyz and an x.com
+          These rows used to open a support mailto: and an x.com
           account belonging to a different company — a user reporting a lost
           wallet would have sent it to strangers. An address that does not exist
           yet is not an improvement on that, so the rows are gone rather than

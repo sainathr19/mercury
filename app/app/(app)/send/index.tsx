@@ -87,7 +87,7 @@ export default function SendFlow() {
   // and pre-fills the amount, instead of defaulting to the chain's native asset.
   const scanPay = useRef<ScannedPayment | null>(null);
   const scanDone = useRef(false);
-  // A scanned RECIPIENT (a Standard @username or someone's stealth1) to pre-fill
+  // A scanned RECIPIENT (an @username or someone's stealth1) to pre-fill
   // the address step with on the FIRST asset pick, then consumed — so coming back
   // and re-picking an asset asks for a fresh address instead of reusing it.
   const scanSeed = useRef<string | null>(null);

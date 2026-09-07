@@ -27,7 +27,7 @@ interface SendDraftState {
   /** Shield (private) send: the recipient is a stealth meta-address and the
    *  transfer goes through the private stealth path instead of a normal send. */
   shield: boolean;
-  /** When the recipient was entered as a Standard @username (resolved to their
+  /** When the recipient was entered as an @username (resolved to their
    *  meta-address in `address`), the display handle — for the review row + recents. */
   recipientHandle: string | null;
   /** Active private flow (pay / spend / null). Drives the address step's input

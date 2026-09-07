@@ -281,19 +281,19 @@ const ICON =
 
 /**
  * EIP-1193 provider injected at document start. Each `request` posts to the RN
- * bridge with a correlation id; native replies via `window.__standardResolve`,
- * and events arrive via `window.__standardEmit`. Announces via EIP-6963.
+ * bridge with a correlation id; native replies via `window.__mercuryResolve`,
+ * and events arrive via `window.__mercuryEmit`. Announces via EIP-6963.
  */
 export const EVM_PROVIDER_SCRIPT = `(() => {
   if (window.ethereum && window.ethereum.isMercury) return;
   const listeners = {}; const pending = {}; let nextId = 1;
   const emit = (event, data) => (listeners[event] || []).forEach((cb) => { try { cb(data); } catch (e) {} });
-  window.__standardEmit = (event, data) => {
+  window.__mercuryEmit = (event, data) => {
     if (event === 'chainChanged') provider.chainId = data;
     if (event === 'accountsChanged') provider.selectedAddress = (data && data[0]) || null;
     emit(event, data);
   };
-  window.__standardResolve = (id, result, error) => {
+  window.__mercuryResolve = (id, result, error) => {
     const p = pending[id]; if (!p) return; delete pending[id];
     if (error) { const e = new Error(error.message || 'Request failed'); e.code = error.code; p.reject(e); }
     else p.resolve(result);

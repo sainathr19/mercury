@@ -1,6 +1,6 @@
 // Lightweight format checks for UX gating only. The Rust core performs
 // authoritative validation (incl. bech32 checksum) on send. Mirrors the chain
-// rules in `standard-ios` AddressValidator.
+// rules in `the iOS reference app` AddressValidator.
 
 export function isValidEvm(a: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(a.trim());

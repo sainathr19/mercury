@@ -6,7 +6,7 @@ import { useSession } from '../../src/stores/session';
 
 /** One-shot backup of the BIP-39 words during onboarding. The user confirms
  *  they've saved them, then we clear the mnemonic from memory and enter the app.
- *  Mirrors standard-ios BackupMnemonicView. */
+ *  Mirrors the reference BackupMnemonicView. */
 export default function Backup() {
   const router = useRouter();
   const mnemonic = useSession((s) => s.mnemonic);

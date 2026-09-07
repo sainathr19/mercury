@@ -1,4 +1,4 @@
-//! standard-hub session client.
+//! Identity hub session client.
 //
 // Sends a verified Apple/Google identity token to the hub, stores the returned
 // access + refresh tokens in the device keychain (`expo-secure-store`), and
@@ -18,7 +18,7 @@ export interface HubUser {
   display_name?: string | null;
   email?: string | null;
   is_backed_up_by_user?: boolean;
-  /** The claimed Standard username (handle), or null if unset. */
+  /** The claimed hub username (handle), or null if unset. */
   handle?: string | null;
   /** The linked X (Twitter) @handle, or null — drives the "verified with X" badge. */
   x_handle?: string | null;
@@ -26,7 +26,7 @@ export interface HubUser {
   last_login_at: string;
 }
 
-/** Availability of a candidate username. `reserved` = free in Standard but the
+/** Availability of a candidate username. `reserved` = free here but the
  *  handle matches an X account over the follower threshold, so only the verified
  *  X owner may claim it (via "Use X username"). */
 export type HandleStatus = 'available' | 'taken' | 'reserved';
@@ -69,10 +69,10 @@ export interface TokenStore {
 }
 
 const K = {
-  access: 'standard.hub.access',
-  refresh: 'standard.hub.refresh',
-  expires: 'standard.hub.access_expires',
-  user: 'standard.hub.user',
+  access: 'mercury.hub.access',
+  refresh: 'mercury.hub.refresh',
+  expires: 'mercury.hub.access_expires',
+  user: 'mercury.hub.user',
 } as const;
 
 export class HubAuthError extends Error {
@@ -106,7 +106,7 @@ export interface AuthClient {
   setBackedUp(backedUp: boolean): Promise<HubUser>;
   /** Availability of a handle: free, taken, or reserved-for-its-X-owner (public endpoint). */
   checkHandle(handle: string): Promise<HandleCheck>;
-  /** Claim / change the Standard username. Returns the updated user. */
+  /** Claim / change the hub username. Returns the updated user. */
   putRegistration(handle: string, metaAddress: string, chainMask: number): Promise<HubUser>;
   /** Resolve a username → its stealth meta-address + chain mask (+ enc_pub for
    *  seamless receive hints, if the hub + that user support it), or null. */

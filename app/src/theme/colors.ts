@@ -1,4 +1,4 @@
-// Semantic color tokens ported from `standard-ios/Standard/DesignSystem/Colors.swift`
+// Semantic color tokens ported from the iOS reference app’s design system.
 // and the SwiftUI system colors the app relies on (`Color.primary`, `.secondary`,
 // `.red`, `.green`, `.orange`, `.accentColor`).
 //

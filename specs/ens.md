@@ -179,7 +179,7 @@ registered it resolves in any wallet forever.
 |---|---|
 | `contracts/MercuryNameRegistry.sol` | ENSIP-10 wildcard resolver + registry. One deploy, no constructor args, no subregistry needed. |
 | `app/src/bridge/mercuryName.ts` | Availability read, `register` calldata, claim flow. |
-| `app/src/stores/mercuryNameStore.ts` | Replaces the Standard handle. |
+| `app/src/stores/mercuryNameStore.ts` | Replaces the hub handle. |
 | `hub/scripts/verify-ens.ts` | Post-deploy check through a standard ENS client. |
 
 **The trade that was made.** An earlier offchain build (EIP-3668 + a signing

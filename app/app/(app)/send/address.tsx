@@ -59,7 +59,7 @@ export default function SendAddress() {
           ? 'Enter private address'
           : 'Enter address or username';
 
-  // A Standard @username resolves to the recipient's stealth meta-address, so a
+  // An @username resolves to the recipient's stealth meta-address, so a
   // username send is a private (shield) send. Resolve it (debounced) at the hub.
   const [resolving, setResolving] = useState(false);
   const [resolved, setResolved] = useState<

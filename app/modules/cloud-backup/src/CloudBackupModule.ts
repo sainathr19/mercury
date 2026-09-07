@@ -8,10 +8,10 @@ import { requireNativeModule } from 'expo';
  * and never touches our servers. This module only moves opaque bytes: it never
  * sees keys, seeds, or plaintext. The Rust wallet core encrypts/decrypts the
  * blob; we just `put`/`get`/`delete` it under a caller-chosen `id`. Mirrors
- * `secure-keystore` and `standard-nfc`.
+ * `secure-keystore` and `the NFC module`.
  *
  * Bytes cross the bridge as `Uint8Array` (Expo marshals to `Data` on iOS and
- * `ByteArray` on Android), matching how `secure-keystore`/`standard-nfc` pass
+ * `ByteArray` on Android), matching how `secure-keystore`/`the NFC module` pass
  * binary payloads — no base64.
  *
  * - `putBlob` saves-or-updates the blob for `id` (idempotent).

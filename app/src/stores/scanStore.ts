@@ -73,12 +73,12 @@ export function parsePayment(raw: string): ScannedPayment {
   const s = raw.trim();
   const lower = s.toLowerCase();
 
-  // Standard handle (@username) — what the Standard receive QR encodes. Return it
+  // hub handle (@username) — what the receive QR encodes. Return it
   // verbatim so the Send flow resolves it to the recipient's receive address.
   // MUST come before the EIP-681 `<addr>@<chainId>` handling below, which would
   // otherwise read the leading `@` as a chain separator and blank the recipient
-  // (the "not valid" you saw). Tolerates an optional `standard:` scheme prefix.
-  const handleBody = lower.startsWith('standard:') ? s.slice('standard:'.length).trim() : s;
+  // (the "not valid" you saw). Tolerates an optional `mercury:` scheme prefix.
+  const handleBody = lower.startsWith('mercury:') ? s.slice('mercury:'.length).trim() : s;
   if (/^@[a-z0-9_.-]{1,64}$/i.test(handleBody)) {
     return { address: handleBody };
   }

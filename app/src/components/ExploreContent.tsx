@@ -43,7 +43,7 @@ export function ExploreContent() {
 
   return (
     <ScrollView style={styles.fill} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {/* Standard app search box — grey, rounded, search icon + clear. */}
+      {/* Search box — grey, rounded, search icon + clear. */}
       <View style={styles.searchWrap}>
         <Icon name="search" size={18} color={theme.colors.muted} />
         <TextInput
@@ -180,7 +180,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   // Section header title — 15px with 24px line height.
   sectionTitle: { fontSize: 15, lineHeight: 24 },
-  // Standard row: 16x / 12y padding.
+  // Row: 16x / 12y padding.
   row: {
     flexDirection: 'row',
     alignItems: 'center',

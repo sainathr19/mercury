@@ -18,5 +18,5 @@ test('rejects illegal characters (uppercase, spaces, @)', () => {
 
 test('rejects reserved handles', () => {
   expect(validateHandle('admin')).toMatch(/reserved/);
-  expect(validateHandle('standard')).toMatch(/reserved/);
+  expect(validateHandle('mercury')).toMatch(/reserved/);
 });

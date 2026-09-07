@@ -1,8 +1,8 @@
-//! Standard username (handle) helpers — client-side validation that mirrors the
+//! hub username (handle) helpers — client-side validation that mirrors the
 //! hub's `validate_handle`, so we reject bad input before any network round-trip.
 
 /** Reserved handles the hub refuses (keep in sync with the hub's RESERVED list). */
-export const RESERVED_HANDLES = ['admin', 'support', 'standard', 'root', 'help', 'about', 'api'];
+export const RESERVED_HANDLES = ['admin', 'support', 'mercury', 'root', 'help', 'about', 'api'];
 
 export const HANDLE_MIN = 3;
 export const HANDLE_MAX = 20;

@@ -45,7 +45,7 @@ for per-service detail.
 
 Payments are **public by default, private on request** — a per-payment toggle
 backed by ERC-5564 stealth addresses. Arc is the first chain where that
-standard closes end to end: a stealth address elsewhere holds tokens it can't
+gap closes end to end: a stealth address elsewhere holds tokens it can't
 move without a gas top-up that deanonymises the recipient, whereas on Arc the
 note pays its own way out in the asset it received. So we never sweep, and the
 transaction that would link every note back to one identity is never created.

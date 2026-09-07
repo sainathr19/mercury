@@ -31,15 +31,15 @@ test('startSession posts the provider token and persists the session', async () 
   expect(user.id).toBe('u1');
   expect(calls[0].url).toBe(`${BASE}/auth/session`);
   expect(JSON.parse(calls[0].init.body as string)).toMatchObject({ provider: 'apple', id_token: 'id-token', nonce: 'n1' });
-  expect(store.map.get('standard.hub.access')).toBe('a1');
-  expect(store.map.get('standard.hub.refresh')).toBe('r1');
+  expect(store.map.get('mercury.hub.access')).toBe('a1');
+  expect(store.map.get('mercury.hub.refresh')).toBe('r1');
   expect(await auth.hasRefreshToken()).toBe(true);
 });
 
 test('authedFetch refreshes once on 401 and retries with the new access token', async () => {
   const store = memStore();
-  store.map.set('standard.hub.access', 'old');
-  store.map.set('standard.hub.refresh', 'r1');
+  store.map.set('mercury.hub.access', 'old');
+  store.map.set('mercury.hub.refresh', 'r1');
 
   const calls: Array<{ url: string; auth?: string }> = [];
   const fetchFn = (async (url: string, init: RequestInit = {}) => {
@@ -58,13 +58,13 @@ test('authedFetch refreshes once on 401 and retries with the new access token', 
   expect(calls.map((c) => c.url)).toEqual([`${BASE}/me`, `${BASE}/auth/refresh`, `${BASE}/me`]);
   expect(calls[0].auth).toBe('Bearer old');
   expect(calls[2].auth).toBe('Bearer new'); // retried with the rotated token
-  expect(store.map.get('standard.hub.refresh')).toBe('r2'); // rotation persisted
+  expect(store.map.get('mercury.hub.refresh')).toBe('r2'); // rotation persisted
 });
 
 test('concurrent 401s trigger only ONE refresh (single-flight, avoids reuse-revocation)', async () => {
   const store = memStore();
-  store.map.set('standard.hub.access', 'old');
-  store.map.set('standard.hub.refresh', 'r1');
+  store.map.set('mercury.hub.access', 'old');
+  store.map.set('mercury.hub.refresh', 'r1');
 
   let refreshCalls = 0;
   const fetchFn = (async (url: string, init: RequestInit = {}) => {
@@ -83,13 +83,13 @@ test('concurrent 401s trigger only ONE refresh (single-flight, avoids reuse-revo
   expect(a.ok).toBe(true);
   expect(b.ok).toBe(true);
   expect(refreshCalls).toBe(1); // both callers shared the one refresh
-  expect(store.map.get('standard.hub.refresh')).toBe('r2');
+  expect(store.map.get('mercury.hub.refresh')).toBe('r2');
 });
 
 test('a failed refresh clears the session and throws', async () => {
   const store = memStore();
-  store.map.set('standard.hub.access', 'old');
-  store.map.set('standard.hub.refresh', 'r1');
+  store.map.set('mercury.hub.access', 'old');
+  store.map.set('mercury.hub.refresh', 'r1');
 
   const fetchFn = (async (url: string) => {
     if (url === `${BASE}/me`) return res(401, {});
@@ -99,14 +99,14 @@ test('a failed refresh clears the session and throws', async () => {
 
   const auth = createAuthClient({ baseUrl: BASE, store, fetchFn });
   await expect(auth.authedFetch('/me')).rejects.toBeInstanceOf(HubAuthError);
-  expect(store.map.get('standard.hub.refresh')).toBeUndefined(); // tokens cleared
-  expect(store.map.get('standard.hub.access')).toBeUndefined();
+  expect(store.map.get('mercury.hub.refresh')).toBeUndefined(); // tokens cleared
+  expect(store.map.get('mercury.hub.access')).toBeUndefined();
 });
 
 test('a transient refresh failure (hub 5xx) does NOT clear the session', async () => {
   const store = memStore();
-  store.map.set('standard.hub.access', 'old');
-  store.map.set('standard.hub.refresh', 'r1');
+  store.map.set('mercury.hub.access', 'old');
+  store.map.set('mercury.hub.refresh', 'r1');
 
   const fetchFn = (async (url: string) => {
     if (url === `${BASE}/me`) return res(401, {});
@@ -118,5 +118,5 @@ test('a transient refresh failure (hub 5xx) does NOT clear the session', async (
   await expect(auth.authedFetch('/me')).rejects.toBeInstanceOf(HubAuthError);
   // A server hiccup must NOT wipe a valid token — otherwise a hub restart force-
   // logs-out every user. The token survives so the next attempt recovers.
-  expect(store.map.get('standard.hub.refresh')).toBe('r1');
+  expect(store.map.get('mercury.hub.refresh')).toBe('r1');
 });

@@ -32,7 +32,7 @@ test('EIP-681 token transfer → contract token, recipient from arg, uint256 bas
 });
 
 test('Solana-Pay spl-token + human amount', () => {
-  const p = parsePayment('solana:SolRecip?amount=12.5&spl-token=MINT123&label=Standard%20Cafe');
+  const p = parsePayment('solana:SolRecip?amount=12.5&spl-token=MINT123&label=Corner%20Cafe');
   expect(p.address).toBe('SolRecip');
   expect(p.token).toEqual({ mint: 'MINT123' });
   expect(p.amount).toBe('12.5');

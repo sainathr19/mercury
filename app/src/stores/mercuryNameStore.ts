@@ -1,6 +1,6 @@
 //! The user's Mercury name — `alice.mercurywallet.eth`.
 //
-// Replaces the Standard handle, which lived behind a hub login this fork has no
+// Replaces the hub handle, which lived behind a hub login this fork has no
 // account on. A Mercury name needs no login and no server at all — it is a row
 // in a contract, registered by the same key that will receive at it.
 //

@@ -1,4 +1,4 @@
-//! "Seamless" receive-hint transport over the standard relay mailbox.
+//! "Seamless" receive-hint transport over the stealth relay mailbox.
 //
 // Reuses the deployed stealth relay (a dumb, identity-blind store-and-forward
 // mailbox: POST submit / GET fetch / POST ack, opaque base64 blobs, idempotent

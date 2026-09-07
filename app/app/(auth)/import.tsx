@@ -10,7 +10,7 @@ import { useWallets } from '../../src/stores/walletsStore';
 import { mapError } from '../../src/lib/errors';
 import { fontFamily } from '../../src/theme/fonts';
 
-/** Restore from a 12 or 24-word recovery phrase. Mirrors standard-ios
+/** Restore from a 12 or 24-word recovery phrase. Mirrors the iOS reference app
  *  RestoreWalletView. On success the root layout routes into the app. */
 export default function ImportWallet() {
   const router = useRouter();
