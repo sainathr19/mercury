@@ -14,6 +14,12 @@ export interface ActivityItem {
   coingeckoId: string;
   colorHex: string;
   type: TxType;
+  /**
+   * The counterparty's name, when we know one. Kept SEPARATE from `label`
+   * because a chain scan rewrites `label` from raw chain data — which is exactly
+   * how a send to "nick.eth" turned back into a hex address one refresh later.
+   */
+  peerName?: string;
   /** Overrides the row's Sent/Received heading. Set only where "Sent" would be
    *  actively misleading — moving money into your own Gateway balance is not a
    *  payment, and reading it as one makes savings look like spending. */
@@ -327,6 +333,8 @@ export function pendingSendItem(args: {
   token?: { symbol: string; coingeckoId: string; colorHex: string };
   /** Human network name (from the sent asset) for the row's subtitle. */
   network?: string;
+  /** The recipient's ENS name, when the send was addressed to one. */
+  peerName?: string;
   /** A SHIELD (public → your own privacy) — the row reads "Shielded". Stays in
    *  the NORMAL feed (not private); the incoming private "Received" is surfaced
    *  separately by the stealth scan. */
@@ -349,6 +357,7 @@ export function pendingSendItem(args: {
     explorerUrl: args.explorerUrl,
     network: args.network,
     shielded: args.shielded,
+    ...(args.peerName ? { peerName: args.peerName } : {}),
   };
 }
 

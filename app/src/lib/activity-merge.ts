@@ -39,6 +39,9 @@ export function mergeActivity(existing: ActivityItem[], fetched: ActivityItem[])
       ...it,
       timestamp: prev.timestamp,
       ...(prev.private ? { private: true, label: prev.label } : {}),
+      // A scan only knows addresses, so it cannot re-derive a name we resolved
+      // at send time. Carry it over or it is lost on the first refresh.
+      ...(prev.peerName ? { peerName: prev.peerName } : {}),
       ...(prev.shielded ? { shielded: true } : {}),
     });
   }

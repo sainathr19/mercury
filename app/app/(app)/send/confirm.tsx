@@ -340,6 +340,9 @@ export default function SendConfirm() {
           chain: chainOf(asset),
           id: res.id,
           to: address.trim(), // the RECIPIENT — the row shows "To 0x…", not the tx hash
+          // Resolved from a name? Keep it. A later chain scan only sees the
+          // address and cannot recover what the user actually typed.
+          peerName: recipientHandle ?? undefined,
           amount: cryptoAmount,
           usd: cryptoAmount * price,
           explorerUrl: res.explorerUrl,

@@ -41,7 +41,15 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
   // Subtitle is just the time — pending txs read like settled ones (no "Pending"
   // tag) so an in-flight send/receive feels like it already went through. Failed
   // is still surfaced (the one state the user must actually see).
-  const subtitle = failed ? `Failed · ${txTime(item.timestamp)}` : txTime(item.timestamp);
+  // When we know who the counterparty is by name, say so — an address the user
+  // typed as "nick.eth" should not read back as hex.
+  const who = item.peerName;
+  const when = txTime(item.timestamp);
+  const subtitle = failed
+    ? `Failed · ${when}`
+    : who
+      ? `${who} · ${when}`
+      : when;
   // Swap: +destination on top, −source below. Otherwise the sent/received layout.
   const topRight = isSwap ? item.amountText : received ? item.amountText : fiat(item);
   const bottomRight = isSwap ? (item.secondaryAmountText ?? '') : received ? fiat(item) : noSign(item.amountText);

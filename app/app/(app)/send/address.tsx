@@ -156,8 +156,15 @@ export default function SendAddress() {
       const r = await resolveEns(trimmed);
       if (cancelled) return;
       setEnsResolving(false);
-      if (r?.evm) patch({ address: r.evm, recipientHandle: trimmed.toLowerCase() });
-      else setEnsErr(`${trimmed} has no address we can pay.`);
+      if (r.status === 'ok' && r.records.evm) {
+        patch({ address: r.records.evm, recipientHandle: trimmed.toLowerCase() });
+      } else if (r.status === 'unavailable') {
+        // Say we could not check, not that the name is bad — the difference
+        // matters when someone is staring at their own name.
+        setEnsErr(`Couldn't look up ${trimmed} just now. Check your connection.`);
+      } else {
+        setEnsErr(`${trimmed} has no address we can pay.`);
+      }
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
   }, [isEns, ensChainOk, trimmed, patch]);

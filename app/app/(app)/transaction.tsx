@@ -141,6 +141,8 @@ function counterpartyLabel(item: ActivityItem): string {
   return item.type === 'swapped' ? 'Via' : item.type === 'sent' ? 'To' : 'From';
 }
 function counterparty(item: ActivityItem): string {
+  // The name wins over the address when we have one — it is what the user chose.
+  if (item.peerName) return item.peerName;
   const l = item.label;
   if (l.startsWith('To ')) return l.slice(3);
   if (l.startsWith('From ')) return l.slice(5);

@@ -40,3 +40,26 @@ test('preserves existing items not present in the fresh scan', () => {
 test('empty inputs yield empty output', () => {
   expect(mergeActivity([], [])).toEqual([]);
 });
+
+// A chain scan only sees addresses. It cannot re-derive the name the user typed,
+// so the merge has to carry it — this is exactly how a send to "nick.eth" turned
+// back into hex one refresh after it was made.
+test('a resolved name survives the next chain scan', () => {
+  const optimistic: ActivityItem = {
+    id: '0xabc', symbol: 'USDC', coingeckoId: 'usd-coin', colorHex: '#2775CA',
+    type: 'sent', label: 'To nick.eth', peerName: 'nick.eth',
+    amountText: '-1.00 USDC', usdText: '-$1.00', timestamp: 1000, status: 'pending',
+    explorerUrl: 'https://x/tx/0xabc',
+  };
+  const scanned: ActivityItem = {
+    ...optimistic,
+    label: 'To 0xb8c2…67d5', // what the scanner derives from chain data
+    peerName: undefined,
+    status: 'confirmed',
+    timestamp: 2000,
+  };
+  const [merged] = mergeActivity([optimistic], [scanned]);
+  expect(merged.peerName).toBe('nick.eth');
+  expect(merged.status).toBe('confirmed'); // the scan still wins on everything else
+  expect(merged.timestamp).toBe(1000); // and the original send time is kept
+});
