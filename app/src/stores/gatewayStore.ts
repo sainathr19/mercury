@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { File, Paths } from 'expo-file-system';
 import type { WalletInterface } from 'mercury-wallet-core';
 import {
   settleUsdcToGateway,
@@ -29,6 +30,37 @@ export interface SettlementEvent {
 /** Session-scoped, and deliberately short: this is evidence of how the rail
  *  behaves right now, not a second transaction history. */
 const MAX_EVENTS = 8;
+
+const IN_FLIGHT_FILE = 'gateway-inflight.v1.json';
+
+/**
+ * Persist the in-flight deduction across launches.
+ *
+ * It must outlive the process. A Gateway burn debits Circle's ledger straight
+ * away but leaves the money in GatewayWallet until the batch settles on-chain,
+ * and the balance takes the LARGER of the two so a fresh deposit is not
+ * momentarily shown as lost. That makes this deduction the only thing telling
+ * the two cases apart — and while it lived in memory, relaunching the app after
+ * a send brought the spent money back on screen and kept it there.
+ */
+function persistInFlight(v: { inFlightSent: number; inFlightAt: number }): void {
+  try {
+    new File(Paths.document, IN_FLIGHT_FILE).write(JSON.stringify(v));
+  } catch {
+    // Worst case we are back to the in-memory behaviour.
+  }
+}
+
+function loadInFlight(): { inFlightSent: number; inFlightAt: number } {
+  try {
+    const f = new File(Paths.document, IN_FLIGHT_FILE);
+    if (!f.exists) return { inFlightSent: 0, inFlightAt: 0 };
+    const v = JSON.parse(f.textSync()) as { inFlightSent?: number; inFlightAt?: number };
+    return { inFlightSent: Number(v.inFlightSent) || 0, inFlightAt: Number(v.inFlightAt) || 0 };
+  } catch {
+    return { inFlightSent: 0, inFlightAt: 0 };
+  }
+}
 
 /**
  * The wallet's USDC, wherever it sits.
@@ -66,6 +98,7 @@ const EMPTY = {
   spendable: 0,
   pending: 0,
   inWallet: 0,
+  onchainSurplus: 0,
   perDomain: [],
   perChain: [],
   address: null,
@@ -73,8 +106,7 @@ const EMPTY = {
   settling: false,
   loadedAt: null,
   stuck: [],
-  inFlightSent: 0,
-  inFlightAt: 0,
+  ...loadInFlight(),
   events: [],
 };
 
@@ -90,7 +122,9 @@ export const useGateway = create<GatewayState>((set, get) => ({
   },
 
   noteSent(amount) {
-    set({ inFlightSent: get().inFlightSent + amount, inFlightAt: Date.now() });
+    const next = { inFlightSent: get().inFlightSent + amount, inFlightAt: Date.now() };
+    set(next);
+    persistInFlight(next);
   },
 
   async refresh(address) {
@@ -101,6 +135,14 @@ export const useGateway = create<GatewayState>((set, get) => ({
     try {
       const h = await usdcHoldings(address, getActiveEnvironment(), inFlightSent);
       set({ ...h, loadedAt: Date.now() });
+      // Drop the deduction once the chain agrees with Circle again. Until the
+      // burn settles on-chain, GatewayWallet still holds the money and the
+      // balance would count it twice; after it settles, keeping the deduction
+      // would under-report instead. Self-correcting beats waiting out a timer.
+      if (inFlightSent > 0 && h.onchainSurplus <= 0) {
+        set({ inFlightSent: 0, inFlightAt: 0 });
+        persistInFlight({ inFlightSent: 0, inFlightAt: 0 });
+      }
     } finally {
       set({ loading: false });
     }

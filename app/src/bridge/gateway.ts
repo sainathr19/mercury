@@ -238,6 +238,16 @@ export interface UsdcHoldings {
   pending: number;
   /** Still in the user's own address, not yet settled into Gateway. */
   inWallet: number;
+  /**
+   * How much more GatewayWallet still holds on-chain than Circle will let the
+   * user spend, BEFORE any in-flight deduction.
+   *
+   * Non-zero means the two views disagree: either a deposit Circle has not
+   * credited yet, or a burn the chain has not settled yet. The caller knows
+   * which — it is the one that recorded the send — and uses this to tell when
+   * the disagreement has resolved.
+   */
+  onchainSurplus: number;
   perDomain: DomainBalance[];
   perChain: WalletUsdc[];
 }
@@ -280,6 +290,7 @@ export async function usdcHoldings(
     spendable: api.total,
     pending: Math.max(0, inGateway - api.total),
     inWallet,
+    onchainSurplus: onchain - apiHeld,
     perDomain: api.perDomain,
     perChain: wallet,
   };
