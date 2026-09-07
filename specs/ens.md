@@ -1,7 +1,9 @@
 # ENS — implementation plan (all chains)
 
-Status: **Phase 0 built** — resolve any `.eth` name in the send field, through
-**ENSv2**. Name chosen: **`mercurywallet.eth`** — not yet registered.
+Status: **Phases 0–2 built.** Resolve any `.eth` name in the send field, and
+issue free subnames under **`mercurywallet.eth`** (registered on Sepolia,
+ENSv2). Remaining: deploy the resolver and point the name at it — see
+`contracts/DEPLOY.md`.
 Decision: **v2 only, Sepolia as the testnet**, matching Arc.
 Facts checked on-chain 2026-09-07. Anything I did not verify is marked as such.
 
@@ -163,13 +165,45 @@ and endpoint fallback. The hand-rolled `resolve(bytes,bytes)` calldata is
 unit-tested against viem byte for byte — a wrong selector does not error, it
 hits a fallback and fails opaquely, which is exactly what happened once.
 
-**Phase 1 — register `mercurywallet.eth` on Sepolia (v2).** Blocked on you. Use
-the Sepolia ENS app, which is linked against the v2 deployment; the fee is
-MockUSDC, which anyone can mint.
+**Phase 1 — register `mercurywallet.eth` on Sepolia (v2). DONE.** Owned by
+`0x6BA9A2Ab805ca80BEBf6D51daC85016641aCeD87`, expires Sep 2027.
 
-**Phase 2 — issue subnames.** Offchain resolver on L1 + a CCIP-Read endpoint in
-`hub/`. Name claimed at signup. Publish `addr(60)`, `addr(501)`, `addr(0)` and
-the Arc preference together.
+**Phase 2 — issue subnames. BUILT.**
+
+| | |
+|---|---|
+| `contracts/MercuryOffchainResolver.sol` | ENSIP-10 wildcard resolver. Reverts with `OffchainLookup`; verifies a signed answer in `resolveWithProof`. Single file, no imports, ~5.9 KB. |
+| `hub/src/ens.ts` | Decodes the request, builds the record, signs it. |
+| `hub/src/names.ts` | The registry. Claims authenticated by the claimant's own signature. |
+| `hub/src/ensRoutes.ts` | `/ens/lookup/{sender}/{data}.json`, `/ens/available/:label`, `/ens/claim`. |
+| `app/src/bridge/ccipRead.ts` | Follows the lookup, and runs the batch gateway locally. |
+| `app/src/bridge/mercuryName.ts` + `mercuryNameStore` | Claim flow, replacing the Standard handle. |
+
+One 0x address, one Solana address and one Bitcoin address go up together under
+one name, plus the Arc routing hint.
+
+**What was verified, and how.** Guessing here fails silently — a wrong byte
+resolves to nobody rather than erroring — so each piece was checked against
+something real:
+
+- The digest packs `expires` as a **uint64 (8 bytes)**, not a padded word. Found
+  by recovering signatures from ENS's own live reference gateway: the 32-byte
+  version recovers to an address the deployed contract does not trust.
+- The compiled bytecode was injected via `eth_call` state override on Sepolia and
+  driven through every case: a valid answer is accepted, and a swapped result, a
+  replay onto another name, an untrusted signer and an expired signature are each
+  rejected on-chain.
+- The batch gateway (`query((address,string[],bytes)[])`, `0xa780bab6`) was
+  decoded from a live production payload, and the response encoder matches viem
+  byte for byte.
+- Our CCIP-Read client resolves `1.offchainexample.eth` end to end against
+  production infrastructure, matching viem's answer.
+- ENSv2's Universal Resolver **does** descend to the parent's resolver for
+  subnames despite `mercurywallet.eth` having no subregistry — checked by
+  injecting our bytecode at the resolver the name already points at.
+
+**Not built: reverse records.** Other wallets still show hex for our users. See
+§5.2 — this is a protocol limit, not a gap.
 
 **Phase 3 — routing.** Use the records to choose the rail per §3, including the
 "they can only take Solana" and "Bitcoin only — cannot pay in USDC" branches,

@@ -20,6 +20,7 @@ import { useStealth } from '../src/stores/stealthStore';
 import { useWallets } from '../src/stores/walletsStore';
 import { useRegistry } from '../src/stores/registryStore';
 import { useTokenPrefs } from '../src/stores/tokenPrefsStore';
+import { useMercuryName } from '../src/stores/mercuryNameStore';
 import { paymentUriFromLink } from '../src/lib/paymentRequest';
 import { useScan } from '../src/stores/scanStore';
 import { useWalletConnect } from '../src/stores/walletConnectStore';
@@ -65,6 +66,7 @@ export default function RootLayout() {
     hydrateSettings(); // apply saved appearance before first paint of app content
     useAuth.getState().bootstrap(); // silent hub-session refresh; drives the mandatory-sign-in gate
     useTokenPrefs.getState().hydrate(); // hidden-token list, before the first portfolio paint
+    useMercuryName.getState().hydrate(); // the user's ENS name, shown on Receive
     // Asset registry: render from cache/seed immediately, refresh from CDN in the background.
     useRegistry.getState().hydrate().then(() => useRegistry.getState().refresh());
     // Resolve the environment + active wallet/account BEFORE opening the wallet,

@@ -7,6 +7,7 @@ import { Text, useToast } from '../ui';
 import { fontFamily } from '../theme/fonts';
 import { posthog } from '../lib/posthog';
 import { useAuth } from '../stores/authStore';
+import { useMercuryName } from '../stores/mercuryNameStore';
 import { signInWithApple, signInWithGoogle, isGoogleConfigured } from '../bridge/providerSignIn';
 
 /**
@@ -20,8 +21,8 @@ export function SettingsScreen() {
 
   const soon = (what: string) => () => show(`${what} is coming soon.`, 'info');
   const openUsername = () => router.push('/(app)/username');
-  // Only prompt to claim a username when the user hasn't set one yet.
-  const hasHandle = !!useAuth((s) => s.user?.handle);
+  // Only prompt to claim a name when the user hasn't set one yet.
+  const hasHandle = !!useMercuryName((s) => s.name);
 
   // The account is OPTIONAL: the wallet works fully without one. Connecting it
   // buys the username registry and encrypted backup, never custody.

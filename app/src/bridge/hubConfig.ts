@@ -27,9 +27,3 @@ export const APPLE_BUNDLE_ID = 'fi.garden.standard';
  *  sign-in SDK on device. */
 export const GOOGLE_IOS_CLIENT_ID = ''; // TODO: <iOS OAuth client id>.apps.googleusercontent.com
 export const GOOGLE_WEB_CLIENT_ID = ''; // TODO: <Web OAuth client id>.apps.googleusercontent.com
-
-/** X (Twitter) OAuth2 client id for the "Use X username" flow. FILL IN LATER
- *  after creating the X app (OAuth2, PKCE/public client). Empty ⇒ the button
- *  shows "coming soon". The X app's Callback URL must be `standard://x-callback`
- *  and the hub's `twitter_client_id` must match this value. */
-export const TWITTER_CLIENT_ID = 'djZBX1lCMWJYaENMTGFKUmdReXo6MTpjaQ';

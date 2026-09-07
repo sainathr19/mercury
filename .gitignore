@@ -23,3 +23,6 @@ node_modules/
 subgraph/build/
 subgraph/generated/
 subgraph/node_modules/
+
+# Offchain ENS name registry (issued subnames, per-deployment state)
+hub/data/

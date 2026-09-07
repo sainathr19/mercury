@@ -11,7 +11,7 @@ import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon, PressableScale, Text } from '../../../src/ui';
 import { AddressQR } from '../../../src/components/AddressQR';
 import { useSession } from '../../../src/stores/session';
-import { useAuth } from '../../../src/stores/authStore';
+import { useMercuryName } from '../../../src/stores/mercuryNameStore';
 import { useNetworks } from '../../../src/stores/networkStore';
 import { shortenAddress } from '../../../src/lib/format';
 import { receiveNetwork, type ReceiveNetwork } from '../../../src/lib/receiveNetworks';
@@ -49,20 +49,20 @@ export default function ReceiveAddress() {
 
   const network = key ? receiveNetwork(key) : undefined;
   const isUsername = network?.kind === 'username';
-  // The signed-in user's claimed Standard @handle (empty until one is claimed).
-  const handle = useAuth((s) => s.user?.handle);
-  const USERNAME = handle ? `@${handle}` : '';
+  // The user's Mercury name — a real ENS name, empty until one is claimed.
+  const USERNAME = useMercuryName((s) => s.name) ?? '';
   const addrKey = network && network.kind === 'address' ? network.addrKey : null;
   const onchain = addrKey && addresses ? addresses[addrKey] : '';
   const uriScheme = network && network.kind === 'address' ? network.uriScheme : '';
-  // Value shown / copied / encoded in the QR: a @username for Standard, else the
-  // chain's on-chain receive address.
+  // Value shown / copied / encoded in the QR: the Mercury ENS name, else the
+  // chain's on-chain receive address. The name is worth more in a QR than an
+  // address — it resolves to every chain the user has, in any ENS-aware wallet.
   const value = isUsername ? USERNAME : onchain;
   const payload = isUsername ? USERNAME : onchain ? `${uriScheme}:${onchain}` : onchain;
   // On testnet, warn users not to deposit real funds — only shown for on-chain
-  // address networks (a @username isn't tied to a single chain).
+  // address networks (a name isn't tied to a single chain).
   const showTestnetNotice = environment === 'testnet' && network?.kind === 'address';
-  // Center mark in the QR: the Standard glyph for @username, else the chain's
+  // Center mark in the QR: the Mercury glyph for the name, else the chain's
   // bundled icon (falls back to the CryptoGlyph inside AddressQR when none).
   const centerLogo = isUsername
     ? require('../../../assets/icons/MercuryIcon.svg')
