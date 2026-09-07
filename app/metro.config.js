@@ -4,15 +4,18 @@ const path = require('path');
 const fs = require('fs');
 
 const projectRoot = __dirname;
-// The `standard-rn` turbo module lives in the parent directory and is linked
-// via `file:..` (symlinked into node_modules). Its real source path is OUTSIDE
-// the app project root, so Metro needs the parent added as a watch folder and
-// node_modules resolution rooted at both locations.
-// In the reference repo the app lives INSIDE standard-rn, so '..' was the
-// module root. Here the app is its own project and standard-rn is symlinked in
-// from another checkout, so point at its real location instead.
+// The native wallet core is a turbo module from a separate checkout, linked in
+// via a `file:` dependency (symlinked into node_modules). Its real source path
+// is OUTSIDE the app project root, so Metro needs that location as a watch
+// folder and node_modules resolution rooted at both places.
+//
+// UPSTREAM_MODULE is the package's own name and cannot be changed from here —
+// it belongs to another repository. The app imports it as `mercury-wallet-core`
+// throughout and the alias below is the single point of translation.
+const UPSTREAM_MODULE = 'standard-rn';
+const WALLET_CORE = 'mercury-wallet-core';
 const moduleRoot = path.resolve(
-  fs.realpathSync(path.resolve(projectRoot, 'node_modules/standard-rn')),
+  fs.realpathSync(path.resolve(projectRoot, `node_modules/${UPSTREAM_MODULE}`)),
 );
 
 const config = getDefaultConfig(projectRoot);
@@ -22,8 +25,12 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(moduleRoot, 'node_modules'),
 ];
-// Follow the file:.. symlink to the module's real location.
+// Follow the file: symlink to the module's real location.
 config.resolver.unstable_enableSymlinks = true;
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules ?? {}),
+  [WALLET_CORE]: moduleRoot,
+};
 
 // The ubrn `async public` codegen issue is fixed on-disk by
 // scripts/fix-bindings.js (run as part of `ubrn:ios`/`release:ios`). But that

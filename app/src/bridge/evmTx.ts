@@ -6,7 +6,7 @@
 //  still happens in the core (`evmSendTx`) — this module only builds calldata,
 //  estimates gas and waits for receipts.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import { chainById } from '../lib/chains';
 
 /** Left-pad a hex value (address or number) into a 32-byte ABI word. */

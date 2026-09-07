@@ -24,7 +24,7 @@
 //    an address; it proves nothing about deserving a word. The send screen still
 //    shows the resolved address before anything moves.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import { keccak_256 } from '@noble/hashes/sha3';
 import { ethCall, sendCall, uint, waitForReceipt, word } from './evmTx';
 import { getActiveEnvironment } from './activeEnv';

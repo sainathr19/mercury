@@ -1,6 +1,6 @@
-import type { EvmChainConfig, WalletInterface } from 'standard-rn';
+import type { EvmChainConfig, WalletInterface } from 'mercury-wallet-core';
 
-export type { EvmChainConfig } from 'standard-rn';
+export type { EvmChainConfig } from 'mercury-wallet-core';
 
 /** Mask API-key path segments before showing an RPC URL (mirrors iOS rpcDisplay). */
 export function rpcDisplay(raw: string): string {

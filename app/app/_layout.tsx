@@ -1,6 +1,6 @@
 import '../src/theme/unistyles'; // MUST be first: registers themes before any StyleSheet.create runs
 import '../src/lib/disableFontScaling'; // pin text to designed sizes, ignore OS font-size setting
-import 'standard-rn'; // side-effect: installs + initializes the Rust crate
+import 'mercury-wallet-core'; // side-effect: installs + initializes the Rust crate
 import { useEffect, useRef } from 'react';
 import { PostHogProvider } from 'posthog-react-native';
 import { posthog } from '../src/lib/posthog';

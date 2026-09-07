@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AnnouncementProcessReport } from 'standard-rn';
+import type { AnnouncementProcessReport } from 'mercury-wallet-core';
 import {
   loadMetaAddress,
   listPayments,

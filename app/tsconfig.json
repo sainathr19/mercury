@@ -12,6 +12,9 @@
       ],
       "react-native-nitro-modules": [
         "./node_modules/react-native-nitro-modules"
+      ],
+      "mercury-wallet-core": [
+        "./node_modules/standard-rn"
       ]
     }
   },

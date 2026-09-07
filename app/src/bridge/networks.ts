@@ -1,5 +1,5 @@
 import { chainsForEnvironment, type ChainDef } from '../lib/chains';
-import { BtcNetwork, type EvmChainConfig, type WalletInterface } from 'standard-rn';
+import { BtcNetwork, type EvmChainConfig, type WalletInterface } from 'mercury-wallet-core';
 import { setActiveEvmChainId } from './evmChain';
 import { setStealthEvmChains } from './stealth';
 import { APP_ENVIRONMENT, chainInEnvironment, type Environment } from '../lib/environment';

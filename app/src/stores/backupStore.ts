@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import { File, Paths } from 'expo-file-system';
-import { backupEncrypt as rustBackupEncrypt, restoreFromBackup as rustRestoreFromBackup } from 'standard-rn';
+import { backupEncrypt as rustBackupEncrypt, restoreFromBackup as rustRestoreFromBackup } from 'mercury-wallet-core';
 import CloudBackup from '../../modules/cloud-backup/src/CloudBackupModule';
 import { createBackup, type Backup, type BackupCore, type WalletDescriptor } from '../bridge/backup';
 import { dbPathFor, keystore, PRIMARY_ALIAS } from '../bridge/wallet';

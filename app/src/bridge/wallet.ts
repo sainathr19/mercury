@@ -1,4 +1,4 @@
-import { Wallet, WordCount, type WalletInterface } from 'standard-rn';
+import { Wallet, WordCount, type WalletInterface } from 'mercury-wallet-core';
 import { File, Paths } from 'expo-file-system';
 import { SecureEnclaveKeystore } from './keystore';
 import { applyEnvironment } from './networks';

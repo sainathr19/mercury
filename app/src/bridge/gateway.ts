@@ -8,7 +8,7 @@
 //  Every shape below was verified against the live testnet API and Circle's
 //  contracts (circlefin/evm-gateway-contracts) — see the notes on each.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import {
   ensureAllowance,
   erc20BalanceOf,

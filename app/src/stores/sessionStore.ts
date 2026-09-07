@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 
 // 'locked' = a wallet exists on disk but it isn't unlocked yet (Face ID/passcode
 // not yet satisfied, or cancelled). Distinct from 'onboarding' (no wallet at all)

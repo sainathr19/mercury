@@ -6,7 +6,7 @@ import type {
   StealthSponsoredSpend,
   StealthEvmToken,
   AnnouncementProcessReport,
-} from 'standard-rn';
+} from 'mercury-wallet-core';
 import { toBaseUnits } from '../lib/format';
 import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { evmExplorerTxUrl } from './evmChain';
@@ -17,7 +17,7 @@ import { authClient } from './auth';
 import type { CustomToken } from './tokens';
 import type { PortfolioAsset } from './portfolio';
 
-export type { StealthPayment } from 'standard-rn';
+export type { StealthPayment } from 'mercury-wallet-core';
 
 /** Chain families supported for stealth payments (mirrors iOS StealthSendView). */
 export interface StealthChain {

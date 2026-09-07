@@ -1,4 +1,4 @@
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import { getActiveAccount } from './account';
 import { APP_ENVIRONMENT, DEFAULT_EVM_CHAIN_ID } from '../lib/environment';
 

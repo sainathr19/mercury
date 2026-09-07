@@ -16,7 +16,7 @@
 //    cold launch
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import { rangeFor, type ChartSample, type RangeKey } from './chart';
 
 interface Entry {

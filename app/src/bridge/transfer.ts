@@ -1,4 +1,4 @@
-import { FeeChoice, type WalletInterface } from 'standard-rn';
+import { FeeChoice, type WalletInterface } from 'mercury-wallet-core';
 import { ENDPOINTS, evmRpcForChainId, btcEsploraForEnv, btcEsploraFallbackForEnv } from './networks';
 import { getActiveEvmChainId, evmExplorerTxUrl } from './evmChain';
 import { getActiveEnvironment } from './activeEnv';

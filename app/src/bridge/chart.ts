@@ -1,4 +1,4 @@
-import { TimeRange } from 'standard-rn';
+import { TimeRange } from 'mercury-wallet-core';
 
 export interface ChartSample {
   timestamp: number; // epoch ms

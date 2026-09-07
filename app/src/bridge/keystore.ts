@@ -1,4 +1,4 @@
-import type { KeystoreBackend } from 'standard-rn';
+import type { KeystoreBackend } from 'mercury-wallet-core';
 import SecureKeystore from '../../modules/secure-keystore/src/SecureKeystoreModule';
 
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {

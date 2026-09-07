@@ -4,7 +4,7 @@
 // idempotent upsert, so it's safe to run on every authed launch. Only public
 // data leaves the device (addresses + meta-address) — never a seed or key.
 
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import { authClient, type AddressesInput } from './auth';
 import { loadMetaAddress } from './stealth';
 import { loadEncIdentity } from './seamlessCrypto';

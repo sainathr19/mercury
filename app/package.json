@@ -92,7 +92,7 @@
       "^expo-secure-store$": "<rootDir>/src/test/mocks/expo-secure-store.js",
       "^expo-file-system$": "<rootDir>/src/test/mocks/expo-file-system.js",
       "^posthog-react-native$": "<rootDir>/src/test/mocks/posthog-react-native.js",
-      "^standard-rn$": "<rootDir>/src/test/mocks/standard-rn.js"
+      "^mercury-wallet-core$": "<rootDir>/src/test/mocks/wallet-core.js"
     }
   }
 }

@@ -1,4 +1,4 @@
-import { type WalletInterface } from "standard-rn";
+import { type WalletInterface } from "mercury-wallet-core";
 import { getActiveEvmChainId } from "./evmChain";
 import { getActiveAccount } from "./account";
 import { tokenBalances } from "./graph";

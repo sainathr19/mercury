@@ -11,7 +11,7 @@
 //  swapExactTokensForTokens. That is the right shape for Arc anyway — its
 //  native coin IS USDC, and USDC is an ordinary ERC-20 here.
 // ─────────────────────────────────────────────────────────────────────────────
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import {
   ensureAllowance,
   ethCall,

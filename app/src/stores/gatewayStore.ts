@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { WalletInterface } from 'standard-rn';
+import type { WalletInterface } from 'mercury-wallet-core';
 import {
   settleUsdcToGateway,
   usdcHoldings,
