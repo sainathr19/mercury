@@ -1,182 +1,149 @@
-# ENS — implementation plan
+# ENS — implementation plan (all chains)
 
-Status: **plan, nothing built.** Facts below were checked on-chain on 2026-09-06;
-anything unverified is marked as such.
+Status: **plan, nothing built.** Facts checked on-chain 2026-09-06. Anything I
+did not verify is marked as such.
+
+---
+
+## The idea in one line
+
+**One name holds every address you have. The wallet then picks how to pay it.**
+
+Resolution and payment are two separate jobs, and keeping them separate is what
+makes this work across chains.
 
 ---
 
 ## 1. The blocker, first
 
-`mercury.eth` is **taken** — on Ethereum mainnet (owner `0x464305cb…461a`) and
-on Sepolia (`0x366e45e6…8391`). The plan's `you.mercury.eth` is not available.
+`mercury.eth` is **taken** — mainnet (owner `0x464305cb…461a`) and Sepolia
+(`0x366e45e6…8391`). Free on mainnet right now: `mercurywallet.eth`,
+`usemercury.eth`, `mercurypay.eth`, `getmercury.eth`, `paywithmercury.eth`.
 
-Checked and free on mainnet:
-
-| Name | |
-|---|---|
-| `mercurywallet.eth` | available |
-| `usemercury.eth` | available |
-| `mercurypay.eth` | available |
-| `getmercury.eth` | available |
-| `paywithmercury.eth` | available |
-| `mercuryapp.eth` | taken |
-
-**This is a decision only you can make**, and it blocks phases 1–3. Registration
-is a normal ENS commit/reveal on L1: ~$5/year for a 9+ character name, plus L1
-gas. Register on **both** mainnet and Sepolia — the demo runs on testnet and
-Sepolia ENS is a separate registry with separate ownership.
+Pick one and register it on **both** mainnet and Sepolia — they are separate
+registries and the demo runs on testnet. ~$5/year plus L1 gas. This is a call
+only you can make, and it blocks the subname phases (not Phase 0).
 
 ---
 
-## 2. What ENS is actually for here
+## 2. What one name holds
 
-Two directions, and they are different jobs:
+ENS records are **not** Ethereum-only. The lookup is `addr(node, coinType)` and
+it returns **raw bytes**, so it can hold any chain's address format.
 
-- **Forward** (`name → address`): the send field, payment requests, QR codes.
-- **Reverse** (`address → name`): activity rows read "Paid sainath" instead of
-  "To 0xF7Bc03…ca48e2".
+| Record | Holds | Covers |
+|---|---|---|
+| `addr(node, 60)` | your `0x…` | **every** EVM chain — Arc, Base, Arbitrum, Sepolia |
+| `addr(node, 501)` | your Solana address | Solana (SLIP-44 = 501) |
+| `addr(node, 0)` | your Bitcoin address | Bitcoin |
+| `addr(node, 2147488690)` | `0x…` again | "prefer Arc" — a routing hint, not a different address |
+| `addr(node, 2147492101)` | `0x…` again | "prefer Base" |
+| text `mercury.stealth` | ERC-5564 meta-address | private payments, later |
 
-Forward is most of the value and is far easier. Reverse is the awkward half —
-see §6.
+Mercury already derives all three address families (`btc`, `eth`, `sol`), so we
+publish all three under one name at signup.
 
----
-
-## 3. The simplification that makes this easy for us
-
-Mercury derives **one** secp256k1 key, so the user has the **same `0x` address on
-every EVM chain** — Arc, Base, Arbitrum, Sepolia. We are not a multi-address
-wallet.
-
-That means the hard part of "cross-chain ENS" — different addresses per chain —
-**does not apply to us.** A single `addr()` record is correct everywhere.
-
-So the division of labour is:
-
-> **ENS answers *who*. Gateway answers *where*. The payer never picks a chain.**
-
-That sentence is the whole cross-chain story, and it is only true because the
-unified balance already removed the network question. A wallet without Gateway
-would have to make the user choose a chain after resolving the name; we don't.
+**Why the EVM side is easy:** one key gives the *same* `0x` address on every EVM
+chain, so a single record covers all of them. Solana and Bitcoin are genuinely
+different keys and need their own records. That is the whole difference.
 
 ---
 
-## 4. Where per-chain records still earn their place
+## 3. What happens when you pay a name
 
-ENSIP-11 encodes an EVM chain as `coinType = 0x80000000 + chainId`. Verified
-arithmetic:
+Resolve once, then decide. The decision is ours, not ENS's:
 
-| Chain | chainId | coinType | hex |
-|---|---|---|---|
-| Ethereum | 1 | 2147483649 | `0x80000001` |
-| Base | 8453 | 2147492101 | `0x80002105` |
-| Arc mainnet | 5042 | **2147488690** | `0x800013b2` |
-| Arc testnet | 5042002 | **2152525650** | `0x804cef52` |
+```
+name → { evm: 0x…, solana: …, bitcoin: …, prefers: Arc }
 
-We use these as a **routing preference, not a different address**:
+  has EVM address?        → pay via Gateway on their preferred chain
+                            ~4s, they need no gas          [BUILT]
+  Solana only?            → needs USDC on Solana:
+                              • direct SPL send if we hold it   [BUILT]
+                              • CCTP V2 from Cash (domain 5)    [NOT BUILT]
+  Bitcoin only?           → cannot be paid in USDC. Ever.       [IMPOSSIBLE]
+```
 
-- Paying a **Mercury** user: ignore them. Their balance is unified; deliver
-  anywhere.
-- Paying **anyone else**: this is how we learn which chain they actually watch.
-  Someone with only an Arc record should not be paid on Base, where the funds
-  would sit unseen.
-
-Also worth one text record: `mercury.stealth` holding the ERC-5564 meta-address,
-so the private-payment path has somewhere to publish to that isn't a hub we run.
+That table is the honest scope. Resolution is universal; **delivery is not.**
 
 ---
 
-## 5. Where the names live
+## 4. What we CAN implement
 
-Three options, and the choice is a time/credibility trade:
+| | Effort | Notes |
+|---|---|---|
+| Resolve any `.eth` name in the send field | ~1 hour | No name, no contract, no gateway needed. Works with names people already own. |
+| Publish all address records under our own name | small | Once the 2LD is registered |
+| Free instant subnames (`you.<name>.eth`) | ~1 day | Offchain via CCIP-Read, how `cb.id` and `base.eth` do it |
+| Names shown in our own activity + requests | small | We know the names we issued |
+| Per-chain routing preference | small | ENSIP-11 records |
+| **Pay a Solana address from Cash** | ~1–2 days | Needs CCTP V2 (Solana = domain 5). Gateway does not reach Solana; CCTP does. |
+| Gasless receive on Solana | medium | Solana has a native fee-payer, so a relayer works there too |
 
-**A. Offchain subnames (CCIP-Read).** Own the 2LD on L1, point it at a wildcard
-resolver (ENSIP-10) that reverts with `OffchainLookup` (EIP-3668); our gateway
-answers with a signed response. Names are free, instant, and no user ever pays
-gas. This is how `cb.id`, `uni.eth` and `base.eth` subnames work.
-
-**B. On-chain subnames on L1.** Correct and simple; costs gas per signup. A
-payments wallet that charges you to have a name is a non-starter.
-
-**C. L2 registry + L1 CCIP-Read resolver.** More "real" than A — the registry is
-a contract, not our database — but it is meaningfully more to build and to run.
-
-**Recommendation: A now, C as the follow-up.** A is buildable inside the deadline
-and is indistinguishable from C to a user or a judge; the difference is where
-trust sits, which is worth being explicit about rather than hiding.
-
-> Note: `PLAN.md` says "ENSv2 subregistry". I have **not** verified the state of
-> ENSv2/Namechain, and nothing in this plan depends on it. Treat that line as
-> aspirational until someone checks.
+Everything above is a matter of time, not possibility.
 
 ---
 
-## 6. Reverse resolution, honestly
+## 5. What we LITERALLY CANNOT implement
 
-Reverse records (`<addr>.addr.reverse`) live on L1 and are set **per address, by
-that address**. For offchain subnames this is the weak spot: our users cannot
-cheaply claim an L1 reverse record, so a generic ENS client will not show their
-name.
+These are protocol facts. No amount of work changes them.
 
-Two mitigations, in order:
+**1. USDC cannot be sent to a Bitcoin address.**
+USDC does not exist on Bitcoin. If someone's only record is Bitcoin, we can send
+them BTC — never dollars. "Pay anyone in USDC by name" therefore excludes
+Bitcoin-only recipients, and saying otherwise would be false.
 
-1. **Inside Mercury**, we already know the names we issued — the gateway can
-   answer `address → name` directly, so our own activity rows show names with no
-   L1 involvement. This covers the demo and the product.
-2. **Outside Mercury**, accept that third-party clients see hex until the user
-   claims a reverse record themselves. Say so; do not imply otherwise.
+**2. Other wallets cannot reverse-resolve our users without an L1 transaction
+from that user.**
+A reverse record lives at `<address>.addr.reverse` on Ethereum L1 and can only be
+set by that address. Our users have no ETH on L1. Inside Mercury we show names
+because we issued them; in MetaMask or Etherscan they will show hex until the
+user pays L1 gas themselves. This is how ENS reverse works, not something we
+skipped.
 
-Do not claim "reverse resolution works" without qualifying it to our own app.
+**3. ENS cannot prove a record is true.**
+ENS proves who owns the *name*. It says nothing about whether the Solana or
+Bitcoin address inside is really theirs — anyone can publish anything. So the
+review screen must always show the resolved address before sending. A name is a
+convenience, never a guarantee.
 
----
+**4. ENS cannot be resolved on Arc.**
+ENS lives on Ethereum. Arc has no registry and we cannot put the real one there.
+Resolution is always an L1 read. In practice this is fine — read on Ethereum,
+pay on Arc, no atomicity needed — but it does mean name lookup depends on an L1
+RPC being reachable.
 
-## 7. Cross-chain mechanics, precisely
-
-- **ENS is an L1 protocol. Arc has no ENS registry.** Resolution is a read on
-  Ethereum (or Sepolia); payment is a write on Arc. They are different chains and
-  never need to be atomic — resolve first, then pay.
-- In **testnet mode** the app resolves against **Sepolia ENS** and pays on **Arc
-  testnet**. That is cross-chain by construction and is exactly the demo.
-- **CCIP-Read must run in JS.** Following an `OffchainLookup` revert is a client
-  behaviour; `viem` implements it, the Rust core does not. Resolution therefore
-  belongs in `src/bridge/ens.ts`, not in the core.
-- Resolution is a network call on a chain we otherwise never touch: **cache it,
-  time it out, and never block the send flow on it.**
-
----
-
-## 8. Build order
-
-**Phase 0 — resolve any `.eth` name (≈1 hour, no infra, no name needed).**
-`src/bridge/ens.ts`: `resolveEns(name)` → address, against mainnet/Sepolia by
-environment, with a timeout and an in-memory cache. Wire into the send address
-field beside the existing `@username` path, and into `parsePayment` so a QR or
-link can carry a name. **This alone removes hex from the send flow and works with
-names people already own** — the cheapest large win here, and it is not blocked
-on §1.
-
-**Phase 1 — pick and register the 2LD** (mainnet + Sepolia). Blocked on you.
-
-**Phase 2 — issue subnames.** OffchainResolver on L1 + a CCIP-Read endpoint in
-`hub/`, which already exists as a service. Name claimed during onboarding,
-written to our store, signed on request.
-
-**Phase 3 — records.** `addr(node, 60)` for the default, ENSIP-11 coinTypes for
-Arc and Base as routing preferences, `mercury.stealth` text record.
-
-**Phase 4 — display.** Names in activity rows and the request screen via our own
-reverse lookup, hex as the fallback.
-
-Phase 0 is worth doing regardless of what you decide about the name.
+**5. A name cannot tell you which chain someone actually watches** beyond what
+they chose to publish. If a recipient publishes no preference, we are guessing.
+ENSIP-11 records mitigate this only when the recipient sets them.
 
 ---
 
-## 9. Risks
+## 6. Build order
 
-| Risk | Mitigation |
-|---|---|
-| Chosen 2LD gets squatted after we announce | Register before publishing anything |
-| L1 RPC slow or down | Cache, 3s timeout, fall back to raw address entry |
-| Rust core cannot follow CCIP-Read | Resolution stays in JS |
-| Sepolia ENS ≠ mainnet ENS | Register both; treat as separate registries |
-| Offchain names invisible to other wallets | State the limit plainly; do not claim full ENS interop |
-| A name resolving to the wrong address loses funds | Show the resolved address in the review step, always |
+**Phase 0 — resolve any `.eth` name.** ~1 hour, no infra, not blocked on the
+name. `src/bridge/ens.ts` with a timeout and cache; wire into the send field and
+`parsePayment`. Removes hex from the main flow immediately.
+
+**Phase 1 — register the 2LD** on mainnet + Sepolia. Blocked on you.
+
+**Phase 2 — issue subnames.** Offchain resolver on L1 + a CCIP-Read endpoint in
+`hub/`. Name claimed at signup. Publish `addr(60)`, `addr(501)`, `addr(0)` and
+the Arc preference together.
+
+**Phase 3 — routing.** Use the records to choose the rail per §3, including the
+"they can only take Solana" and "Bitcoin only — cannot pay in USDC" branches,
+each with an honest message rather than a silent failure.
+
+**Phase 4 — CCTP to Solana**, if you want Cash → Solana. This is the only piece
+that makes "pay any chain from one balance" literally true.
+
+---
+
+## 7. What to claim in the submission
+
+True: **"One name, one balance, four EVM networks — and the recipient never
+needs gas."**
+
+Not true yet: "pay anyone on any chain." Solana needs CCTP; Bitcoin cannot take
+USDC at all. Claiming universal coverage is the kind of thing a judge checks.
