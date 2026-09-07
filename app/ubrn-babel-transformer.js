@@ -1,6 +1,7 @@
 // Custom Metro Babel transformer that works around an upstream codegen bug in
 // uniffi-bindgen-react-native (v0.29.3-1): the generated TypeScript in
-// `standard-rn/src/bindings/*.ts` emits method declarations with the modifier
+// The native core's generated `src/bindings/*.ts` emit method declarations
+// with the modifier
 // order `async public` / `async public static`, which the TypeScript compiler
 // tolerates but Babel (used by Metro/Expo) rejects with
 // "SyntaxError: Unexpected token, expected '('".
@@ -31,6 +32,8 @@ module.exports = {
     if (
       typeof args.src === 'string' &&
       args.filename &&
+      // Matches the upstream package directory on disk; that name belongs to
+      // another repository and cannot be changed from here.
       /[\\/]standard-rn[\\/]src[\\/]bindings[\\/]/.test(args.filename)
     ) {
       args = { ...args, src: fixModifierOrder(args.src) };
