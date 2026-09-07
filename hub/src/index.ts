@@ -4,6 +4,7 @@ import type { Hex } from 'viem';
 import { relayMint } from './relay.js';
 import { CHAIN_BY_DOMAIN } from './chains.js';
 import { claimMessage, sponsorRegister, type SponsorConfig } from './sponsor.js';
+import { Budget, policyFromEnv } from './budget.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -13,6 +14,18 @@ const PORT = Number(process.env.PORT ?? 8787);
 // One key, one place to top up, one balance to watch.
 const REGISTRY = process.env.ENS_REGISTRY as Hex | undefined;
 const ENS_PARENT = (process.env.ENS_PARENT ?? 'mercurywallet.eth').toLowerCase();
+// Two budgets, because the two endpoints have different shapes of abuse: one
+// name per wallet is a reasonable lifetime allowance, while relaying is a
+// repeated service for the same person. Both are denominated in ETH.
+const sponsorBudget = new Budget(
+  process.env.SPONSOR_LEDGER ?? 'data/sponsor-budget.json',
+  policyFromEnv('SPONSOR'),
+);
+const relayBudget = new Budget(
+  process.env.RELAY_LEDGER ?? 'data/relay-budget.json',
+  policyFromEnv('RELAY', { perAddressOps: 50 }),
+);
+
 const sponsorConfig = (): SponsorConfig | null =>
   RELAYER_KEY && REGISTRY
     ? {
@@ -20,8 +33,7 @@ const sponsorConfig = (): SponsorConfig | null =>
         registry: REGISTRY,
         parent: ENS_PARENT,
         mainnet: process.env.ENS_NETWORK === 'mainnet',
-        perAddress: Number(process.env.SPONSOR_PER_ADDRESS ?? 1),
-        perDay: Number(process.env.SPONSOR_PER_DAY ?? 200),
+        budget: sponsorBudget,
         rpcUrl: process.env.ENS_RPC_URL,
       }
     : null;
@@ -45,10 +57,13 @@ app.get('/names/status', (c) => {
     parent: ENS_PARENT,
     registry: REGISTRY ?? null,
     network: process.env.ENS_NETWORK === 'mainnet' ? 'mainnet' : 'sepolia',
-    perAddress: cfg?.perAddress ?? null,
-    perDay: cfg?.perDay ?? null,
+    budget: cfg ? sponsorBudget.status() : null,
   });
 });
+
+/** What the relayer will and will not pay for. Published so sponsorship is a
+ *  documented offer rather than an opaque favour. */
+app.get('/gateway/budget', (c) => c.json(relayBudget.status()));
 
 /**
  * The exact bytes to sign.
@@ -158,6 +173,7 @@ app.post('/gateway/relay', async (c) => {
     attestation: attestation as Hex,
     signature: signature as Hex,
     relayerKey: RELAYER_KEY,
+    budget: relayBudget,
   });
   return c.json(result, result.ok ? 200 : 502);
 });

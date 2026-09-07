@@ -23,8 +23,6 @@
 //    • One sponsored name per address, and a daily ceiling. Gas is real money
 //      and an open faucet is drained by the first script that finds it.
 // ─────────────────────────────────────────────────────────────────────────────
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, resolve as resolvePath } from 'node:path';
 import {
   createPublicClient,
   createWalletClient,
@@ -35,6 +33,7 @@ import {
 } from 'viem';
 import { mainnet, sepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import type { Budget } from './budget.js';
 
 export const REGISTRY_ABI = [
   {
@@ -66,41 +65,6 @@ const NONCE_WINDOW_MS = 10 * 60_000;
 /** Registration is ~211k gas at the very most; this is headroom, not a target. */
 const REGISTER_GAS = 320_000n;
 
-const LEDGER = resolvePath(process.env.SPONSOR_LEDGER ?? 'data/sponsored.json');
-
-/** Names paid for per address, and how many today. Abuse accounting only —
- *  the chain is the registry, this is just the bill. */
-interface Ledger {
-  byAddress: Record<string, string[]>;
-  day: string;
-  today: number;
-}
-
-let cache: Ledger | null = null;
-
-function load(): Ledger {
-  if (cache) return cache;
-  try {
-    cache = existsSync(LEDGER)
-      ? (JSON.parse(readFileSync(LEDGER, 'utf8')) as Ledger)
-      : { byAddress: {}, day: '', today: 0 };
-  } catch {
-    // Losing the ledger costs accounting, not names — but silently starting
-    // from zero would reopen the faucet, so say so loudly instead.
-    throw new Error(`sponsor ledger at ${LEDGER} is unreadable`);
-  }
-  return cache;
-}
-
-function persist(l: Ledger): void {
-  mkdirSync(dirname(LEDGER), { recursive: true });
-  const tmp = `${LEDGER}.tmp`;
-  writeFileSync(tmp, JSON.stringify(l, null, 2));
-  renameSync(tmp, LEDGER);
-  cache = l;
-}
-
-const today = (): string => new Date().toISOString().slice(0, 10);
 
 /**
  * The message a claimant signs.
@@ -132,10 +96,8 @@ export interface SponsorConfig {
   registry: Hex;
   parent: string;
   mainnet: boolean;
-  /** Sponsored names allowed per address. */
-  perAddress: number;
-  /** Sponsored names allowed per day, across everyone. */
-  perDay: number;
+  /** Spend-denominated caps. Counting operations does not bound cost. */
+  budget: Budget;
   rpcUrl?: string;
 }
 
@@ -187,19 +149,6 @@ export async function sponsorRegister(
   if (!valid) return fail(401, 'Signature does not match that address');
   const owner = input.evm.toLowerCase();
 
-  // ── Ration ────────────────────────────────────────────────────────────────
-  const ledger = load();
-  if (ledger.day !== today()) {
-    ledger.day = today();
-    ledger.today = 0;
-  }
-  const already = ledger.byAddress[owner] ?? [];
-  if (already.length >= cfg.perAddress) {
-    return fail(403, `Already sponsored ${already.length} name(s) for this wallet.`);
-  }
-  if (ledger.today >= cfg.perDay) {
-    return fail(429, 'Daily sponsorship limit reached. Try again tomorrow.');
-  }
   if (inFlight.has(label)) return fail(409, 'That name is already being registered');
 
   const chain: Chain = cfg.mainnet ? mainnet : sepolia;
@@ -209,11 +158,21 @@ export async function sponsorRegister(
   const wallet = createWalletClient({ account, chain, transport });
 
   inFlight.add(label);
+  let reservation: string | null = null;
   try {
     // Refuse rather than broadcast a transaction we know cannot pay for itself.
     if ((await pub.getBalance({ address: account.address })) === 0n) {
       return fail(503, `Sponsor wallet has no gas on ${chain.name}`);
     }
+
+    // Book the worst case BEFORE spending, and before the availability read.
+    // ERC-7677's guidance is to reject during the stub call rather than after
+    // doing work, and the same logic applies to a budget: the cheapest refusal
+    // is the one that happens first.
+    const gasPrice = await pub.getGasPrice();
+    const booked = cfg.budget.reserve(owner, REGISTER_GAS, gasPrice);
+    if (!booked.ok) return fail(403, booked.error);
+    reservation = booked.id;
 
     // Check before paying. Registering a taken name reverts, and a reverted
     // transaction costs exactly as much gas as a successful one.
@@ -241,16 +200,15 @@ export async function sponsorRegister(
 
     const receipt = await pub.waitForTransactionReceipt({ hash });
     if (receipt.status !== 'success') {
+      // A revert still burns the gas, so it is still charged.
+      cfg.budget.settle(reservation, receipt.gasUsed * receipt.effectiveGasPrice);
+      reservation = null;
       return { ok: false, status: 502, error: 'Registration reverted on chain', ms: Date.now() - t0 };
     }
 
-    // Bill it only once it is real. Counting on broadcast would burn a user's
-    // allowance on a transaction that never landed.
-    persist({
-      ...ledger,
-      byAddress: { ...ledger.byAddress, [owner]: [...already, label] },
-      today: ledger.today + 1,
-    });
+    // Charge the ACTUAL cost, not the reservation.
+    cfg.budget.settle(reservation, receipt.gasUsed * receipt.effectiveGasPrice);
+    reservation = null;
 
     return { ok: true, name: `${label}.${cfg.parent}`, txHash: hash, owner, ms: Date.now() - t0 };
   } catch (e) {
@@ -259,6 +217,8 @@ export async function sponsorRegister(
     if (/insufficient funds/i.test(msg)) return fail(503, 'Sponsor wallet is out of gas');
     return fail(502, msg.slice(0, 200));
   } finally {
+    // Nothing was broadcast, so nothing is owed.
+    if (reservation) cfg.budget.release(reservation);
     inFlight.delete(label);
   }
 }
@@ -283,9 +243,4 @@ export function normalizeSignature(sig: string): string {
     if (v === 0 || v === 1) return `0x${h.slice(0, 128)}${(v + 27).toString(16).padStart(2, '0')}`;
   }
   return sig;
-}
-
-/** Test seam — drops the in-memory ledger so a fresh file is read. */
-export function _resetLedger(): void {
-  cache = null;
 }
