@@ -5,6 +5,7 @@ import { relayMint } from './relay.js';
 import { CHAIN_BY_DOMAIN } from './chains.js';
 import { claimMessage, sponsorRegister, type SponsorConfig } from './sponsor.js';
 import { Budget, policyFromEnv } from './budget.js';
+import { indexProxy, indexProxyConfigured } from './indexProxy.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -49,6 +50,9 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/healthz', (c) => c.text('ok'));
+
+/** The Graph, proxied so the provider key never ships in the app bundle. */
+app.route('/index', indexProxy);
 
 app.get('/names/status', (c) => {
   const cfg = sponsorConfig();
@@ -181,3 +185,4 @@ app.post('/gateway/relay', async (c) => {
 serve({ fetch: app.fetch, port: PORT });
 console.log(`mercury hub on :${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
 console.log(`  names: ${sponsorConfig() ? `sponsoring ${ENS_PARENT} via ${REGISTRY}` : 'NOT sponsoring (set ENS_REGISTRY)'}`);
+console.log(`  index: ${indexProxyConfigured() ? 'proxying The Graph' : 'NOT configured (set TOKEN_API_JWT / ARC_SUBGRAPH_URL)'}`);

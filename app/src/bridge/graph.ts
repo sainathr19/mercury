@@ -14,9 +14,16 @@ import { evmExplorerTxUrl } from './evmChain';
 import { evmNetworkName } from '../lib/evm-activity';
 import { chainHasOwnSubgraph, chainTokenApiNetwork, chainName, isGatewayContract } from '../lib/chains';
 
-const TOKEN_API = 'https://api.pinax.network/v1';
-const TOKEN_API_JWT = process.env.EXPO_PUBLIC_TOKEN_API_JWT ?? '';
-const ARC_SUBGRAPH = process.env.EXPO_PUBLIC_ARC_SUBGRAPH_URL ?? '';
+/**
+ * Both index sources go through the hub.
+ *
+ * The provider key used to live in `EXPO_PUBLIC_TOKEN_API_JWT`, which is inlined
+ * into the bundle at build time and recoverable from the app package — a
+ * credential handed to anyone who downloads the app, billed to us. It is now
+ * server-side only, and the app carries nothing worth extracting.
+ */
+const INDEX_API = `${process.env.EXPO_PUBLIC_RELAYER_URL ?? ''}/index`;
+const INDEX_CONFIGURED = !!process.env.EXPO_PUBLIC_RELAYER_URL;
 
 /**
  * The free tier returns EMPTY for limit > 10 — it does not clamp. Asking for 25
@@ -66,13 +73,12 @@ export interface TokenBalance {
   network: string;
 }
 
-async function tokenApi<T>(path: string, params: Record<string, string>): Promise<T[]> {
-  if (!TOKEN_API_JWT) return [];
+/** `kind` selects a fixed upstream path on the hub — the app never names one. */
+async function tokenApi<T>(kind: string, params: Record<string, string>): Promise<T[]> {
+  if (!INDEX_CONFIGURED) return [];
   const qs = new URLSearchParams(params).toString();
   try {
-    const res = await fetch(`${TOKEN_API}${path}?${qs}`, {
-      headers: { Authorization: `Bearer ${TOKEN_API_JWT}` },
-    });
+    const res = await fetch(`${INDEX_API}/token/${kind}?${qs}`);
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: unknown };
     return Array.isArray(json.data) ? (json.data as T[]) : [];
@@ -85,7 +91,7 @@ async function tokenApi<T>(path: string, params: Record<string, string>): Promis
 export async function tokenBalances(address: string, chainId: bigint): Promise<TokenBalance[]> {
   const network = tokenApiNetworkFor(chainId);
   if (!network || !address) return [];
-  return tokenApi<TokenBalance>('/evm/balances', {
+  return tokenApi<TokenBalance>('balances', {
     network, address, limit: String(MAX_PAGE),
   });
 }
@@ -94,7 +100,7 @@ export async function tokenBalances(address: string, chainId: bigint): Promise<T
 export async function nativeBalance(address: string, chainId: bigint): Promise<number | null> {
   const network = tokenApiNetworkFor(chainId);
   if (!network || !address) return null;
-  const rows = await tokenApi<{ value: number }>('/evm/balances/native', { network, address });
+  const rows = await tokenApi<{ value: number }>('balances-native', { network, address });
   return rows.length ? rows[0].value : null;
 }
 
@@ -113,7 +119,7 @@ export async function tokenTransfers(
   const addr = address.toLowerCase();
   const rows: TokenApiTransfer[] = [];
   for (let page = 1; page <= pages; page++) {
-    const batch = await tokenApi<TokenApiTransfer>('/evm/transfers', {
+    const batch = await tokenApi<TokenApiTransfer>('transfers', {
       network, address, limit: String(MAX_PAGE), page: String(page),
     });
     rows.push(...batch);
@@ -155,15 +161,9 @@ function toActivityItem(
 
 // ── Arc subgraph ─────────────────────────────────────────────────────────────
 
-const ARC_QUERY = `
-  query Transfers($me: Bytes!, $first: Int!) {
-    transfers(
-      first: $first
-      orderBy: blockNumber
-      orderDirection: desc
-      where: { or: [{ from: $me }, { to: $me }] }
-    ) { id txHash from to symbol amount timestamp }
-  }`;
+// The query itself now lives in the hub (hub/src/indexProxy.ts) so this app
+// cannot be used to run arbitrary GraphQL against our subgraph. The response
+// shape it returns is `ArcTransfer` below — the two must change together.
 
 interface ArcTransfer {
   id: string; txHash: string; from: string; to: string;
@@ -181,13 +181,12 @@ export async function arcTransfers(
   priceOf: (coingeckoId: string) => number,
   first = 40,
 ): Promise<ActivityItem[]> {
-  if (!ARC_SUBGRAPH || !address) return [];
+  if (!INDEX_CONFIGURED || !address) return [];
   try {
-    const res = await fetch(ARC_SUBGRAPH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query: ARC_QUERY, variables: { me: address.toLowerCase(), first } }),
-    });
+    // The query lives on the hub, not here: an endpoint that forwards arbitrary
+    // GraphQL is an open door to our own deployment.
+    const qs = new URLSearchParams({ address: address.toLowerCase(), first: String(first) });
+    const res = await fetch(`${INDEX_API}/arc/transfers?${qs}`);
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: { transfers?: ArcTransfer[] } };
     const rows = json.data?.transfers ?? [];
