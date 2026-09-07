@@ -1,4 +1,4 @@
-import { encodeRegister, fullName, validateLabel } from './mercuryName';
+import { encodeRegister, fullName, labelHash, validateLabel } from './mercuryName';
 
 // A label becomes a name people read off a screen and type into a send field, so
 // the rules exist to stop lookalikes rather than to be tidy. These mirror the
@@ -75,4 +75,13 @@ describe('encodeRegister', () => {
     expect(w(3) - w(0)).toBe(96n);
     expect(w(4)).toBe(352n);
   });
+});
+
+// The `reserved` lookup is keyed by keccak256(label). A wrong hash does not
+// error — it reports every name as unreserved, so `support.mercurywallet.eth`
+// would look claimable right up until the transaction reverts.
+test('labelHash matches the contract mapping key', () => {
+  expect(labelHash('support')).toBe(
+    '05ed8e412f03a3e829aaa34f3b5d303588af0b61c223dec800945749682d4f73',
+  );
 });

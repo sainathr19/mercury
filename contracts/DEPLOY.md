@@ -58,7 +58,33 @@ to you.
 # app/.env.local
 EXPO_PUBLIC_ENS_REGISTRY=0x…
 EXPO_PUBLIC_ENS_PARENT=mercurywallet.eth
+EXPO_PUBLIC_RELAYER_URL=https://your-hub    # also the name sponsor
 ```
+
+## 4b. Let the relayer pay for names (optional but recommended)
+
+```bash
+# hub/.env
+RELAYER_PRIVATE_KEY=0x…       # the wallet that pays; needs Sepolia ETH
+ENS_REGISTRY=0x…              # from step 1
+ENS_PARENT=mercurywallet.eth
+SPONSOR_PER_ADDRESS=1
+SPONSOR_PER_DAY=200
+```
+
+With this set, a user claims a name holding **no ETH at all** — the app tries
+the sponsor first and only falls back to spending the user's own gas if it
+declines. The name belongs to the user either way; the sponsor is the payer,
+never the owner.
+
+Fund the relayer wallet with Sepolia ETH. At ~211k gas per name that is roughly
+**4,700 names per 1 ETH** at 1 gwei.
+
+Unlike `/gateway/relay`, this endpoint is **not** safe to leave open: there is no
+Circle signature vouching for the payload, so the caller's own signature is the
+only thing between your gas and a name pointing wherever a stranger likes. The
+protections are in `hub/src/sponsor.ts` — registration is made out to the
+recovered signer, never to an address from the request body.
 
 ---
 

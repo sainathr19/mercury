@@ -206,10 +206,28 @@ parent's resolver for subnames despite `mercurywallet.eth` having no
 subregistry, which is what makes the whole design possible without deploying a
 registry per name.
 
-**The cost, stated plainly.** Registering is an Ethereum transaction, so the
-user needs a gas token — the one place the wallet's "never hold gas" promise
-does not reach. `register` takes the owner as a parameter, so the app can
-sponsor it without a contract change.
+**Sponsorship — the user needs no gas.** Registering is an Ethereum transaction,
+which is the one place the wallet's "never hold gas" promise runs out of road.
+So `hub/src/sponsor.ts` pays it. The app tries the sponsor first and only falls
+back to the user's own ETH if it declines; the name belongs to the user either
+way, because `register` takes the owner as a parameter and the sponsor passes
+the address it VERIFIED, never one from the request body.
+
+This endpoint could not be left open the way `/gateway/relay` is. That one is
+safe for anyone to call because Circle signs the attestation and names the
+recipient inside it — the relayer's only power is whether to submit. Here we are
+choosing what to write into a name registry, and a name is a payment
+instruction, so the caller's signature carries the whole weight: it covers the
+label and every address published under it, the registration is made out to the
+recovered signer, we only sponsor names pointing at that signer's own address,
+and there is a per-wallet and per-day ceiling because gas is real money.
+
+Verified against a local chain at Sepolia's chain id, with a user wallet holding
+**exactly zero ETH**: the name registered, resolved to the user, was owned by
+the user, and the wallet's balance never moved. Then every abuse path — a forged
+body signed by someone else, a signature over different text, an expired nonce,
+a reserved label, a taken name, a second name for one wallet, a malformed label
+— each rejected, the taken one without spending gas.
 
 **Not built: reverse records.** Other wallets still show hex for our users. See
 §5.2 — a protocol limit, not a gap.
