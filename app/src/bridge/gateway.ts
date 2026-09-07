@@ -603,17 +603,33 @@ export async function gatewayTransfer(opts: {
     let legs = allocate(1n);
     if (!legs) return { ok: false, error: 'Not enough spendable balance', ms: Date.now() - t0 };
     let { res, body } = await submit(legs, 1n);
-    if (!res.ok) {
+
+    // Re-price until the quote settles, not just once.
+    //
+    // The fee is charged per burn intent, and the number of intents depends on
+    // how many domains the amount has to be drawn from — which depends on the
+    // fee. Quoting once and re-signing at that price can therefore be rejected
+    // AGAIN at a higher price, because paying the fee pushed the transfer onto
+    // an extra source. That is not hypothetical: sweeping a balance spread over
+    // three domains failed with "expected at least 0.01005, got 0.0035", the
+    // second quote being the first one multiplied by the legs it caused.
+    //
+    // So loop, and stop as soon as the quote stops rising. Bounded because each
+    // pass costs a signature and a round trip, and a fee that never converges is
+    // a Circle-side problem we should report rather than grind against.
+    let fee = 0n;
+    for (let attempt = 0; attempt < 4 && !res.ok; attempt++) {
       const quoted = /expected at least ([0-9.]+)/.exec(body)?.[1];
-      if (quoted) {
-        const fee = BigInt(Math.ceil(Number(quoted) * 1e6));
-        const priced = allocate(fee);
-        if (!priced) {
-          return { ok: false, error: `Not enough to cover the ${quoted} USDC fee`, ms: Date.now() - t0 };
-        }
-        legs = priced;
-        ({ res, body } = await submit(legs, fee));
+      if (!quoted) break;
+      const next = BigInt(Math.ceil(Number(quoted) * 1e6));
+      if (next <= fee) break; // not a fee problem any more, or it is not moving
+      fee = next;
+      const priced = allocate(fee);
+      if (!priced) {
+        return { ok: false, error: `Not enough to cover the ${quoted} USDC fee`, ms: Date.now() - t0 };
       }
+      legs = priced;
+      ({ res, body } = await submit(legs, fee));
     }
     if (!res.ok) {
       const msg = (() => { try { return JSON.parse(body).message as string; } catch { return body.slice(0, 200); } })();

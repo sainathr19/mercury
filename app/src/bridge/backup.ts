@@ -93,10 +93,6 @@ export interface CloudStore {
 /** Single backup object per identity for v1 (the primary wallet's manifest). */
 export const MANIFEST_ID = 'mercury.wallet.backup.v1';
 
-/** The id backups were written under before the rename. Still read, so an
- *  existing cloud backup is not orphaned by a cosmetic change. */
-export const LEGACY_MANIFEST_ID = 'standard.wallet.backup.v1';
-
 /** Build the non-secret manifest the Rust core encrypts. Pure + testable. */
 export function assembleManifest(wallets: WalletDescriptor[], activeWallet: string, version: number): BackupManifestInput {
   return {
