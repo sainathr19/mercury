@@ -8,7 +8,10 @@
 .expo/
 .graph-deploy-key.local
 NOTES.local.md
-android/
+# Anchored to the prebuild output. A bare `android/` matches ANY directory of
+# that name at any depth, which silently excluded app/modules/*/android — the
+# hand-written native sources, including the Secure Enclave keystore.
+/app/android/
 build-sim/
 build/
 contracts/broadcast/
@@ -18,7 +21,7 @@ dist/
 env.filled
 hub/.env
 hub/node_modules/
-ios/
+/app/ios/
 node_modules/
 subgraph/build/
 subgraph/generated/
