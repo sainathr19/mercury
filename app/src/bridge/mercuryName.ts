@@ -197,6 +197,20 @@ const utf8 = (s: string): ArrayBuffer => {
  * reason to STOP: the name is taken, or the claim was refused, and paying would
  * fail the same way for the same reason.
  */
+/** The sponsor is a convenience, not a dependency. If it does not answer
+ *  promptly we pay for ourselves rather than leaving the user on a spinner. */
+const SPONSOR_TIMEOUT_MS = 20_000;
+
+async function withTimeout(input: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function trySponsor(opts: {
   wallet: WalletInterface;
   account: number;
@@ -214,11 +228,11 @@ async function trySponsor(opts: {
     bitcoin: opts.bitcoin ?? undefined,
   };
   try {
-    const prep = await fetch(`${SPONSOR_URL}/names/claim-message`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const prep = await withTimeout(
+      `${SPONSOR_URL}/names/claim-message`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+      SPONSOR_TIMEOUT_MS,
+    );
     if (!prep.ok) return { unavailable: true };
     const { message, nonce } = (await prep.json()) as { message: string; nonce: number };
 
@@ -227,11 +241,17 @@ async function trySponsor(opts: {
     // registration is safe.
     const signature = await opts.wallet.evmPersonalSign(opts.account, utf8(message));
 
-    const res = await fetch(`${SPONSOR_URL}/names/sponsor`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...body, prefer: opts.prefer, nonce, signature }),
-    });
+    // The registration itself is mined before the sponsor replies, so this one
+    // waits considerably longer than the handshake above.
+    const res = await withTimeout(
+      `${SPONSOR_URL}/names/sponsor`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...body, prefer: opts.prefer, nonce, signature }),
+      },
+      90_000,
+    );
     const json = (await res.json()) as { ok?: boolean; name?: string; txHash?: string; error?: string };
     if (res.ok && json.ok && json.name && json.txHash) {
       return { outcome: { ok: true, name: json.name, txHash: json.txHash, sponsored: true } };

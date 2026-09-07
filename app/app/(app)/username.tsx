@@ -9,7 +9,7 @@ import { fontFamily } from '../../src/theme/fonts';
 
 const BENEFITS = [
   {
-    icon: require('../../assets/icons/AtIconRounded.svg'),
+    icon: require('../../assets/icons/WorldIconRounded.svg'),
     title: 'One name, every chain',
     sub: 'Your Arc, Base, Solana and Bitcoin addresses all under one name.',
   },
@@ -19,7 +19,7 @@ const BENEFITS = [
     sub: 'Any wallet or explorer can resolve it. Costs nothing and no gas.',
   },
   {
-    icon: require('../../assets/icons/AtIconRounded.svg'),
+    icon: require('../../assets/icons/KeyIconRounded.svg'),
     title: 'Only your key can claim it',
     sub: 'No account and no sign-in — your wallet signs for itself.',
   },

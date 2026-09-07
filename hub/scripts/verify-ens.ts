@@ -88,7 +88,13 @@ async function main() {
         universalResolverAddress: UNIVERSAL_RESOLVER,
         ...(coin === undefined ? {} : { coinType: coin }),
       });
-      value ? ok(`${what.padEnd(8)} ${value}`) : console.log(`  · ${what.padEnd(8)} (not set)`);
+      // ENSIP-9 stores non-EVM addresses as the raw bytes of their own text
+      // format, so viem hands them back as hex. Printing that is useless.
+      const shown =
+        value && coin !== undefined && /^0x[0-9a-f]+$/i.test(value)
+          ? Buffer.from(value.slice(2), 'hex').toString('utf8')
+          : value;
+      shown ? ok(`${what.padEnd(8)} ${shown}`) : console.log(`  · ${what.padEnd(8)} (not set)`);
     } catch (e) {
       bad(`${what.padEnd(8)} ${String(e).split('\n')[0]}`);
     }

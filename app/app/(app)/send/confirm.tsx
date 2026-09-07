@@ -463,9 +463,21 @@ export default function SendConfirm() {
       <View style={styles.card}>
         <View style={styles.row}>
           <Text style={styles.rowLabel}>To</Text>
-          <Text style={styles.rowValue} numberOfLines={1}>
-            {recipientHandle ?? shortenAddress(address, 8, 6)}
-          </Text>
+          {/* When a name resolved, show the ADDRESS underneath it. A name is a
+              claim, not a guarantee — anyone may publish a record pointing
+              anywhere, and ENS proves who owns the name, never that the address
+              inside belongs to them. Showing only the name asks the user to
+              trust a lookup they cannot see the result of. */}
+          <View style={styles.rowValueStack}>
+            <Text style={styles.rowValue} numberOfLines={1}>
+              {recipientHandle ?? shortenAddress(address, 8, 6)}
+            </Text>
+            {!!recipientHandle && (
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {shortenAddress(address, 8, 6)}
+              </Text>
+            )}
+          </View>
         </View>
         {/* Shield + spend settle via the private path — the network fee is handled
             inside the stealth path, so the fee row is omitted here. */}
@@ -549,6 +561,8 @@ const styles = StyleSheet.create((theme) => ({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
   rowLabel: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
   rowValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  rowValueStack: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
+  rowSub: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, color: theme.colors.muted },
   feeRight: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   // Crypto amount mid grey; fiat cost dark. Both medium weight.
   feeValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: '#B0B0B0' },

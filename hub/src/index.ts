@@ -28,6 +28,14 @@ const sponsorConfig = (): SponsorConfig | null =>
 
 const app = new Hono();
 
+// Request log. Without it a hanging client is indistinguishable from a request
+// that never arrived, which is exactly the wrong thing not to know.
+app.use('*', async (c, next) => {
+  const t0 = Date.now();
+  await next();
+  console.log(`${c.req.method} ${c.req.path} -> ${c.res.status} ${Date.now() - t0}ms`);
+});
+
 app.get('/healthz', (c) => c.text('ok'));
 
 app.get('/names/status', (c) => {
