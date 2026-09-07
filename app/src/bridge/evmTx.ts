@@ -22,14 +22,23 @@ export function hexToBytes(hex: string): ArrayBuffer {
   return out.buffer;
 }
 
+/** A JSON-RPC error that keeps its revert payload. CCIP-Read is delivered AS a
+ *  revert, so throwing away `data` throws away the answer. */
+export class RpcError extends Error {
+  constructor(message: string, readonly data?: string) {
+    super(message);
+    this.name = 'RpcError';
+  }
+}
+
 export async function rpc<T>(url: string, method: string, params: unknown[]): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
-  const json = (await res.json()) as { result?: T; error?: { message?: string } };
-  if (json.error) throw new Error(json.error.message ?? `${method} failed`);
+  const json = (await res.json()) as { result?: T; error?: { message?: string; data?: string } };
+  if (json.error) throw new RpcError(json.error.message ?? `${method} failed`, json.error.data);
   return json.result as T;
 }
 

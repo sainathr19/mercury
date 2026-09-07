@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { keccak_256 } from '@noble/hashes/sha3';
 import { ethCall, uint } from './evmTx';
+import { resolveOffchain, revertDataOf, OFFCHAIN_LOOKUP_SELECTOR } from './ccipRead';
 import { getActiveEnvironment } from './activeEnv';
 import { chainById } from '../lib/chains';
 
@@ -41,11 +42,6 @@ const SEL_ADDR = '0x3b3b57de'; // addr(bytes32)
 const SEL_ADDR_COINTYPE = '0xf1cb7e06'; // addr(bytes32,uint256) — ENSIP-9
 const SEL_NAME = '0x691f3431'; // name(bytes32) — reverse resolution
 const SEL_UR_RESOLVE = '0x9061b923'; // resolve(bytes,bytes) on the Universal Resolver
-
-/** EIP-3668 OffchainLookup. A revert with this selector means the answer lives
- *  off-chain and needs a gateway round trip we do not implement yet — it is NOT
- *  the same as "no such name", and must not be reported as one. */
-const OFFCHAIN_LOOKUP = '0x556f1830';
 
 /**
  * DNS wire format: each label length-prefixed, terminated by a zero byte.
@@ -212,10 +208,19 @@ export async function resolveEns(name: string): Promise<EnsLookup> {
       cache.set(key, { at: Date.now(), value: records });
       return { status: 'ok', records };
     } catch (e) {
-      // An offchain name is not a missing name — say so rather than claiming it
-      // has no address. Following the lookup needs an EIP-3668 gateway hop we
-      // have not built yet.
-      if (e instanceof Error && e.message.includes(OFFCHAIN_LOOKUP)) {
+      // An offchain name answers with a REVERT that says where to look. Follow
+      // it — this is what makes gasless subnames resolve at all.
+      const revert = revertDataOf(e);
+      if (revert?.toLowerCase().startsWith(OFFCHAIN_LOOKUP_SELECTOR)) {
+        const answer = await resolveOffchain(rpc, revert);
+        const evm = answer ? addrFrom(answer) : null;
+        if (evm) {
+          const records: EnsRecords = { name: key, evm };
+          cache.set(key, { at: Date.now(), value: records });
+          return { status: 'ok', records };
+        }
+        // The gateway is the name's own infrastructure — if it cannot answer,
+        // that is "could not check", never "no such name".
         return { status: 'unavailable' };
       }
       // otherwise try the next endpoint
