@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
@@ -29,6 +29,11 @@ export default function Recovery() {
   const [step, setStep] = useState<'review' | 'phrase'>('review');
   const [checks, setChecks] = useState([false, false, false]);
   const [words, setWords] = useState<string[] | null>(null);
+
+  // Drop the phrase when the screen goes away. Leaving it in component state
+  // keeps it reachable for as long as React holds the tree, which is longer
+  // than the user is looking at it.
+  useEffect(() => () => setWords(null), []);
   const allChecked = checks.every(Boolean);
 
   // Copy → tick crossfade (same treatment as the receive address copy button):

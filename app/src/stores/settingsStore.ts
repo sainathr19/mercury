@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { setCurrencySymbol } from '../lib/format';
 import { refreshRates, subscribeCurrencyRate } from '../lib/currency';
 import { requireAuth } from '../lib/biometrics';
+import { useSession } from './session';
 
 export type Appearance = 'light' | 'dark';
 export type AutoLock = 'immediately' | '1min' | '5min' | '15min' | '1hour' | 'never';
@@ -191,6 +192,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
 
   onBackground: () => {
     set({ backgroundedAt: Date.now() });
+    // The recovery phrase is only needed while the backup flow is on screen. If
+    // the user walked away mid-onboarding it would otherwise sit in the store
+    // for the rest of the session. JS strings cannot be zeroed, so shortening
+    // the window it is referenced at all is the only lever there is.
+    useSession.getState().clearMnemonic();
   },
   onForeground: () => {
     const { isLocked, backgroundedAt, autoLock } = get();
