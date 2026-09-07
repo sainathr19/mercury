@@ -9,6 +9,7 @@ import { useScan, parseScanned } from '../../../src/stores/scanStore';
 import { useRecentAddresses } from '../../../src/stores/recentAddressStore';
 import { useSendDraft } from '../../../src/stores/sendDraftStore';
 import { authClient } from '../../../src/bridge/auth';
+import { isEnsName, resolveEns } from '../../../src/bridge/ens';
 import { validateHandle } from '../../../src/bridge/username';
 import { validateAddr, chainOf, detectAddressChain, CHAIN_LABEL } from '../../../src/lib/sendHelpers';
 import { shortenAddress, relativeTime } from '../../../src/lib/format';
@@ -130,6 +131,37 @@ export default function SendAddress() {
     );
   }, [scanResult, patch, asset, shield]);
 
+  // ── ENS ────────────────────────────────────────────────────────────────
+  // A `.eth` name is resolved on Ethereum (Sepolia on testnet) and REPLACES the
+  // typed text with the address it points at. Showing the resolved address
+  // rather than keeping the pretty name is deliberate: ENS proves who owns the
+  // NAME, never that the address inside is really theirs, so the payer sees
+  // exactly where the money is going before it moves.
+  //
+  // coinType 60 is an EVM address, valid on every EVM chain at once. Bitcoin and
+  // Solana are different keys under different coin types and need their own
+  // decoders, so a name is not offered for those assets yet.
+  const isEns = !isUsername && isEnsName(trimmed);
+  const ensChainOk = !!asset && chainOf(asset) === 'eth';
+  const [ensResolving, setEnsResolving] = useState(false);
+  const [ensErr, setEnsErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEns) { setEnsResolving(false); setEnsErr(null); return; }
+    if (!ensChainOk) { setEnsResolving(false); setEnsErr(`ENS names resolve to an EVM address — pick an EVM asset to pay ${trimmed}.`); return; }
+    let cancelled = false;
+    setEnsResolving(true);
+    setEnsErr(null);
+    const t = setTimeout(async () => {
+      const r = await resolveEns(trimmed);
+      if (cancelled) return;
+      setEnsResolving(false);
+      if (r?.evm) patch({ address: r.evm, recipientHandle: trimmed.toLowerCase() });
+      else setEnsErr(`${trimmed} has no address we can pay.`);
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [isEns, ensChainOk, trimmed, patch]);
+
   // A valid ADDRESS (typed / pasted / scanned / picked) advances automatically —
   // no Continue tap. Guarded so it fires once per valid entry and doesn't bounce
   // when returning here from the amount step.
@@ -183,7 +215,7 @@ export default function SendAddress() {
 
   // Right-side input status: a small spinner while a username resolves, a green
   // check when the entry is valid, a red ✗ when it's a non-empty invalid entry.
-  const showSpinner = isUsername && resolving;
+  const showSpinner = (isUsername && resolving) || ensResolving;
   const showCheck = addrValid || (isUsername && usernameValid);
   // Single error string shown in a FIXED-HEIGHT row below the input, so the
   // layout never shifts whether or not there's an error.
@@ -193,6 +225,8 @@ export default function SendAddress() {
     else if (!resolving && resolved && assetIsToken && isPrivateSend) statusError = 'Private sends support native BTC, ETH and SOL only.';
     else if (!resolving && resolved && !isPrivateSend && !publicAddr) statusError = `@${handle} hasn’t published a ${CHAIN_LABEL[recipientChain]} address.`;
     else if (!resolving && resolved && !usernameValid && !chainSupported) statusError = `@${handle} can’t receive ${asset.symbol}.`;
+  } else if (isEns) {
+    statusError = ensResolving ? '' : (ensErr ?? '');
   } else if (trimmed.length > 0 && !addrValid) {
     statusError = addrError;
   }

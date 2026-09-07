@@ -1,6 +1,6 @@
 # ENS — implementation plan (all chains)
 
-Status: **plan, nothing built.** Facts checked on-chain 2026-09-06. Anything I
+Status: **Phase 0 built** (resolve any `.eth` name in the send field). Name chosen: **`mercurywallet.eth`** — not yet registered. Facts checked on-chain 2026-09-06. Anything I
 did not verify is marked as such.
 
 ---
@@ -121,8 +121,8 @@ ENSIP-11 records mitigate this only when the recipient sets them.
 
 ## 6. Build order
 
-**Phase 0 — resolve any `.eth` name.** ~1 hour, no infra, not blocked on the
-name. `src/bridge/ens.ts` with a timeout and cache; wire into the send field and
+**Phase 0 — resolve any `.eth` name. DONE.** `src/bridge/ens.ts`, wired into the
+send address field. `src/bridge/ens.ts` with a timeout and cache; wire into the send field and
 `parsePayment`. Removes hex from the main flow immediately.
 
 **Phase 1 — register the 2LD** on mainnet + Sepolia. Blocked on you.
