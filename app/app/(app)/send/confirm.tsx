@@ -134,7 +134,7 @@ export default function SendConfirm() {
               explorerUrl: stealthTxUrl(chain, receipt.canonicalTxid),
               network: asset.networkName,
               shielded: true,
-              token: token ? { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex } : undefined,
+              asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
             }),
           );
           // Optimistically CREDIT the private balance so the shield shows in the
@@ -187,7 +187,7 @@ export default function SendConfirm() {
               label: recipientHandle ? `To ${recipientHandle}` : undefined,
               shielded: true, // funds moved into privacy → row reads "Shielded"
               // ERC-20 pay → show the token (e.g. USDC), not the native symbol.
-              token: token ? { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex } : undefined,
+              asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
             }),
           );
         }
@@ -243,7 +243,7 @@ export default function SendConfirm() {
                 status: 'pending',
                 label: toStealth ? (recipientHandle ? `To ${recipientHandle}` : 'Private send') : 'Private spend',
                 chainId: Number(leg.payment.chainId),
-                token: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
+                asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
               }),
             );
             // Each source is a distinct EIP-7702 delegated account, and the node
@@ -267,6 +267,7 @@ export default function SendConfirm() {
               explorerUrl: sc ? stealthTxUrl(sc, r.txid) : '',
               status: 'pending',
               label: toStealth ? (recipientHandle ? `To ${recipientHandle}` : 'Private send') : 'Private spend',
+              asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
             }),
           );
         } else {
@@ -303,6 +304,7 @@ export default function SendConfirm() {
                 status: 'pending',
                 label: toStealth ? (recipientHandle ? `To ${recipientHandle}` : 'Private send') : 'Private spend',
                 chainId: family === 1 ? Number(leg.payment.chainId) : undefined,
+                asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
               }),
             );
           }
@@ -346,7 +348,7 @@ export default function SendConfirm() {
           amount: cryptoAmount,
           usd: cryptoAmount * price,
           explorerUrl: res.explorerUrl,
-          token: isToken ? { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex } : undefined,
+          asset: { symbol: asset.symbol, coingeckoId: asset.coingeckoId, colorHex: asset.colorHex },
           network: asset.networkName,
         }),
       );

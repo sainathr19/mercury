@@ -329,8 +329,16 @@ export function pendingSendItem(args: {
   amount: number;
   usd: number;
   explorerUrl: string;
-  /** Token overrides — set for ERC-20/SPL sends so the row shows the token. */
-  token?: { symbol: string; coingeckoId: string; colorHex: string };
+  /**
+   * What was actually sent.
+   *
+   * Always pass it, tokens and native alike. `chain` here is a FAMILY — btc, eth
+   * or sol — so falling back to its metadata assumes every EVM chain's native
+   * coin is ETH. On Arc it is USDC, which made a native Arc send read "0.05 ETH"
+   * against an Ethereum icon until the next chain scan corrected it: wrong at
+   * precisely the moment the user is looking for confirmation.
+   */
+  asset?: { symbol: string; coingeckoId: string; colorHex: string };
   /** Human network name (from the sent asset) for the row's subtitle. */
   network?: string;
   /** The recipient's ENS name, when the send was addressed to one. */
@@ -341,12 +349,12 @@ export function pendingSendItem(args: {
   shielded?: boolean;
 }): ActivityItem {
   const meta = CHAIN_META[args.chain];
-  const symbol = args.token?.symbol ?? meta.symbol;
+  const symbol = args.asset?.symbol ?? meta.symbol;
   return {
     id: args.id,
     symbol,
-    coingeckoId: args.token?.coingeckoId ?? meta.coingeckoId,
-    colorHex: args.token?.colorHex ?? meta.colorHex,
+    coingeckoId: args.asset?.coingeckoId ?? meta.coingeckoId,
+    colorHex: args.asset?.colorHex ?? meta.colorHex,
     type: 'sent',
     label: args.shielded ? 'Shielded' : `To ${counterparty(args.to ?? args.id)}`,
     amountText: `-${fmt(args.amount, Math.min(meta.decimals, 6))} ${symbol}`,
@@ -469,17 +477,18 @@ export function privateSendItem(args: {
   shielded?: boolean;
   /** EVM chain id (for pending-outcome polling on the correct chain). */
   chainId?: number;
-  /** ERC-20 pay override so the row reads the token (e.g. USDC), not the chain's
-   *  native symbol. Decimals fall back to the chain's for display precision. */
-  token?: { symbol: string; coingeckoId: string; colorHex: string };
+  /** What was sent — tokens and native alike. See `pendingSendItem`: `chain` is
+   *  a family, so its native symbol is ETH even on Arc, where it is USDC.
+   *  Decimals still fall back to the chain's for display precision. */
+  asset?: { symbol: string; coingeckoId: string; colorHex: string };
 }): ActivityItem {
   const meta = CHAIN_META[args.chain];
-  const symbol = args.token?.symbol ?? meta.symbol;
+  const symbol = args.asset?.symbol ?? meta.symbol;
   return {
     id: args.id,
     symbol,
-    coingeckoId: args.token?.coingeckoId ?? meta.coingeckoId,
-    colorHex: args.token?.colorHex ?? meta.colorHex,
+    coingeckoId: args.asset?.coingeckoId ?? meta.coingeckoId,
+    colorHex: args.asset?.colorHex ?? meta.colorHex,
     type: 'sent',
     label: args.label ?? 'Private payment',
     amountText: `-${fmt(args.amount, Math.min(meta.decimals, 6))} ${symbol}`,
