@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "ens:verify": "tsx --env-file-if-exists=.env scripts/verify-ens.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/*.test.ts"
   },

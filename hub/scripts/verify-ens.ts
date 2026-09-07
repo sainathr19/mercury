@@ -56,7 +56,9 @@ async function main() {
     for (let i = 0n; i < n; i++) ok(`gateway url: ${await read<string>('urls', [i])}`);
     if (n === 0n) bad('no gateway urls set — every lookup will fail');
   } catch (e) {
-    bad(`could not read the resolver — is it deployed at that address? ${String(e).split('\n')[0]}`);
+    // Something may well be deployed here — just not ours. The stock
+    // PublicResolver answers supportsInterface and then has no owner().
+    bad(`no MercuryOffchainResolver at that address (a different contract may be there): ${String(e).split('\n')[0]}`);
     return;
   }
 

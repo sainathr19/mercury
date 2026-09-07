@@ -97,6 +97,9 @@ ENS_APEX_ADDRESS=0x…            # what mercurywallet.eth itself resolves to
 NAMES_FILE=data/names.json
 ```
 
+`npm start` and `npm run ens:verify` read this file. Anything you run with bare
+`npx tsx` will not — export the variables in that case.
+
 The gateway refuses to sign for any resolver other than `ENS_RESOLVER_ADDRESS`,
 so this has to match what you deployed.
 
@@ -105,8 +108,13 @@ so this has to match what you deployed.
 ## 6. Check it
 
 ```bash
-cd hub && npx tsx scripts/verify-ens.ts alice
+cd hub && npm run ens:verify alice
 ```
+
+The npm scripts pass `--env-file-if-exists=.env`, so `hub/.env` is picked up.
+Running the script through bare `npx tsx` does **not** load it — nothing in the
+hub depends on dotenv — so either use the npm script or export the variables
+yourself.
 
 This asks **viem** — a standard ENS client with its own CCIP-Read — to resolve
 the name through the real Universal Resolver. It checks the interface, the
