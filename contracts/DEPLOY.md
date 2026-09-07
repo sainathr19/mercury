@@ -12,16 +12,38 @@ Both transactions come from your own wallet, so they are yours to send.
 
 ## 1. Deploy
 
+```bash
+# hub/.env  — gitignored, and never paste this into a terminal argument either,
+# where it lands in your shell history
+DEPLOYER_PRIVATE_KEY=0x…   # the wallet that owns mercurywallet.eth
+```
+
+```bash
+cd hub && npm run deploy:registry
+```
+
+Compiles from source, shows the cost, asks before spending, then does all three
+setup transactions: deploy, `setApex`, and reserving the 22 labels that read as
+you. Prints the address and what to do next.
+
+Measured on a local chain at Sepolia's chain id: **2,407,344 gas total**
+(~0.0024 ETH at 1 gwei).
+
+<details>
+<summary>Or deploy by hand in Remix</summary>
+
 `MercuryNameRegistry.sol` is one file with no imports — paste it into
 [remix.ethereum.org](https://remix.ethereum.org), compile with **0.8.24+**,
-optimizer on. Constructor takes **no arguments**.
-
-Deploy on Sepolia with **Injected Provider**. Measured cost: **1,749,596 gas**
-(~0.0018 ETH at 1 gwei). Save the deployed address.
+optimizer on, constructor takes **no arguments**. Then run `setApex` and
+`reserve` yourself (step 2 and 3 below).
+</details>
 
 ---
 
 ## 2. Point the name at it
+
+This is the one step that cannot be scripted — it is a transaction on ENS's own
+registry from the wallet that owns the name.
 
 On the [Sepolia ENS app](https://sepolia.app.ens.domains), open
 `mercurywallet.eth` → **Edit resolver** → paste the deployed address.
@@ -32,18 +54,18 @@ needed — verified on-chain before this was written: the Universal Resolver
 descends to the parent's resolver for subnames even though your name shows "No
 subregistry".
 
-Because the apex now resolves here too, set its own record or the 2LD goes dark:
-
-```
-setApex(<your address>, "", "", 0)
-```
+Because the apex now resolves here too, its own record has to be set or the 2LD
+goes dark. `npm run deploy:registry` does this; by hand it is
+`setApex(<your address>, "", "", 0)`.
 
 ---
 
 ## 3. Reserve the names that read as you
 
+`npm run deploy:registry` already did this. If you deployed by hand:
+
 ```
-reserve(["support","admin","help","security","billing","refund","refunds","mercury","wallet","team","official","verify","www","api","hub","app","mail","root","system","staff"], true)
+reserve(["admin","support","help","security","billing","refund","refunds","mercury","wallet","team","official","verify","verification","www","api","hub","app","mail","root","system","staff","noreply"], true)
 ```
 
 One transaction. `support.mercurywallet.eth` pointing at a stranger is a
