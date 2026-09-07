@@ -1,22 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Post-deploy check: does a name actually resolve?
 //
-//  Run this after deploying MercuryOffchainResolver and setting it on the parent
-//  name. It does not test our code — it asks a STANDARD ENS client (viem, with
-//  its own CCIP-Read implementation) to resolve a name through the real Universal
-//  Resolver. If this passes, so does every other wallet and explorer.
+//  Run after deploying MercuryNameRegistry and setting it as the resolver on the
+//  parent name. It does not test our code — it asks a STANDARD ENS client (viem)
+//  to resolve a name through the real Universal Resolver. If this passes, every
+//  other wallet and explorer resolves it too.
 //
-//    npx tsx scripts/verify-ens.ts alice
+//    ENS_REGISTRY=0x… npx tsx scripts/verify-ens.ts alice
 // ─────────────────────────────────────────────────────────────────────────────
 import { createPublicClient, http, type Hex } from 'viem';
 import { mainnet, sepolia } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
 
 const UNIVERSAL_RESOLVER = '0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe' as Hex;
 
 const PARENT = (process.env.ENS_PARENT ?? 'mercurywallet.eth').toLowerCase();
-const RESOLVER = process.env.ENS_RESOLVER_ADDRESS as Hex | undefined;
-const SIGNER_KEY = process.env.ENS_SIGNER_PRIVATE_KEY as Hex | undefined;
+const REGISTRY = process.env.ENS_REGISTRY as Hex | undefined;
 const MAINNET = process.env.ENS_NETWORK === 'mainnet';
 const RPC =
   process.env.ENS_RPC_URL ??
@@ -24,57 +22,46 @@ const RPC =
 
 const label = process.argv[2];
 
-const RESOLVER_ABI = [
-  { name: 'signers', type: 'function', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] },
-  { name: 'urls', type: 'function', stateMutability: 'view', inputs: [{ type: 'uint256' }], outputs: [{ type: 'string' }] },
-  { name: 'urlCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+const ABI = [
   { name: 'owner', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
+  { name: 'available', type: 'function', stateMutability: 'view', inputs: [{ type: 'string' }], outputs: [{ type: 'bool' }] },
   { name: 'supportsInterface', type: 'function', stateMutability: 'pure', inputs: [{ type: 'bytes4' }], outputs: [{ type: 'bool' }] },
+  { name: 'recordsOf', type: 'function', stateMutability: 'view', inputs: [{ type: 'string' }],
+    outputs: [{ type: 'address' }, { type: 'address' }, { type: 'string' }, { type: 'string' }, { type: 'uint64' }] },
 ] as const;
 
 const ok = (s: string) => console.log(`  ✓ ${s}`);
 const bad = (s: string) => { console.log(`  ✗ ${s}`); process.exitCode = 1; };
 
 async function main() {
-  if (!RESOLVER) {
-    console.error('Set ENS_RESOLVER_ADDRESS to the deployed resolver.');
+  if (!REGISTRY) {
+    console.error('Set ENS_REGISTRY to the deployed MercuryNameRegistry address.');
     process.exit(1);
   }
   const client = createPublicClient({ chain: MAINNET ? mainnet : sepolia, transport: http(RPC) });
-  console.log(`${MAINNET ? 'mainnet' : 'sepolia'} · parent ${PARENT} · resolver ${RESOLVER}\n`);
+  console.log(`${MAINNET ? 'mainnet' : 'sepolia'} · parent ${PARENT} · registry ${REGISTRY}\n`);
+
+  const read = <T,>(fn: string, args: readonly unknown[] = []) =>
+    client.readContract({ address: REGISTRY, abi: ABI, functionName: fn as never, args: args as never }) as Promise<T>;
 
   console.log('the contract:');
-  const read = <T,>(fn: string, args: readonly unknown[] = []) =>
-    client.readContract({ address: RESOLVER, abi: RESOLVER_ABI, functionName: fn as never, args: args as never }) as Promise<T>;
-
   try {
     (await read<boolean>('supportsInterface', ['0x9061b923']))
       ? ok('implements IExtendedResolver (ENSIP-10 wildcard)')
       : bad('does NOT implement IExtendedResolver — the Universal Resolver will not use it');
     ok(`owner ${await read<string>('owner')}`);
-    const n = await read<bigint>('urlCount');
-    for (let i = 0n; i < n; i++) ok(`gateway url: ${await read<string>('urls', [i])}`);
-    if (n === 0n) bad('no gateway urls set — every lookup will fail');
   } catch (e) {
-    // Something may well be deployed here — just not ours. The stock
-    // PublicResolver answers supportsInterface and then has no owner().
-    bad(`no MercuryOffchainResolver at that address (a different contract may be there): ${String(e).split('\n')[0]}`);
+    // Something may well be deployed here — just not ours.
+    bad(`no MercuryNameRegistry at that address: ${String(e).split('\n')[0]}`);
     return;
-  }
-
-  if (SIGNER_KEY) {
-    const signer = privateKeyToAccount(SIGNER_KEY).address;
-    (await read<boolean>('signers', [signer]))
-      ? ok(`the hub's signer ${signer} is trusted`)
-      : bad(`the hub's signer ${signer} is NOT trusted — call setSigner(${signer}, true)`);
   }
 
   console.log('\nthe registry:');
   try {
     const set = await client.getEnsResolver({ name: PARENT, universalResolverAddress: UNIVERSAL_RESOLVER });
-    set.toLowerCase() === RESOLVER.toLowerCase()
-      ? ok(`${PARENT} points at this resolver`)
-      : bad(`${PARENT} points at ${set} — run setResolver on the parent name`);
+    set.toLowerCase() === REGISTRY.toLowerCase()
+      ? ok(`${PARENT} points at this contract`)
+      : bad(`${PARENT} points at ${set} — set the resolver on the parent name`);
   } catch (e) {
     bad(`no resolver set on ${PARENT}: ${String(e).split('\n')[0]}`);
   }
@@ -84,7 +71,15 @@ async function main() {
     return;
   }
 
-  // The real test: a standard client, its own CCIP-Read, the real entry point.
+  console.log(`\n${label}:`);
+  const [nameOwner] = await read<readonly [string, string, string, string, bigint]>('recordsOf', [label]);
+  if (nameOwner === '0x0000000000000000000000000000000000000000') {
+    console.log(`  · not registered yet${(await read<boolean>('available', [label])) ? ' (available)' : ' (unavailable — reserved or malformed)'}`);
+    return;
+  }
+  ok(`owned by ${nameOwner}`);
+
+  // The real test: a standard client, its own resolution path, the real entry point.
   console.log(`\n${label}.${PARENT}, resolved by a standard ENS client:`);
   for (const [what, coin] of [['evm', undefined], ['solana', 501n], ['bitcoin', 0n]] as const) {
     try {

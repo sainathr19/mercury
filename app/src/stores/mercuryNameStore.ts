@@ -1,12 +1,11 @@
 //! The user's Mercury name — `alice.mercurywallet.eth`.
 //
 // Replaces the Standard handle, which lived behind a hub login this fork has no
-// account on. A Mercury name needs no login at all: the wallet signs for itself,
-// so the only thing that can claim a name is the key that will receive at it.
+// account on. A Mercury name needs no login and no server at all — it is a row
+// in a contract, registered by the same key that will receive at it.
 //
-// Persisted locally as well as on the hub. The name is not secret and not
-// authoritative here — the hub is — but a user should see their own name on
-// launch without waiting for a network call that might not come back.
+// Cached locally as well as on-chain. The chain is authoritative; this only
+// spares the user a round trip to Ethereum before their own name paints.
 
 import { create } from 'zustand';
 import { File, Paths } from 'expo-file-system';
@@ -49,7 +48,6 @@ export interface MercuryNameState {
 }
 
 let debounce: ReturnType<typeof setTimeout> | null = null;
-let inflight: AbortController | null = null;
 
 export const useMercuryName = create<MercuryNameState>((set, get) => ({
   name: null,
@@ -78,7 +76,6 @@ export const useMercuryName = create<MercuryNameState>((set, get) => ({
 
   begin: () => {
     if (debounce) clearTimeout(debounce);
-    inflight?.abort();
     set({ input: '', checking: false, status: null, formatError: null, statusReason: null, saving: false, error: null });
   },
 
@@ -87,7 +84,6 @@ export const useMercuryName = create<MercuryNameState>((set, get) => ({
     set({ input, error: null });
 
     if (debounce) clearTimeout(debounce);
-    inflight?.abort();
 
     if (!input) {
       set({ status: null, formatError: null, statusReason: null, checking: false });
@@ -109,9 +105,7 @@ export const useMercuryName = create<MercuryNameState>((set, get) => ({
     // Debounced: this fires on every keystroke, and the answer for a prefix of
     // what they are typing is worth nothing.
     debounce = setTimeout(async () => {
-      const controller = new AbortController();
-      inflight = controller;
-      const r = await checkName(input, controller.signal);
+      const r = await checkName(input);
       // Ignore a late answer for a name they have already typed past.
       if (get().input !== input) return;
       set({

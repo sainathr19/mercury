@@ -3,7 +3,6 @@ import { serve } from '@hono/node-server';
 import type { Hex } from 'viem';
 import { relayMint } from './relay.js';
 import { CHAIN_BY_DOMAIN } from './chains.js';
-import { ensRoutes, ensStatus, ensConfigured } from './ensRoutes.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -11,9 +10,6 @@ const PORT = Number(process.env.PORT ?? 8787);
 const app = new Hono();
 
 app.get('/healthz', (c) => c.text('ok'));
-
-/** Offchain ENS subnames: the CCIP-Read gateway and the claim flow. */
-app.route('/ens', ensRoutes);
 
 app.get('/gateway/domains', (c) =>
   c.json({
@@ -25,8 +21,6 @@ app.get('/gateway/domains', (c) =>
     relayerConfigured: !!RELAYER_KEY,
   }),
 );
-
-app.get('/ens-status', (c) => c.json({ configured: ensConfigured(), ...ensStatus() }));
 
 /**
  * Submit a Circle Gateway attestation on the destination chain so the recipient
@@ -66,4 +60,3 @@ app.post('/gateway/relay', async (c) => {
 
 serve({ fetch: app.fetch, port: PORT });
 console.log(`mercury hub on :${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
-console.log(`  ens: ${ensConfigured() ? `${ensStatus().parent} via ${ensStatus().signer}` : 'NOT configured'}`);

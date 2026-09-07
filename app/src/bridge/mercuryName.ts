@@ -1,36 +1,51 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  Claiming a Mercury name.
 //
-//  `alice.mercurywallet.eth` is a real ENS name that any wallet, explorer or dapp
-//  can resolve — and it costs nothing, because it lives offchain behind a
-//  CCIP-Read resolver rather than in the registry. That is what makes it possible
-//  to hand one to every user at signup instead of asking them to buy one.
+//  `alice.mercurywallet.eth` is a real ENS name that any wallet, explorer or
+//  dapp can resolve. Records live in a contract on Ethereum, so once a name is
+//  registered it resolves forever — no server, no signing key, nothing of ours
+//  that has to stay running. If Mercury disappeared tomorrow the name would
+//  still work in MetaMask.
+//
+//  The cost of that independence is a transaction. The alternative (offchain
+//  names via CCIP-Read) is free but puts an HTTP service on the critical path of
+//  every lookup, permanently — a dependency that outlives the company.
 //
 //  Two things worth being precise about:
 //
-//  • The claim is authenticated by the WALLET, not by a login. The user signs a
-//    message with the same key that holds their money, which proves the address
-//    they are publishing is actually theirs. No account, no session, no server
-//    that can hand somebody's name to somebody else.
+//  • Registration happens on ETHEREUM, because that is where ENS lives. It is
+//    the one action in this wallet that needs a gas token, and the user needs
+//    Sepolia ETH for it. `register` takes the owner as a parameter, so the app
+//    can pay on the user's behalf later without changing the contract.
 //
-//  • The name is a convenience, never a guarantee. Owning an address proves
-//    nothing about deserving a word, which is why the send screen still shows the
-//    resolved address before anything moves.
+//  • A name is a convenience, never a guarantee. Registering proves you control
+//    an address; it proves nothing about deserving a word. The send screen still
+//    shows the resolved address before anything moves.
 // ─────────────────────────────────────────────────────────────────────────────
 import type { WalletInterface } from 'standard-rn';
+import { ethCall, sendCall, uint, waitForReceipt, word } from './evmTx';
+import { getActiveEnvironment } from './activeEnv';
+import { chainById } from '../lib/chains';
 
-/** The names service rides on the same hub as the Gateway relayer. */
-const HUB_URL = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
+/** The deployed MercuryNameRegistry, which is also the resolver on the parent. */
+const REGISTRY = process.env.EXPO_PUBLIC_ENS_REGISTRY ?? '';
 
 /** The 2LD our subnames sit under. */
 export const NAME_PARENT = process.env.EXPO_PUBLIC_ENS_PARENT || 'mercurywallet.eth';
 
-export const namesConfigured = (): boolean => !!HUB_URL;
+/** ENS lives on Ethereum. Sepolia while Arc is testnet-only. */
+const ensChainId = (): bigint => (getActiveEnvironment() === 'mainnet' ? 1n : 11155111n);
+
+const SEL_REGISTER = '0xfd3b28e0'; // register(string,address,address,string,string,uint64)
+const SEL_AVAILABLE = '0xaeb8ce9b'; // available(string)
+const SEL_RECORDS_OF = '0x13f8bc29'; // recordsOf(string)
+
+export const namesConfigured = (): boolean => !!REGISTRY;
 
 /** `alice` -> `alice.mercurywallet.eth` */
 export const fullName = (label: string): string => `${label}.${NAME_PARENT}`;
 
-/** Mirrors the hub's rule so the obvious mistakes are caught before a round trip. */
+/** Mirrors the contract's own rule, so the obvious mistakes cost no gas. */
 export function validateLabel(label: string): string | null {
   if (label.length < 3) return 'At least 3 characters.';
   if (label.length > 30) return 'At most 30 characters.';
@@ -39,50 +54,120 @@ export function validateLabel(label: string): string | null {
   return null;
 }
 
+// ── ABI encoding ─────────────────────────────────────────────────────────────
+
+const pad = (h: string): string => h + '0'.repeat((64 - (h.length % 64)) % 64);
+
+const utf8Hex = (s: string): string =>
+  Array.from(new TextEncoder().encode(s), (b) => b.toString(16).padStart(2, '0')).join('');
+
+/** A dynamic `string` as length + padded data. */
+const strTail = (s: string): string => {
+  const h = utf8Hex(s);
+  return uint(BigInt(h.length / 2)) + pad(h);
+};
+
+/**
+ * `register(string label, address to, address evm, string solana, string bitcoin, uint64 prefer)`
+ *
+ * Hand-rolled because the wallet has no ABI encoder — the head holds an offset
+ * for each dynamic argument, measured from the start of the arguments, and the
+ * tails follow in order. Unit-tested against viem byte for byte: a wrong offset
+ * does not error, it registers a name nobody asked for.
+ */
+export function encodeRegister(a: {
+  label: string;
+  to: string;
+  evm: string;
+  solana: string;
+  bitcoin: string;
+  prefer: bigint;
+}): string {
+  const tails = [strTail(a.label), strTail(a.solana), strTail(a.bitcoin)];
+  const HEAD = 6 * 32;
+  const labelAt = BigInt(HEAD);
+  const solanaAt = labelAt + BigInt(tails[0].length / 2);
+  const bitcoinAt = solanaAt + BigInt(tails[1].length / 2);
+  return (
+    SEL_REGISTER +
+    uint(labelAt) +
+    word(a.to) +
+    word(a.evm) +
+    uint(solanaAt) +
+    uint(bitcoinAt) +
+    uint(a.prefer) +
+    tails.join('')
+  );
+}
+
+/** `available(string label)` / `recordsOf(string label)` — one dynamic argument. */
+const encodeOneString = (selector: string, s: string): string =>
+  selector + uint(32n) + strTail(s);
+
+// ── Reads ────────────────────────────────────────────────────────────────────
+
 export type Availability =
   | { state: 'available'; name: string }
   | { state: 'taken'; reason: string }
   | { state: 'unknown' };
 
+function rpcUrl(): string | undefined {
+  return chainById(ensChainId())?.rpcUrl;
+}
+
 /**
  * Is this name free?
  *
  * "Unknown" is a distinct answer from "taken" and the two must not be merged —
- * telling someone a name is gone because the network hiccuped sends them off to
- * pick a worse one for no reason.
+ * telling someone a name is gone because an RPC hiccuped sends them off to pick
+ * a worse one for no reason.
  */
-export async function checkName(label: string, signal?: AbortSignal): Promise<Availability> {
-  if (!HUB_URL) return { state: 'unknown' };
+export async function checkName(label: string): Promise<Availability> {
+  const url = rpcUrl();
+  if (!REGISTRY || !url) return { state: 'unknown' };
+  const local = validateLabel(label);
+  if (local) return { state: 'taken', reason: local };
   try {
-    const res = await fetch(`${HUB_URL}/ens/available/${encodeURIComponent(label)}`, { signal });
-    if (!res.ok) return { state: 'unknown' };
-    const json = (await res.json()) as { available?: boolean; reason?: string; name?: string };
-    if (json.available) return { state: 'available', name: json.name ?? fullName(label) };
-    return { state: 'taken', reason: json.reason ?? 'That name is taken' };
+    const raw = await ethCall(url, REGISTRY, encodeOneString(SEL_AVAILABLE, label));
+    if (!raw || raw === '0x') return { state: 'unknown' };
+    return BigInt(raw) === 1n
+      ? { state: 'available', name: fullName(label) }
+      : { state: 'taken', reason: 'That name is taken' };
   } catch {
     return { state: 'unknown' };
   }
 }
 
+/** The name a wallet already owns, if any — read back from the chain. */
+export async function ownedRecords(
+  label: string,
+): Promise<{ owner: string; evm: string } | null> {
+  const url = rpcUrl();
+  if (!REGISTRY || !url) return null;
+  try {
+    const raw = await ethCall(url, REGISTRY, encodeOneString(SEL_RECORDS_OF, label));
+    const h = raw.replace(/^0x/, '');
+    if (h.length < 128) return null;
+    const owner = `0x${h.slice(24, 64)}`;
+    if (/^0x0+$/.test(owner)) return null;
+    return { owner, evm: `0x${h.slice(88, 128)}` };
+  } catch {
+    return null;
+  }
+}
+
+// ── Write ────────────────────────────────────────────────────────────────────
+
 export type ClaimOutcome =
-  | { ok: true; name: string }
+  | { ok: true; name: string; txHash: string }
   | { ok: false; error: string };
 
-const utf8 = (s: string): ArrayBuffer => {
-  const bytes = new TextEncoder().encode(s);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-};
-
 /**
- * Claim a name and publish every address the wallet holds under it.
+ * Register a name and publish every address in one transaction.
  *
- * All three address families go up together: the 0x address (which covers Arc,
- * Base, Arbitrum and every other EVM chain at once, since they share one key),
- * Solana, and Bitcoin. One name, everything the user can be paid at.
- *
- * The exact message to sign comes FROM the hub rather than being rebuilt here.
- * Two implementations of one string format drift, and when they drift the
- * signature check fails with nothing to say why.
+ * All three address families go up together. A name that resolves on some
+ * chains and not others is worse than no name, because the sender cannot tell
+ * which case they are in.
  */
 export async function claimName(opts: {
   wallet: WalletInterface;
@@ -91,38 +176,41 @@ export async function claimName(opts: {
   evm: string;
   solana?: string | null;
   bitcoin?: string | null;
-  /** The chain the user actually watches, published as an ENSIP-11 hint. */
   prefer?: number;
 }): Promise<ClaimOutcome> {
-  if (!HUB_URL) return { ok: false, error: 'Names are not configured for this build.' };
+  const url = rpcUrl();
+  if (!REGISTRY || !url) return { ok: false, error: 'Names are not configured for this build.' };
 
-  const body = {
+  const data = encodeRegister({
     label: opts.label,
+    to: opts.evm,
     evm: opts.evm,
-    solana: opts.solana ?? undefined,
-    bitcoin: opts.bitcoin ?? undefined,
-  };
+    solana: opts.solana ?? '',
+    bitcoin: opts.bitcoin ?? '',
+    prefer: BigInt(opts.prefer ?? 0),
+  });
 
   try {
-    const prep = await fetch(`${HUB_URL}/ens/claim/message`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!prep.ok) return { ok: false, error: 'Could not reach the names service.' };
-    const { message, nonce } = (await prep.json()) as { message: string; nonce: number };
-
-    const signature = await opts.wallet.evmPersonalSign(opts.account, utf8(message));
-
-    const res = await fetch(`${HUB_URL}/ens/claim`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...body, prefer: opts.prefer, nonce, signature }),
-    });
-    const json = (await res.json()) as { ok?: boolean; name?: string; error?: string };
-    if (res.ok && json.ok && json.name) return { ok: true, name: json.name };
-    return { ok: false, error: json.error ?? 'Could not claim that name.' };
+    const tx = await sendCall(
+      opts.wallet, opts.account, ensChainId(), url, opts.evm, REGISTRY, data,
+    );
+    // A name is not claimed until it is mined. Reporting success on broadcast
+    // would show the user a name that may never exist.
+    const mined = await waitForReceipt(url, tx);
+    return mined
+      ? { ok: true, name: fullName(opts.label), txHash: tx }
+      : { ok: false, error: 'The registration did not confirm. Nothing was claimed.' };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Could not claim that name.' };
+    const msg = e instanceof Error ? e.message : String(e);
+    // The one predictable failure for a wallet whose users hold no gas token.
+    if (/insufficient funds|gas required|balance/i.test(msg)) {
+      return {
+        ok: false,
+        error: `Claiming a name is an Ethereum transaction, so it needs ${
+          getActiveEnvironment() === 'mainnet' ? 'ETH' : 'Sepolia ETH'
+        } for gas. Add some and try again.`,
+      };
+    }
+    return { ok: false, error: msg };
   }
 }

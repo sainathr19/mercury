@@ -1,8 +1,8 @@
 # ENS — implementation plan (all chains)
 
-Status: **Phases 0–2 built.** Resolve any `.eth` name in the send field, and
-issue free subnames under **`mercurywallet.eth`** (registered on Sepolia,
-ENSv2). Remaining: deploy the resolver and point the name at it — see
+Status: **Phases 0–2 built, on-chain.** Resolve any `.eth` name in the send
+field, and issue subnames under **`mercurywallet.eth`** (registered on Sepolia,
+ENSv2). Remaining: deploy the registry and point the name at it — see
 `contracts/DEPLOY.md`.
 Decision: **v2 only, Sepolia as the testnet**, matching Arc.
 Facts checked on-chain 2026-09-07. Anything I did not verify is marked as such.
@@ -168,42 +168,51 @@ hits a fallback and fails opaquely, which is exactly what happened once.
 **Phase 1 — register `mercurywallet.eth` on Sepolia (v2). DONE.** Owned by
 `0x6BA9A2Ab805ca80BEBf6D51daC85016641aCeD87`, expires Sep 2027.
 
-**Phase 2 — issue subnames. BUILT.**
+**Phase 2 — issue subnames. BUILT, fully on-chain.**
+
+Records live in `contracts/MercuryNameRegistry.sol`, which is the resolver on
+`mercurywallet.eth` and the storage for every name beneath it. No server, no
+signing key, nothing of ours that has to stay running: once a name is
+registered it resolves in any wallet forever.
 
 | | |
 |---|---|
-| `contracts/MercuryOffchainResolver.sol` | ENSIP-10 wildcard resolver. Reverts with `OffchainLookup`; verifies a signed answer in `resolveWithProof`. Single file, no imports, ~5.9 KB. |
-| `hub/src/ens.ts` | Decodes the request, builds the record, signs it. |
-| `hub/src/names.ts` | The registry. Claims authenticated by the claimant's own signature. |
-| `hub/src/ensRoutes.ts` | `/ens/lookup/{sender}/{data}.json`, `/ens/available/:label`, `/ens/claim`. |
-| `app/src/bridge/ccipRead.ts` | Follows the lookup, and runs the batch gateway locally. |
-| `app/src/bridge/mercuryName.ts` + `mercuryNameStore` | Claim flow, replacing the Standard handle. |
+| `contracts/MercuryNameRegistry.sol` | ENSIP-10 wildcard resolver + registry. One deploy, no constructor args, no subregistry needed. |
+| `app/src/bridge/mercuryName.ts` | Availability read, `register` calldata, claim flow. |
+| `app/src/stores/mercuryNameStore.ts` | Replaces the Standard handle. |
+| `hub/scripts/verify-ens.ts` | Post-deploy check through a standard ENS client. |
 
-One 0x address, one Solana address and one Bitcoin address go up together under
-one name, plus the Arc routing hint.
+**The trade that was made.** An earlier offchain build (EIP-3668 + a signing
+gateway) gave names away free, and it worked end to end — but it put an HTTP
+service on the critical path of every lookup, permanently. If the gateway went
+down, every name went with it. On-chain costs one transaction per name and then
+depends on nothing. The CCIP-Read *client* was kept: it is how Mercury resolves
+other people's offchain names, like `jesse.base.eth`.
 
-**What was verified, and how.** Guessing here fails silently — a wrong byte
-resolves to nobody rather than erroring — so each piece was checked against
-something real:
+**Measured on a real EVM**, not estimated: deploy 1,749,596 gas; register 80,919
+gas for an EVM-only name, 211,125 with Solana and Bitcoin too.
 
-- The digest packs `expires` as a **uint64 (8 bytes)**, not a padded word. Found
-  by recovering signatures from ENS's own live reference gateway: the 32-byte
-  version recovers to an address the deployed contract does not trust.
-- The compiled bytecode was injected via `eth_call` state override on Sepolia and
-  driven through every case: a valid answer is accepted, and a swapped result, a
-  replay onto another name, an untrusted signer and an expired signature are each
-  rejected on-chain.
-- The batch gateway (`query((address,string[],bytes)[])`, `0xa780bab6`) was
-  decoded from a live production payload, and the response encoder matches viem
-  byte for byte.
-- Our CCIP-Read client resolves `1.offchainexample.eth` end to end against
-  production infrastructure, matching viem's answer.
-- ENSv2's Universal Resolver **does** descend to the parent's resolver for
-  subnames despite `mercurywallet.eth` having no subregistry — checked by
-  injecting our bytecode at the resolver the name already points at.
+**What was verified.** The contract was deployed to a local chain and driven
+through registration, duplicate and reserved labels, all seven malformed-label
+cases, sponsored registration, every record type (`addr`, `addr(60)`,
+`addr(Arc)`, `addr(Base)`, `addr(501)`, `addr(0)`, `text`), unregistered and
+over-deep names, apex resolution, and the ownership rules. The app's
+hand-rolled `register` calldata was then used to register a name on that real
+contract — a wrong ABI offset does not revert, it registers a name nobody asked
+for.
+
+Also verified on Sepolia beforehand: ENSv2's Universal Resolver descends to the
+parent's resolver for subnames despite `mercurywallet.eth` having no
+subregistry, which is what makes the whole design possible without deploying a
+registry per name.
+
+**The cost, stated plainly.** Registering is an Ethereum transaction, so the
+user needs a gas token — the one place the wallet's "never hold gas" promise
+does not reach. `register` takes the owner as a parameter, so the app can
+sponsor it without a contract change.
 
 **Not built: reverse records.** Other wallets still show hex for our users. See
-§5.2 — this is a protocol limit, not a gap.
+§5.2 — a protocol limit, not a gap.
 
 **Phase 3 — routing.** Use the records to choose the rail per §3, including the
 "they can only take Solana" and "Bitcoin only — cannot pay in USDC" branches,
