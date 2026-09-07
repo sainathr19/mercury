@@ -41,6 +41,22 @@ mainnet. Mercury competes on how paying someone actually feels:
 See [PLAN.md](PLAN.md) for scope and the day-by-day, and [specs/](specs/)
 for per-service detail.
 
+### Running the app
+
+Signing and key storage live in a Rust core exposed as a React Native turbo
+module. It is a separate, private checkout — `npm install` cannot fetch it — so
+it is linked in by path rather than declared as a dependency, and Metro,
+TypeScript and Jest each resolve `mercury-wallet-core` to that link:
+
+```bash
+ln -s /path/to/the/wallet-core-checkout app/vendor/wallet-core
+cd app && npm install && npx expo start --dev-client
+```
+
+`app/vendor/` is gitignored. Without the link the app will not bundle; there is
+no stub, because a wallet that starts without its signer would be worse than one
+that refuses to start.
+
 ## Privacy
 
 Payments are **public by default, private on request** — a per-payment toggle

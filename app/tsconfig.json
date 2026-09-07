@@ -14,7 +14,7 @@
         "./node_modules/react-native-nitro-modules"
       ],
       "mercury-wallet-core": [
-        "./node_modules/standard-rn"
+        "./vendor/wallet-core"
       ]
     }
   },
@@ -23,5 +23,9 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "vendor"
   ]
 }

@@ -5,18 +5,14 @@ const fs = require('fs');
 
 const projectRoot = __dirname;
 // The native wallet core is a turbo module from a separate checkout, linked in
-// via a `file:` dependency (symlinked into node_modules). Its real source path
-// is OUTSIDE the app project root, so Metro needs that location as a watch
-// folder and node_modules resolution rooted at both places.
+// at `vendor/wallet-core` (see README). It is resolved here rather than declared
+// as a dependency: it is a machine-local path that no `npm install` can fetch,
+// so recording one in the lockfile would only pin somebody's directory layout.
 //
-// UPSTREAM_MODULE is the package's own name and cannot be changed from here —
-// it belongs to another repository. The app imports it as `mercury-wallet-core`
-// throughout and the alias below is the single point of translation.
-const UPSTREAM_MODULE = 'standard-rn';
+// Its real source lives OUTSIDE the app project root, so Metro needs that
+// location as a watch folder and node_modules resolution rooted at both places.
 const WALLET_CORE = 'mercury-wallet-core';
-const moduleRoot = path.resolve(
-  fs.realpathSync(path.resolve(projectRoot, `node_modules/${UPSTREAM_MODULE}`)),
-);
+const moduleRoot = path.resolve(fs.realpathSync(path.resolve(projectRoot, 'vendor/wallet-core')));
 
 const config = getDefaultConfig(projectRoot);
 

@@ -12,12 +12,14 @@ import {
 import { withTempoNetworks } from '../lib/tempoRegistry';
 
 // ===========================================================================
-// REGISTRY SOURCE OF TRUTH — set this to your CDN URL.
+// REGISTRY SOURCE OF TRUTH — set EXPO_PUBLIC_REGISTRY_URL to your CDN URL.
 // Upload `dist/registry.json` (produced by `npm run registry:build`) to a CDN
-// and put its public URL here. The app fetches it with an ETag and caches it
-// on device; set to '' to run from the bundled seed + cache only.
+// and point this at it. The app fetches with an ETag and caches on device.
+// Unset is a supported configuration, not a broken one: the app runs from the
+// bundled seed plus whatever it has already cached, so tokens still resolve —
+// they simply stop picking up additions until a URL is configured.
 // ===========================================================================
-const REGISTRY_URL = 'http://gos.btcfi.wtf/standard_assets.json';
+const REGISTRY_URL = process.env.EXPO_PUBLIC_REGISTRY_URL || '';
 const CACHE = 'registry.v1.json';
 
 interface Cached {

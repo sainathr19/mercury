@@ -26,3 +26,6 @@ subgraph/node_modules/
 
 # Offchain ENS name registry (issued subnames, per-deployment state)
 hub/data/
+
+# The native wallet core is linked in from a separate checkout (see README).
+app/vendor/

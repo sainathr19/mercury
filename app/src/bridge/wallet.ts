@@ -7,14 +7,69 @@ import type { Environment } from '../lib/environment';
 import { saveMnemonic, clearMnemonic, loadMnemonic } from './seedVault';
 import { getActiveAccount } from './account';
 
-// The first/default wallet keeps its original on-disk identifiers so existing
-// installs are never disturbed. Additional wallets use distinct aliases + files.
+// The first/default wallet uses a fixed filename; additional wallets get
+// distinct aliases + files.
 export const PRIMARY_ALIAS = 'primary';
-// NOT renamed on purpose. This names a live SQLite database with `-wal`, `-shm`
-// and `.seed` companions; renaming it means moving four files that must stay
-// consistent with each other, and getting it wrong loses the wallet. The name is
-// an on-disk identifier, not branding — leave it.
-const PRIMARY_DB = 'standard-wallet.db';
+const PRIMARY_DB = 'mercury-wallet.db';
+/** What the primary database was called before the rename. */
+const LEGACY_PRIMARY_DB = 'standard-wallet.db';
+
+let migrationChecked = false;
+
+/**
+ * Move a pre-rename wallet database to its new name.
+ *
+ * A SQLite database is not one file. `-wal` holds committed pages not yet
+ * checkpointed into the main file, `-shm` is a rebuildable shared-memory index,
+ * and `.seed` is the core's own sidecar. Renaming the database while leaving a
+ * companion behind under the old name is worse than not renaming at all: SQLite
+ * would open the new file without its write-ahead log and silently lose the
+ * transactions still sitting in it.
+ *
+ * So the companions move FIRST. If any of them fails, the database itself is
+ * still untouched under its old name, the ones that did move are put back, and
+ * the caller carries on with the legacy set — a wallet that keeps working under
+ * the old filename beats a half-renamed one that does not.
+ */
+function migratePrimaryDb(): void {
+  if (migrationChecked) return;
+  migrationChecked = true;
+  try {
+    const target = new File(Paths.document, PRIMARY_DB);
+    if (target.exists) return; // already migrated, or a fresh install
+    const legacy = new File(Paths.document, LEGACY_PRIMARY_DB);
+    if (!legacy.exists) return; // nothing to move
+
+    const movedBack: string[] = [];
+    try {
+      for (const suffix of ['-wal', '.seed']) {
+        const from = new File(Paths.document, `${LEGACY_PRIMARY_DB}${suffix}`);
+        if (!from.exists) continue;
+        from.moveSync(new File(Paths.document, `${PRIMARY_DB}${suffix}`));
+        movedBack.push(suffix);
+      }
+      legacy.moveSync(target);
+    } catch {
+      for (const suffix of movedBack) {
+        try {
+          new File(Paths.document, `${PRIMARY_DB}${suffix}`).moveSync(
+            new File(Paths.document, `${LEGACY_PRIMARY_DB}${suffix}`),
+          );
+        } catch {}
+      }
+      return;
+    }
+
+    // `-shm` is a rebuildable index, so it is dropped rather than moved: a stale
+    // one left beside a renamed database is precisely the inconsistency above.
+    try {
+      const shm = new File(Paths.document, `${LEGACY_PRIMARY_DB}-shm`);
+      if (shm.exists) shm.delete();
+    } catch {}
+  } catch {
+    // Any failure here leaves the legacy set intact; dbFilenameFor falls back.
+  }
+}
 /** Shared Secure-Enclave keystore handle (also used by cloud backup/restore). */
 export const keystore = new SecureEnclaveKeystore();
 
@@ -36,7 +91,12 @@ export function activeScopeKey(): string {
 }
 
 function dbFilenameFor(alias: string): string {
-  return alias === PRIMARY_ALIAS ? PRIMARY_DB : `wallet-${alias}.db`;
+  if (alias !== PRIMARY_ALIAS) return `wallet-${alias}.db`;
+  migratePrimaryDb();
+  // Whichever file is actually on disk. If the move could not complete, the old
+  // one is still the real wallet and must keep being opened.
+  if (new File(Paths.document, PRIMARY_DB).exists) return PRIMARY_DB;
+  return new File(Paths.document, LEGACY_PRIMARY_DB).exists ? LEGACY_PRIMARY_DB : PRIMARY_DB;
 }
 function dbFileFor(alias: string): File {
   return new File(Paths.document, dbFilenameFor(alias));

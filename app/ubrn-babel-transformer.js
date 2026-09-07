@@ -1,7 +1,6 @@
 // Custom Metro Babel transformer that works around an upstream codegen bug in
-// uniffi-bindgen-react-native (v0.29.3-1): the generated TypeScript in
-// The native core's generated `src/bindings/*.ts` emit method declarations
-// with the modifier
+// uniffi-bindgen-react-native (v0.29.3-1): the wallet core's generated
+// `src/bindings/*.ts` declare methods with the modifier
 // order `async public` / `async public static`, which the TypeScript compiler
 // tolerates but Babel (used by Metro/Expo) rejects with
 // "SyntaxError: Unexpected token, expected '('".
@@ -17,6 +16,27 @@
 // package specifier; the previous hardcoded `expo/node_modules/...` path did not
 // resolve in this Expo layout, which is why this transformer had been disabled.
 const upstream = require('@expo/metro-config/build/babel-transformer');
+const path = require('path');
+const fs = require('fs');
+
+// Where the wallet core actually lives, followed through the vendor symlink.
+// Resolving it beats matching the upstream package's own name, which belongs to
+// another repository and is not ours to depend on.
+let bindingsDir = null;
+try {
+  bindingsDir =
+    path.join(
+      fs.realpathSync(path.resolve(__dirname, 'vendor/wallet-core')),
+      'src',
+      'bindings',
+    ) + path.sep;
+} catch {
+  // Core not linked (a lint or typecheck run): nothing to rewrite.
+}
+
+function isWalletCoreBindings(filename) {
+  return !!bindingsDir && path.resolve(filename).startsWith(bindingsDir);
+}
 
 function fixModifierOrder(src) {
   return src
@@ -32,9 +52,7 @@ module.exports = {
     if (
       typeof args.src === 'string' &&
       args.filename &&
-      // Matches the upstream package directory on disk; that name belongs to
-      // another repository and cannot be changed from here.
-      /[\\/]standard-rn[\\/]src[\\/]bindings[\\/]/.test(args.filename)
+      isWalletCoreBindings(args.filename)
     ) {
       args = { ...args, src: fixModifierOrder(args.src) };
     }
