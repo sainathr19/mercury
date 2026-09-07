@@ -14,21 +14,18 @@ yours to send. Nothing below needs a seed phrase in a terminal.
 
 ## 1. Make a signing key
 
+```bash
+cd hub && npm run ens:setup https://your-hub.example.com
+```
+
+Writes the key into `hub/.env` (gitignored) without printing it, and prints the
+two constructor arguments for step 3. Safe to re-run — an existing key is kept,
+because regenerating one silently would orphan every name the deployed resolver
+already trusts.
+
 This key decides where names point, so it is as sensitive as the resolver's
 owner. It holds **no funds and needs no gas** — it never sends a transaction.
-
-```bash
-openssl rand -hex 32
-```
-
-Prefix it with `0x`. Its address:
-
-```bash
-cd hub && node -e "const{privateKeyToAccount}=require('viem/accounts');console.log(privateKeyToAccount(process.argv[1]).address)" 0xYOURKEY
-```
-
-Keep the private key in `hub/.env` (gitignored). Only the **address** goes
-on-chain.
+Only the **address** goes on-chain.
 
 ---
 
