@@ -142,6 +142,33 @@ redeploying anything.
 
 ---
 
+## What the owner can and cannot do
+
+Worth stating, because it is the strongest property this design has and it is
+easy to miss: **the owner cannot touch a registered name.** `setRecords` and
+`transferName` both require `msg.sender` to be the name's own owner, so a user's
+name cannot be repointed or taken by whoever runs Mercury.
+
+That is checkable rather than promised:
+
+```bash
+cd hub && npm run registry:powers -- <a-label-someone-else-holds>
+```
+
+It simulates both writes as the registry owner against a live name and prints
+the reverts. Pass a label the registry owner does not itself hold — one it does
+hold proves nothing, since `msg.sender == r.owner` is then legitimately true.
+
+The owner keeps three narrow powers: reserving unclaimed labels, setting the
+apex record, and handing ownership on. To give those up permanently:
+
+```
+transferOwnership(0x000000000000000000000000000000000000dEaD)
+```
+
+One way, and it also ends the ability to reserve a newly-abusable word or move
+the apex. Do it once the reserved list is settled, not before.
+
 ## Afterwards
 
 - **Names outlive you.** Nothing of yours has to keep running for

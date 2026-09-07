@@ -9,7 +9,8 @@
     "claim": "tsx --env-file-if-exists=.env scripts/claim-name.ts",
     "ens:verify": "tsx --env-file-if-exists=.env scripts/verify-ens.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "registry:powers": "tsx --env-file-if-exists=.env scripts/registry-powers.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
