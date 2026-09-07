@@ -11,7 +11,7 @@ import { PostHogMaskView } from 'posthog-react-native';
 import { Button, Icon, PressableScale, Text, useToast } from '../../src/ui';
 import { loadMnemonic } from '../../src/bridge/seedVault';
 import { getActiveAlias } from '../../src/bridge/wallet';
-import { authenticate } from '../../src/lib/biometrics';
+import { requireAuth, authFailureMessage } from '../../src/lib/biometrics';
 import { fontFamily } from '../../src/theme/fonts';
 
 // The three things the user must acknowledge before the phrase is revealed.
@@ -51,7 +51,11 @@ export default function Recovery() {
 
   async function onContinue() {
     if (!allChecked) return;
-    if (!(await authenticate('Reveal your recovery phrase'))) return;
+    const auth = await requireAuth('Reveal your recovery phrase');
+    if (!auth.ok) {
+      if (auth.reason === 'no-device-auth') show(authFailureMessage(auth.reason), 'error');
+      return;
+    }
     const w = await loadMnemonic(getActiveAlias());
     if (!w || w.length === 0) {
       show('Recovery phrase not available on this device.', 'error');

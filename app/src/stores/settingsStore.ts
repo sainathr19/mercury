@@ -4,7 +4,7 @@ import { UnistylesRuntime } from 'react-native-unistyles';
 import * as Notifications from 'expo-notifications';
 import { setCurrencySymbol } from '../lib/format';
 import { refreshRates, subscribeCurrencyRate } from '../lib/currency';
-import { authenticate } from '../lib/biometrics';
+import { requireAuth } from '../lib/biometrics';
 
 export type Appearance = 'light' | 'dark';
 export type AutoLock = 'immediately' | '1min' | '5min' | '15min' | '1hour' | 'never';
@@ -202,7 +202,23 @@ export const useSettings = create<SettingsState>((set, get) => ({
     if (Date.now() - backgroundedAt >= threshold * 1000) set({ isLocked: true });
   },
   unlock: async () => {
-    if (await authenticate('Unlock Mercury')) set({ isLocked: false });
+    const auth = await requireAuth('Unlock Mercury');
+    if (auth.ok) {
+      set({ isLocked: false });
+      return;
+    }
+    // Deliberately NOT fail-closed, unlike sending and revealing the phrase.
+    //
+    // The app lock is a convenience over the device's own lock screen. If the
+    // device has no passcode and no biometrics there is nothing to check, and
+    // refusing would strand the owner outside their own wallet with no way back
+    // — a worse outcome than a lock that cannot lock. So the door opens and the
+    // setting turns itself off, which is at least honest about what is
+    // protecting them: nothing, until they set a device passcode.
+    if (auth.reason === 'no-device-auth') {
+      set({ isLocked: false, autoLock: 'never' });
+      save(get);
+    }
   },
   applyPrivateTheme: (on) => {
     set({ privateActive: on });

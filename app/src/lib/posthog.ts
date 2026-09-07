@@ -22,6 +22,16 @@ export const posthog = new PostHog(apiKey || 'placeholder_key', {
     maskAllImages: true, // QR codes encode addresses — never record them
     maskAllSandboxedViews: true, // native form sheets (send/approval popups)
     captureLog: true, // Android console logs
-    captureNetworkTelemetry: true, // iOS network timings (no bodies)
+    // OFF, and it must stay off.
+    //
+    // "No bodies" is true and beside the point: this captures request URLs, and
+    // PostHog records query strings. Every address the wallet reads about is IN
+    // the URL — `…/api?module=account&address=0x…`, `…/address/tb1q…/txs`. With
+    // this on, masking the screen accomplishes nothing, because the network
+    // layer ships the same addresses as plain text.
+    //
+    // Turning it back on requires a URL mask that strips address path segments
+    // and query values ON DEVICE, before anything is queued.
+    captureNetworkTelemetry: false,
   },
 });

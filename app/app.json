@@ -47,7 +47,12 @@
           "cameraPermission": "Mercury uses the camera to scan recipient QR codes."
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Mercury uses Face ID to unlock your recovery phrase."
+        }
+      ],
       "expo-sharing",
       "./plugins/withoutPush",
       "@react-native-google-signin/google-signin",

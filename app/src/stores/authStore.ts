@@ -12,7 +12,6 @@ import {
   type HubUser,
   type Provider,
 } from '../bridge/auth';
-import { posthog } from '../lib/posthog';
 
 export type AuthStatus = 'loading' | 'authed' | 'anon';
 
@@ -52,9 +51,13 @@ export function createAuthStore(client: AuthClient) {
         } catch {
           user = await client.loadUser();
         }
-        // Returning session: re-attach analytics to the known user so events
-        // aren't stranded on an anonymous distinct ID until the next sign-in.
-        if (user?.id) posthog.identify(user.id);
+        // Deliberately NOT posthog.identify(user.id).
+        //
+        // Tying a behavioural stream to a stable account id builds a profile that
+        // can be correlated with anything else carrying that id, for as long as
+        // it exists. A wallet gets the same product signal from an install-scoped
+        // id that resets with the install, so that is what the analytics layer
+        // uses. Attaching the account here would undo it.
         set({ status: 'authed', user, error: null });
       } catch {
         // Distinguish a DEAD session from a TRANSIENT failure by whether the

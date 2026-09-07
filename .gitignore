@@ -29,3 +29,6 @@ hub/data/
 
 # The native wallet core is linked in from a separate checkout (see README).
 app/vendor/
+
+# Working security list — not for the public repo
+SECURITY-FINDINGS.md

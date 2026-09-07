@@ -31,7 +31,7 @@ function stealthChainFor(a: PortfolioAsset): StealthChain | undefined {
   if (c === 'eth') return chainForChainId(a.evmChainId ?? 0n);
   return chainForFamily(c === 'btc' ? 0 : 2);
 }
-import { authenticate } from '../../../src/lib/biometrics';
+import { requireAuth, authFailureMessage } from '../../../src/lib/biometrics';
 import { mapError } from '../../../src/lib/errors';
 import { formatUsd, formatCrypto, formatFee, shortenAddress } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
@@ -89,7 +89,16 @@ export default function SendConfirm() {
     // A send moves funds → confirm with Face ID. This is the single per-transaction
     // biometric; signing itself uses the seed cached at unlock (so it doesn't
     // prompt again within the cache window). If the user cancels Face ID, abort.
-    if (!(await authenticate(`Confirm to send ${formatCrypto(cryptoAmount)} ${asset.symbol}`))) return;
+    const auth = await requireAuth(`Confirm to send ${formatCrypto(cryptoAmount)} ${asset.symbol}`);
+    if (!auth.ok) {
+      // Fails CLOSED. A device with no passcode cannot authorise a payment, and
+      // saying so beats silently sending — which is what the old permissive
+      // helper did here.
+      if (auth.reason === 'no-device-auth') {
+        useSendNotice.getState().show('error', authFailureMessage(auth.reason));
+      }
+      return;
+    }
     patch({ sending: true });
     try {
       // Route through the private stealth path when the destination is a stealth
