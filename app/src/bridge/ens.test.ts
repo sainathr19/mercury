@@ -1,4 +1,4 @@
-import { evmCoinType, isEnsName, namehash } from './ens';
+import { dnsEncode, encodeResolve, evmCoinType, isEnsName, namehash } from './ens';
 
 // Reference values from viem's own namehash. Getting namehash wrong does not
 // error — it resolves to a DIFFERENT name, i.e. someone else's address.
@@ -33,4 +33,24 @@ test('evmCoinType matches the published Arc and Base values', () => {
   expect(evmCoinType(5042n)).toBe(2147488690);
   expect(evmCoinType(5042002n)).toBe(2152525650);
   expect(evmCoinType(8453n)).toBe(2147492101);
+});
+
+// The Universal Resolver call is hand-encoded, and a wrong SELECTOR does not
+// error — it hits a fallback or reverts opaquely. These are the exact bytes
+// viem's encodeFunctionData produces for the same arguments.
+describe('Universal Resolver encoding', () => {
+  test('DNS wire format', () => {
+    expect(dnsEncode('nick.eth')).toBe('0x046e69636b0365746800');
+    expect(dnsEncode('sainath.mercurywallet.eth')).toBe(
+      '0x077361696e6174680d6d65726375727977616c6c65740365746800',
+    );
+  });
+
+  test('resolve(bytes,bytes) matches viem byte for byte', () => {
+    const node = namehash('nick.eth');
+    const inner = '0x3b3b57de' + node.slice(2);
+    expect(encodeResolve('nick.eth', inner)).toBe(
+      '0x9061b92300000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000a046e69636b03657468000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000243b3b57de05a67c0ee82964c4f7394cdd47fee7f4d9503a23c09c38341779ea012afe6e0000000000000000000000000000000000000000000000000000000000',
+    );
+  });
 });

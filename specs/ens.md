@@ -1,7 +1,9 @@
 # ENS — implementation plan (all chains)
 
-Status: **Phase 0 built** (resolve any `.eth` name in the send field). Name chosen: **`mercurywallet.eth`** — not yet registered. Facts checked on-chain 2026-09-06. Anything I
-did not verify is marked as such.
+Status: **Phase 0 built** — resolve any `.eth` name in the send field, through
+**ENSv2**. Name chosen: **`mercurywallet.eth`** — not yet registered.
+Decision: **v2 only, Sepolia as the testnet**, matching Arc.
+Facts checked on-chain 2026-09-07. Anything I did not verify is marked as such.
 
 ---
 
@@ -14,15 +16,49 @@ makes this work across chains.
 
 ---
 
-## 1. The blocker, first
+## 1. ENSv2, and what it changed
 
-`mercury.eth` is **taken** — mainnet (owner `0x464305cb…461a`) and Sepolia
-(`0x366e45e6…8391`). Free on mainnet right now: `mercurywallet.eth`,
-`usemercury.eth`, `mercurypay.eth`, `getmercury.eth`, `paywithmercury.eth`.
+Sepolia has moved to **ENSv2 beta**. Verified on-chain: the v1
+`ETHRegistrarController` has **no code** on Sepolia, so v1 registration there is
+dead. Mainnet is still v1 and prices normally.
 
-Pick one and register it on **both** mainnet and Sepolia — they are separate
-registries and the demo runs on testnet. ~$5/year plus L1 gas. This is a call
-only you can make, and it blocks the subname phases (not Phase 0).
+We build on **v2 only**, with Sepolia as the testnet — the same shape as Arc.
+
+Everything now goes through one entry point:
+
+| Contract | Address | |
+|---|---|---|
+| **UpgradableUniversalResolverProxy** | `0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe` | same on mainnet AND Sepolia |
+| ETHRegistrar (v2) | `0xa88553f454b77203b0d036a05c894d555eaaa2cc` | Sepolia |
+| ETHRegistry (v2) | `0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2` | Sepolia |
+| PublicResolverV2 | `0xe7b9a25607e02da8145e4eb1836ca539e53f11f7` | Sepolia |
+| MockUSDC | `0x768f42455a2d082e23ceef7d51e5787c82d67a39` | Sepolia registration fee token |
+
+The Universal Resolver walks the registry hierarchy itself, serves ENSv1 names
+through a mirror resolver, and is where CCIP-Read offchain names arrive. One
+call replaces the old registry→resolver→addr walk. Because the proxy address is
+identical on both networks, it needs no per-environment configuration.
+
+Verified live: `resolve("nick.eth", addr(node))` through the proxy on Sepolia
+returns `0xb8c2c29e…67d5` in a single plain `eth_call` — no CCIP-Read hop needed
+for on-registry names.
+
+### The name
+
+`mercury.eth` is **taken** (mainnet `0x464305cb…461a`, Sepolia `0x366e45e6…8391`).
+Free on mainnet: `mercurywallet.eth`, `usemercury.eth`, `mercurypay.eth`,
+`getmercury.eth`, `paywithmercury.eth`.
+
+**Cost, measured:**
+
+| | |
+|---|---|
+| Sepolia (v2) | free — the fee is paid in **MockUSDC**, whose mint has no access control |
+| Mainnet, 1 year | **0.00201 ETH** (0.001996 fee + ~0.00001 gas at 0.04 gwei) |
+| Mainnet, 3 years | 0.00600 ETH |
+
+Registering is a purchase and is yours to execute. Sepolia costs nothing but
+test ETH for gas.
 
 ---
 
@@ -121,11 +157,15 @@ ENSIP-11 records mitigate this only when the recipient sets them.
 
 ## 6. Build order
 
-**Phase 0 — resolve any `.eth` name. DONE.** `src/bridge/ens.ts`, wired into the
-send address field. `src/bridge/ens.ts` with a timeout and cache; wire into the send field and
-`parsePayment`. Removes hex from the main flow immediately.
+**Phase 0 — resolve any `.eth` name. DONE.** `src/bridge/ens.ts`, through the v2
+Universal Resolver, wired into the send address field with a cache, a timeout
+and endpoint fallback. The hand-rolled `resolve(bytes,bytes)` calldata is
+unit-tested against viem byte for byte — a wrong selector does not error, it
+hits a fallback and fails opaquely, which is exactly what happened once.
 
-**Phase 1 — register the 2LD** on mainnet + Sepolia. Blocked on you.
+**Phase 1 — register `mercurywallet.eth` on Sepolia (v2).** Blocked on you. Use
+the Sepolia ENS app, which is linked against the v2 deployment; the fee is
+MockUSDC, which anyone can mint.
 
 **Phase 2 — issue subnames.** Offchain resolver on L1 + a CCIP-Read endpoint in
 `hub/`. Name claimed at signup. Publish `addr(60)`, `addr(501)`, `addr(0)` and

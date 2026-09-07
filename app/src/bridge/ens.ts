@@ -16,17 +16,67 @@
 //  resolved address must always be shown before money moves.
 // ─────────────────────────────────────────────────────────────────────────────
 import { keccak_256 } from '@noble/hashes/sha3';
-import { ethCall } from './evmTx';
+import { ethCall, uint } from './evmTx';
 import { getActiveEnvironment } from './activeEnv';
 import { chainById } from '../lib/chains';
 
-/** Same address on mainnet and every testnet ENS deployment. */
+/**
+ * ENSv2's UpgradableUniversalResolverProxy — the single entry point, and the
+ * SAME address on mainnet and Sepolia, so it needs no per-environment config.
+ *
+ * Everything goes through here rather than walking the old registry by hand: it
+ * traverses the registry hierarchy itself, serves ENSv1 names through a mirror
+ * resolver, and is where CCIP-Read offchain names will arrive when we issue our
+ * own subnames. One call instead of two, which also matters because this is the
+ * only thing in the wallet that reads Ethereum.
+ */
+const UNIVERSAL_RESOLVER = '0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe';
+
+/** Legacy v1 registry. Kept only for the reverse lookup, which has not been
+ *  ported to the v2 entry point here yet. */
 const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
 
 const SEL_RESOLVER = '0x0178b8bf'; // resolver(bytes32)
 const SEL_ADDR = '0x3b3b57de'; // addr(bytes32)
 const SEL_ADDR_COINTYPE = '0xf1cb7e06'; // addr(bytes32,uint256) — ENSIP-9
 const SEL_NAME = '0x691f3431'; // name(bytes32) — reverse resolution
+const SEL_UR_RESOLVE = '0x9061b923'; // resolve(bytes,bytes) on the Universal Resolver
+
+/** EIP-3668 OffchainLookup. A revert with this selector means the answer lives
+ *  off-chain and needs a gateway round trip we do not implement yet — it is NOT
+ *  the same as "no such name", and must not be reported as one. */
+const OFFCHAIN_LOOKUP = '0x556f1830';
+
+/**
+ * DNS wire format: each label length-prefixed, terminated by a zero byte.
+ * "nick.eth" -> 04 6e696b63 03 657468 00. The Universal Resolver takes this
+ * rather than a namehash because it walks the labels itself.
+ */
+export function dnsEncode(name: string): string {
+  let out = '';
+  for (const label of name.split('.')) {
+    const bytes = new TextEncoder().encode(label);
+    out += bytes.length.toString(16).padStart(2, '0');
+    out += Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return '0x' + out + '00';
+}
+
+/** ABI-encode `resolve(bytes name, bytes data)` — two dynamic args. */
+export function encodeResolve(name: string, innerData: string): string {
+  const dns = dnsEncode(name).slice(2);
+  const inner = innerData.replace(/^0x/, '');
+  const pad = (h: string) => h + '0'.repeat((64 - (h.length % 64)) % 64);
+  const nameOffset = 64n; // two head words
+  const dataOffset = 64n + 32n + BigInt(pad(dns).length / 2);
+  return (
+    SEL_UR_RESOLVE +
+    uint(nameOffset) +
+    uint(dataOffset) +
+    uint(BigInt(dns.length / 2)) + pad(dns) +
+    uint(BigInt(inner.length / 2)) + pad(inner)
+  );
+}
 
 /** SLIP-44 coin types. 60 is Ethereum and covers every EVM chain for us. */
 export const COIN_ETH = 60;
@@ -145,17 +195,15 @@ export async function resolveEns(name: string): Promise<EnsLookup> {
   const rpcs = registryRpcs();
   if (!rpcs.length) return { status: 'unavailable' };
 
-  // Try each endpoint. A dropped read on a chain we otherwise never touch must
-  // not be presented to the user as a fact about the name.
+  // One call: the Universal Resolver walks the hierarchy and picks the resolver.
+  const data = encodeResolve(key, SEL_ADDR + word(namehash(key)));
+
   for (const rpc of rpcs) {
     try {
-      const node = namehash(key);
-      const resolver = addrFrom(await withTimeout(ethCall(rpc, ENS_REGISTRY, SEL_RESOLVER + word(node))));
-      if (!resolver) {
-        cache.set(key, { at: Date.now(), value: null });
-        return { status: 'none' };
-      }
-      const evm = addrFrom(await withTimeout(ethCall(rpc, resolver, SEL_ADDR + word(node))));
+      const raw = await withTimeout(ethCall(rpc, UNIVERSAL_RESOLVER, data));
+      // resolve() returns (bytes result, address resolver). The address we want
+      // is the last word of the inner `bytes`.
+      const evm = addrFrom(raw);
       if (!evm) {
         cache.set(key, { at: Date.now(), value: null });
         return { status: 'none' };
@@ -163,8 +211,14 @@ export async function resolveEns(name: string): Promise<EnsLookup> {
       const records: EnsRecords = { name: key, evm };
       cache.set(key, { at: Date.now(), value: records });
       return { status: 'ok', records };
-    } catch {
-      // try the next endpoint
+    } catch (e) {
+      // An offchain name is not a missing name — say so rather than claiming it
+      // has no address. Following the lookup needs an EIP-3668 gateway hop we
+      // have not built yet.
+      if (e instanceof Error && e.message.includes(OFFCHAIN_LOOKUP)) {
+        return { status: 'unavailable' };
+      }
+      // otherwise try the next endpoint
     }
   }
   // Never cached: a failure is not knowledge about the name.
