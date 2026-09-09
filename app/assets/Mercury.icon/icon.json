@@ -1,73 +1,73 @@
 {
-  "fill-specializations" : [
+  "fill-specializations": [
     {
-      "value" : {
-        "solid" : "srgb:0.34902,1.00000,0.81569,1.00000"
+      "value": {
+        "solid": "srgb:0.04314,0.05098,0.06275,1.00000"
       }
     },
     {
-      "appearance" : "dark",
-      "value" : {
-        "solid" : "srgb:0.34902,1.00000,0.81569,1.00000"
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.04314,0.05098,0.06275,1.00000"
       }
     }
   ],
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "fill-specializations" : [
+          "fill-specializations": [
             {
-              "value" : "automatic"
+              "value": "automatic"
             },
             {
-              "appearance" : "tinted",
-              "value" : {
-                "linear-gradient" : [
+              "appearance": "tinted",
+              "value": {
+                "linear-gradient": [
                   "display-p3:1.00000,1.00000,1.00000,1.00000",
                   "srgb:1.00000,1.00000,1.00000,0.84702"
                 ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.49999999999999983,
-                    "y" : 1
+                "orientation": {
+                  "start": {
+                    "x": 0.49999999999999983,
+                    "y": 1
                   },
-                  "stop" : {
-                    "x" : 0.5880610801351565,
-                    "y" : 0
+                  "stop": {
+                    "x": 0.5880610801351565,
+                    "y": 0
                   }
                 }
               }
             }
           ],
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "Intersect.svg",
-          "name" : "Intersect",
-          "position" : {
-            "scale" : 4,
-            "translation-in-points" : [
+          "glass": false,
+          "hidden": false,
+          "image-name": "Mark.svg",
+          "name": "Mark",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
               0,
               0
             ]
           }
         }
       ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
       },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : [
+    "squares": [
       "iOS",
       "macOS"
     ]

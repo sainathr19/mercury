@@ -15,7 +15,8 @@
 import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import Svg, { Ellipse, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
+import { MERCURY_MARK_PATH, MERCURY_MARK_VIEWBOX } from './mercury-mark';
 import {
   ArrowDown,
   ArrowDownLeft,
@@ -118,39 +119,22 @@ function NativeGlyph({ name, size, color }: { name: NativeName; size: number; co
 }
 
 /**
- * Mercury's mark: two interlocking rings, tilted into each other.
+ * Mercury's mark, from the original artwork.
  *
- * Drawn as two stroked ellipses rather than as traced outlines, so it stays
- * crisp at any size, takes a tint like every other icon, and is a few lines
- * instead of a wall of bezier data.
+ * See `mercury-mark.ts` for why this is a traced even-odd path rather than two
+ * stroked ellipses: the interlacing at the crossings is the mark, and geometry
+ * built from two ellipses cannot express an over/under.
  *
- * NOTE: this is built from the mark's geometry, not exported from the original
- * artwork — the interlaced over/under at the crossings is not reproduced. Swap
- * in the real file if that detail matters.
+ * `fill` takes the icon tint like every other glyph in the set.
  */
-const RING = { rx: 25, ry: 39, cx: 50, cy: 50 } as const;
-const RING_TILT = 33;
-const RING_WIDTH = 12;
-
 function MercuryMark({ size, color }: { size: number; color: string }): ReactNode {
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100">
-      <Ellipse
-        {...RING}
-        stroke={color}
-        strokeWidth={RING_WIDTH}
-        fill="none"
-        rotation={-RING_TILT}
-        origin={`${RING.cx}, ${RING.cy}`}
-      />
-      <Ellipse
-        {...RING}
-        stroke={color}
-        strokeWidth={RING_WIDTH}
-        fill="none"
-        rotation={RING_TILT}
-        origin={`${RING.cx}, ${RING.cy}`}
-      />
+    <Svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${MERCURY_MARK_VIEWBOX} ${MERCURY_MARK_VIEWBOX}`}
+    >
+      <Path d={MERCURY_MARK_PATH} fill={color} fillRule="evenodd" />
     </Svg>
   );
 }
