@@ -35,7 +35,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radius.pill,
     backgroundColor: 'transparent',
   },
-  chipOn: { backgroundColor: theme.colors.appBackground },
+  chipOn: { backgroundColor: theme.colors.tile },
   label: { color: theme.colors.muted },
   labelOn: { color: theme.colors.text },
 }));

@@ -23,5 +23,6 @@ export { SectionCard, type SectionCardProps } from './SectionCard';
 export { Chip, type ChipProps } from './Chip';
 export { DetailRows, type DetailRow } from './DetailRows';
 export { SheetScaffold, type SheetScaffoldProps } from './SheetScaffold';
+export { SheetNav, SheetNavButton, type SheetNavProps } from './SheetNav';
 export { ScreenScaffold, type ScreenScaffoldProps } from './ScreenScaffold';
 export { TabBar, type TabBarItem, type TabBarProps } from './TabBar';

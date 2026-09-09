@@ -123,7 +123,13 @@ export function formatCrypto(amount: number): string {
   if (amount === Math.floor(amount)) return String(amount);
   if (amount >= 100)
     return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return amount.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  const four = amount.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  // A HELD balance must never render as "0". Four decimals collapses small
+  // holdings of an expensive asset (0.00003 WBTC → "0"), which reads as owning
+  // nothing while the row beside it shows a dollar value.
+  if (four !== '0' || amount === 0) return four;
+  if (amount < 0.00000001) return '<0.00000001';
+  return amount.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 /** Format a network fee / gas amount. Unlike formatCrypto, this keeps tiny

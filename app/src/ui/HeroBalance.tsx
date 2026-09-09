@@ -39,14 +39,13 @@ export function HeroBalance({ amount, label, labelAccessory, masked, onPress, fo
       )}
       <CurrencyText
         amount={amount}
-        size={46}
-        minSize={30}
+        size={52}
+        minSize={32}
         // Physical screen width — STABLE across modal presentation. The window
         // width shrinks during the form-sheet card-stack animation, which used to
         // shrink the balance whenever a sheet opened.
         fitWidth={Dimensions.get('screen').width - theme.spacing.screen * 2}
-        letterSpacing={-1.3}
-        symbolScale={0.42}
+        letterSpacing={-1.6}
         fractionColor={theme.colors.faint}
         masked={masked}
       />

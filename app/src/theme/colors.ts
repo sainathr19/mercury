@@ -11,9 +11,17 @@
 
 export const lightColors = {
   appBackground: '#ECEEE9',
-  cardBackground: '#EAEBEA',
-  border: 'rgba(0,0,0,0.10)',
-  separator: 'rgba(0,0,0,0.12)',
+  // White cards on a warm grey ground, separated by a hairline rather than by a
+  // value step. `cardBackground` used to be #EAEBEA — two points off the ground
+  // it sits on — so every card, input and chip in the app was an invisible
+  // shape. The redesigned screens had each hard-coded '#FFFFFF' plus this
+  // hairline; they are tokens now so the rest of the app inherits them.
+  cardBackground: '#FFFFFF',
+  border: 'rgba(11,13,16,0.07)',
+  separator: 'rgba(11,13,16,0.06)',
+  /** An inset slot ON a card — an icon tile, a segment track, a skeleton. The
+   *  app ground, reused as a recess: white cards cannot nest in white. */
+  tile: '#ECEEE9',
 
   text: '#0B0D10',
   muted: '#5F646D', // ~5.6:1 on the app ground — readable at 13px
@@ -45,9 +53,10 @@ export type ColorTokens = { -readonly [K in keyof typeof lightColors]: string };
 
 export const darkColors: ColorTokens = {
   appBackground: '#000000',
-  cardBackground: '#1C1C1E',
-  border: 'rgba(255,255,255,0.12)',
-  separator: 'rgba(255,255,255,0.15)',
+  cardBackground: '#141416',
+  border: 'rgba(255,255,255,0.09)',
+  separator: 'rgba(255,255,255,0.08)',
+  tile: '#26282B',
 
   text: '#FFFFFF',
   muted: '#A7ACB5', // the light-theme pairing, inverted

@@ -15,10 +15,12 @@ export const radius = { sm: 8, md: 12, lg: 16, xl: 24, pill: 999 } as const;
 // `fonts.ts` for how the old six-weight scale maps onto its five, and why the
 // mono slots are a platform face rather than Ranade.
 export const typography = {
-  // Display (hero numbers, big currency)
-  displayLarge: { fontSize: 42, fontFamily: fontFamily.heavy, letterSpacing: -0.5 },
-  displayMedium: { fontSize: 40, fontFamily: fontFamily.heavy, letterSpacing: -0.5 },
-  displaySmall: { fontSize: 36, fontFamily: fontFamily.heavy, letterSpacing: -0.5 },
+  // Display (hero numbers, big currency). Semibold rather than Extrabold, and
+  // a size up to compensate: the figures carry their emphasis through scale, and
+  // Switzer's Extrabold numerals start closing up their counters this large.
+  displayLarge: { fontSize: 48, fontFamily: fontFamily.semibold, letterSpacing: -1.4 },
+  displayMedium: { fontSize: 44, fontFamily: fontFamily.semibold, letterSpacing: -1.2 },
+  displaySmall: { fontSize: 40, fontFamily: fontFamily.semibold, letterSpacing: -1 },
 
   // Title (sheet/screen titles)
   titleLarge: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },

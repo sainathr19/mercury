@@ -22,7 +22,11 @@ export interface CurrencyTextProps {
   minSize?: number;
   /**
    * Render the leading currency glyph at this fraction of `size`, raised toward
-   * the cap height — the superscript `$` the hero balance uses.
+   * the cap height — a superscript `$`.
+   *
+   * Left at 1 (the default) the glyph is simply part of the figure, which is
+   * what every screen now wants: a shrunken `$` reads as a footnote attached to
+   * the number rather than as part of it.
    *
    * The glyph comes from `currencyParts`, which bakes it into `whole`, so it is
    * peeled back off here rather than threading a second format function through
@@ -51,13 +55,16 @@ export function CurrencyText({ amount, size, masked, letterSpacing = -0.5, whole
     return Math.max(floor, ideal);
   })();
 
-  // Extrabold: the balance is the heaviest thing on the screen by design.
-  const base = { fontFamily: fontFamily.heavy, fontSize: fitted, letterSpacing } as const;
+  // Semibold, not Extrabold. Size is what makes the balance the loudest thing
+  // on the screen; at 46px Extrabold the numerals also went heavy enough to
+  // close up their counters, which is what made the figure read as a slab
+  // rather than as a number.
+  const base = { fontFamily: fontFamily.semibold, fontSize: fitted, letterSpacing } as const;
 
   // Split "-$25,431" into its sign+glyph and its digits. Only the glyph shrinks;
   // a minus sign stays at full size so a negative balance still reads clearly.
   const digitAt = whole.search(/\d/);
-  const symbol = symbolScale && digitAt > 0 ? whole.slice(0, digitAt) : '';
+  const symbol = symbolScale !== undefined && symbolScale !== 1 && digitAt > 0 ? whole.slice(0, digitAt) : '';
   const wholeDigits = symbol ? whole.slice(digitAt) : whole;
 
   const m = useDerivedValue(() => withTiming(masked ? 1 : 0, { duration: 220 }));

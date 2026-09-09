@@ -9,7 +9,9 @@ export interface ButtonProps {
   title: string;
   onPress: () => void;
   variant?: ButtonVariant;
-  /** 'rounded' (default) or 'pill' for a fully-rounded capsule. */
+  /** 'pill' (default) or 'rounded' for a soft-cornered rectangle. Capsules are
+   *  the default because every CTA the scaffolds draw is one — a rounded button
+   *  next to a pill CTA is the thing that reads as unfinished. */
   shape?: 'rounded' | 'pill';
   loading?: boolean;
   disabled?: boolean;
@@ -20,7 +22,7 @@ export function Button({
   title,
   onPress,
   variant = 'primary',
-  shape = 'rounded',
+  shape = 'pill',
   loading,
   disabled,
   icon,
@@ -51,19 +53,25 @@ function labelColorFor(v: ButtonVariant): string {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  btn: (v: ButtonVariant, off?: boolean, shape: 'rounded' | 'pill' = 'rounded') => ({
-    paddingVertical: 15,
+  btn: (v: ButtonVariant, off?: boolean, shape: 'rounded' | 'pill' = 'pill') => ({
+    height: 52,
     paddingHorizontal: theme.spacing.lg,
-    borderRadius: shape === 'pill' ? theme.radius.pill : theme.radius.md,
+    borderRadius: shape === 'pill' ? theme.radius.pill : theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: off ? 0.45 : 1,
+    // Disabled reads as "not now", not as "broken": the shape stays, the ink
+    // drops out.
+    opacity: off ? 0.35 : 1,
     backgroundColor:
       v === 'primary'
         ? theme.colors.primary
         : v === 'danger'
           ? theme.colors.danger
-          : 'transparent',
+          : v === 'secondary'
+            ? // A white capsule, so a secondary action is still a surface you
+              // can see rather than an outline on the ground.
+              theme.colors.cardBackground
+            : 'transparent',
     borderWidth: v === 'secondary' || v === 'ghost' ? 1 : 0,
     borderColor: theme.colors.border,
   }),

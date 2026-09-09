@@ -39,5 +39,7 @@ export function Shimmer({ width, height, radius = 8 }: ShimmerProps) {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  block: { backgroundColor: theme.colors.cardBackground },
+  // `tile`, not `cardBackground`: a placeholder has to be visible ON a card,
+  // and cards are white now.
+  block: { backgroundColor: theme.colors.tile },
 }));
