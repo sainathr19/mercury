@@ -1,203 +1,368 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, View } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { Alert, Pressable, ScrollView, Switch, View } from 'react-native';
+// Used by the hidden Version row (see the App group below).
+import Constants from 'expo-constants';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Text, useToast } from '../ui';
+import { Icon, Text, type IconName } from '../ui';
 import { fontFamily } from '../theme/fonts';
 import { posthog } from '../lib/posthog';
-import { useAuth } from '../stores/authStore';
 import { isHardwareBacked } from '../bridge/keystore';
 import { getActiveAlias } from '../bridge/wallet';
 import { useMercuryName } from '../stores/mercuryNameStore';
-import { signInWithApple, signInWithGoogle, isGoogleConfigured } from '../bridge/providerSignIn';
+import { useSettings, AUTO_LOCK_OPTIONS, CURRENCY_OPTIONS } from '../stores/settingsStore';
+import { useWallets } from '../stores/walletsStore';
 
 /**
- * "More" tab. A claim-username banner up top, then grouped sections (Security /
- * General / About), each a bold header over a rounded card of rows. Rows route
- * to their screens or open an external link; not-yet-built ones toast.
+ * "More" tab: grouped settings over a claim-name banner.
+ *
+ * Every row does something. An earlier version carried rows that only toasted
+ * "coming soon" (Notifications) or had an empty handler (Key protection), which
+ * teaches people that tapping things here does nothing. Anything not yet built
+ * is absent rather than present-and-inert — and several settings that already
+ * worked but were never surfaced (Appearance, Auto-Lock, biometric send,
+ * networks, tokens, connected apps) are reachable now.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const show = useToast((s) => s.show);
+  const theme = UnistylesRuntime.getTheme();
+  const name = useMercuryName((s) => s.name);
+  const logout = useWallets((w) => w.logout);
+  const walletsBusy = useWallets((w) => w.busy);
 
-  const soon = (what: string) => () => show(`${what} is coming soon.`, 'info');
-  const openUsername = () => router.push('/(app)/username');
-  // Only prompt to claim a name when the user hasn't set one yet.
-  const hasHandle = !!useMercuryName((s) => s.name);
+  const currency = useSettings((s) => s.currency);
+  const autoLock = useSettings((s) => s.autoLock);
+  // Read for the hidden Appearance row; kept so restoring it needs no rewiring.
+  const appearance = useSettings((s) => s.appearance);
+  const biometricSend = useSettings((s) => s.biometricSend);
+  const setBiometricSend = useSettings((s) => s.setBiometricSend);
 
-  // The account is OPTIONAL: the wallet works fully without one. Connecting it
-  // buys the username registry and encrypted backup, never custody.
-  // null while unknown — "Checking…" is honest, `false` would not be.
-  const [hardwareBacked, setHardwareBacked] = useState<boolean | null>(null);
+  const [hardware, setHardware] = useState<boolean | null>(null);
   useEffect(() => {
-    let live = true;
-    isHardwareBacked(getActiveAlias()).then((v) => live && setHardwareBacked(v));
-    return () => {
-      live = false;
-    };
+    isHardwareBacked(getActiveAlias()).then(setHardware).catch(() => setHardware(false));
   }, []);
 
-  const authStatus = useAuth((s) => s.status);
-  const account = useAuth((s) => s.user);
-  const signIn = useAuth((s) => s.signIn);
-  const [connecting, setConnecting] = useState(false);
+  const pick = (kind: 'currency' | 'autolock' | 'appearance') => () =>
+    router.push({ pathname: '/(app)/settings-picker', params: { kind } });
 
-  async function connectAccount() {
-    if (connecting) return;
-    setConnecting(true);
-    try {
-      const useApple = Platform.OS === 'ios';
-      if (!useApple && !isGoogleConfigured()) {
-        show('Google sign-in isn’t set up yet.', 'info');
-        return;
-      }
-      const tok = useApple ? await signInWithApple() : await signInWithGoogle();
-      if (!tok) return; // cancelled
-      await signIn(useApple ? 'apple' : 'google', tok.idToken, { nonce: tok.nonce });
-      show('Account connected.', 'success');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
-      if (!/cancel/i.test(msg)) show('Could not connect the account. Try again.', 'error');
-    } finally {
-      setConnecting(false);
-    }
+  const currencyLabel = CURRENCY_OPTIONS.find((o) => o.key === currency);
+  const autoLockLabel = AUTO_LOCK_OPTIONS.find((o) => o.key === autoLock)?.label ?? '';
+
+  /**
+   * Log out = delete the wallet from this device. There is no server-side
+   * session to end and no cloud backup, so the recovery phrase is the ONLY way
+   * back in — which is why this confirms, and offers to show the phrase first.
+   */
+  function confirmLogout() {
+    Alert.alert(
+      'Log out of Mercury?',
+      'This erases the wallet and its recovery phrase from this device. You can only get back in with your 12-word phrase — if you have not written it down, your funds will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Show my phrase first', onPress: () => router.push('/(app)/recovery') },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: () => {
+            posthog.capture('logout_confirmed');
+            void logout();
+          },
+        },
+      ],
+    );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
-      {/* Claim-username banner — hidden once a username is set. */}
-      {!hasHandle && (
-        <Pressable style={styles.banner} onPress={openUsername}>
-          <ExpoImage source={require('../../assets/icons/MercuryIcon.svg')} style={styles.bannerIcon} contentFit="contain" />
-          <View style={styles.bannerMid}>
-            <Text style={styles.bannerTitle}>Claim your Mercury username</Text>
-            <Text style={styles.bannerSub}>A cleaner way to receive money.</Text>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <Text style={styles.pageTitle}>More</Text>
+
+      {/* The name is the product's whole pitch, so an unclaimed one gets a card
+          rather than a row buried in a list. Once claimed it becomes the
+          Username row's value instead. */}
+      {!name && (
+        <Pressable style={styles.promo} onPress={() => router.push('/(app)/username')}>
+          <View style={styles.promoMark}>
+            <Icon name="mercury" size={20} color="#ECEEE9" />
           </View>
-          <Chevron />
+          <View style={styles.promoText}>
+            <Text style={styles.promoTitle}>Claim your name</Text>
+            <Text style={styles.promoSub} numberOfLines={1}>
+              Get paid at a name, not an address.
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={15} color={theme.colors.muted} />
         </Pressable>
       )}
 
-      <Section title="Account">
-        {authStatus === 'authed' ? (
-          <Row title="Connected" subtitle={account?.email ?? account?.handle ?? 'Signed in'} onPress={() => {}} />
-        ) : (
-          <Row
-            title={Platform.OS === 'ios' ? 'Connect Apple Account' : 'Connect Google Account'}
-            subtitle="Optional — enables your username and encrypted backup"
-            onPress={connectAccount}
-            busy={connecting}
-          />
-        )}
-      </Section>
-
-      <Section title="Security">
-        <Row title="Backups" onPress={() => router.push('/(app)/cloud-backup')} />
-        <Row title="Recovery phrase" onPress={() => router.push('/(app)/recovery')} />
-        {/* Key generation falls back to a software keychain key when the Secure
-            Enclave refuses, and the biometric prompt is identical either way.
-            Stated here so a downgraded device is visible to its owner and to
-            anyone helping them, rather than only to the code. */}
+      <Group label="Account">
         <Row
+          icon="name"
+          title="Username"
+          value={name ? `${name}.mercurywallet.eth` : 'Not set'}
+          onPress={() => router.push('/(app)/username')}
+        />
+        {/* HIDDEN: multi-wallet. `walletsStore` and the /(app)/wallets screen
+            still work — Mercury just supports a single wallet for now, so the
+            entry point is hidden rather than the feature removed. Restore this
+            row to bring it back. */}
+        {/* <Row
+          icon="wallet"
+          title="Wallets & accounts"
+          subtitle="Add, rename or switch wallets"
+          onPress={() => router.push('/(app)/wallets')}
+        /> */}
+      </Group>
+
+      <Group label="Security">
+        <Row
+          icon="key"
+          title="Recovery phrase"
+          subtitle="The 12 words that restore this wallet"
+          onPress={() => router.push('/(app)/recovery')}
+        />
+        <Row
+          icon="faceid"
+          title="Confirm sends with Face ID"
+          subtitle="Required before money leaves"
+          toggle={{ value: biometricSend, onChange: setBiometricSend }}
+        />
+        <Row icon="lock" title="Auto-lock" value={autoLockLabel} onPress={pick('autolock')} />
+        {/* Information, not a setting: the app cannot change where the key lives,
+            but its owner should be able to see which of the two they got. */}
+        <Row
+          icon="shield"
           title="Key protection"
           subtitle={
-            hardwareBacked === null
+            hardware === null
               ? 'Checking…'
-              : hardwareBacked
-                ? 'Secure Enclave — the key cannot leave this device'
-                : 'Software keychain — this device has no Secure Enclave'
+              : hardware
+                ? 'Secure Enclave — key cannot leave'
+                : 'Software keychain — no Secure Enclave'
           }
-          onPress={() => {}}
         />
-      </Section>
+      </Group>
 
-      <Section title="General">
-        <Row title="Username" onPress={openUsername} />
-        {/* Network / Token management are hidden for now (v1). */}
+      <Group label="Wallet">
         <Row
-          title="Currency Settings"
-          onPress={() => router.push({ pathname: '/(app)/settings-picker', params: { kind: 'currency' } })}
+          icon="dollarSign"
+          title="Display currency"
+          value={currencyLabel ? `${currencyLabel.symbol} ${currencyLabel.key.toUpperCase()}` : ''}
+          onPress={pick('currency')}
         />
-        <Row title="Notifications" onPress={soon('Notification settings')} />
-      </Section>
+        <Row
+          icon="grid"
+          title="Manage tokens"
+          subtitle="Choose which assets you see"
+          onPress={() => router.push('/(app)/tokens')}
+        />
+        <Row
+          icon="network"
+          title="Networks"
+          subtitle="Endpoints Mercury reads and writes"
+          onPress={() => router.push('/(app)/networks')}
+        />
+        <Row
+          icon="link"
+          title="Connected apps"
+          subtitle="Apps you have granted access"
+          onPress={() => router.push('/(app)/wc-sessions')}
+        />
+      </Group>
 
-      {/* About is intentionally empty until Mercury has its own support channel.
-          These rows used to open a support mailto: and an x.com
-          account belonging to a different company — a user reporting a lost
-          wallet would have sent it to strangers. An address that does not exist
-          yet is not an improvement on that, so the rows are gone rather than
-          guessed at; restore them once there is somewhere real to point. */}
+      {/* HIDDEN: the whole App group. Appearance still works (the theme and the
+          picker's 'appearance' kind are both intact) and Version reads fine —
+          they are just not wanted on this screen yet. Uncomment to restore. */}
+      {/* <Group label="App">
+        <Row
+          icon="moon"
+          title="Appearance"
+          value={appearance === 'dark' ? 'Dark' : 'Light'}
+          onPress={pick('appearance')}
+        />
+        <Row icon="info" title="Version" value={Constants.expoConfig?.version ?? '—'} />
+      </Group> */}
+
+      <Group label="Danger zone">
+        <Row
+          icon="logout"
+          title="Log out"
+          subtitle="Erases this wallet from this device"
+          onPress={confirmLogout}
+          busy={walletsBusy}
+          destructive
+        />
+      </Group>
     </ScrollView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A labelled group of rows in one card. */
+function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles.group}>
+      <Text style={styles.groupLabel}>{label}</Text>
       <View style={styles.card}>{children}</View>
     </View>
   );
 }
 
-function Row({ title, subtitle, onPress, busy }: {
-  title: string; subtitle?: string; onPress: () => void; busy?: boolean;
+/**
+ * One settings row.
+ *
+ * Four shapes in one component so they stay aligned: navigating (chevron),
+ * showing a current value, toggling, or purely informational. A row with no
+ * `onPress` and no `toggle` renders as text and is not pressable — nothing looks
+ * tappable unless it is.
+ */
+function Row({
+  icon,
+  title,
+  subtitle,
+  value,
+  onPress,
+  toggle,
+  busy,
+  destructive,
+}: {
+  icon: IconName;
+  title: string;
+  subtitle?: string;
+  value?: string;
+  onPress?: () => void;
+  toggle?: { value: boolean; onChange: (v: boolean) => void };
+  busy?: boolean;
+  destructive?: boolean;
 }) {
-  // Track which settings rows users open so bottlenecks / drop-off in the
-  // settings flow show up in PostHog (funnels + trends over `settings_row_opened`).
-  const handlePress = () => {
-    posthog.capture('settings_row_opened', { row: title });
-    onPress();
-  };
-  return (
-    <Pressable style={styles.row} onPress={handlePress} disabled={busy}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
+  const theme = UnistylesRuntime.getTheme();
+  const fg = destructive ? theme.colors.danger : theme.colors.text;
+
+  const body = (
+    <View style={styles.row}>
+      <View style={[styles.tile, destructive && styles.tileDanger]}>
+        <Icon name={icon} size={16} color={fg} />
       </View>
-      {busy ? <ActivityIndicator /> : <Chevron />}
+      <View style={styles.rowMid}>
+        <Text style={[styles.rowTitle, { color: fg }]}>{title}</Text>
+        {/* One line, always: a wrapping description changes the row's height and
+            breaks the rhythm of the list. Clamped as well as shortened, so a
+            longer string added later truncates instead of reflowing. */}
+        {!!subtitle && (
+          <Text style={styles.rowSub} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      {!!value && <Text style={styles.rowValue}>{value}</Text>}
+      {toggle ? (
+        <Switch
+          value={toggle.value}
+          onValueChange={(v) => {
+            Haptics.selectionAsync().catch(() => {});
+            toggle.onChange(v);
+          }}
+          trackColor={{ false: 'rgba(11,13,16,0.14)', true: '#0B0D10' }}
+          thumbColor="#FFFFFF"
+          ios_backgroundColor="rgba(11,13,16,0.14)"
+        />
+      ) : onPress ? (
+        <Icon name="chevronRight" size={15} color={theme.colors.faint} />
+      ) : null}
+    </View>
+  );
+
+  if (!onPress) return body;
+  return (
+    <Pressable
+      disabled={busy}
+      onPress={() => {
+        // Which rows people open shows where the settings flow bottlenecks.
+        posthog.capture('settings_row_opened', { row: title });
+        onPress();
+      }}
+      style={({ pressed }) => [pressed && styles.rowPressed]}
+    >
+      {body}
     </Pressable>
   );
 }
 
-function Chevron() {
-  const theme = UnistylesRuntime.getTheme();
-  return (
-    <ExpoImage source={require('../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.text} contentFit="contain" />
-  );
-}
-
 const styles = StyleSheet.create((theme) => ({
-  content: { paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.md, paddingBottom: 120 },
-  // Claim-username banner — standard 12y/18x padding; 44px gap to the first title.
-  banner: {
+  content: {
+    paddingHorizontal: theme.spacing.screen,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: 120,
+    gap: 22,
+  },
+  pageTitle: { fontFamily: fontFamily.semibold, fontSize: 28, letterSpacing: -1, color: theme.colors.text },
+
+  promo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: theme.colors.cardBackground,
+    padding: 14,
+    borderRadius: theme.radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
+  },
+  promoMark: {
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    marginBottom: 44,
-  },
-  bannerIcon: { width: 32, height: 32, borderRadius: 8 },
-  bannerMid: { flex: 1, gap: 2 },
-  bannerTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  bannerSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
-  // Section header (18px bold, outside the card) → 18px gap → the rows card.
-  section: { gap: 18, marginBottom: 32 },
-  sectionTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text },
-  card: { backgroundColor: theme.colors.cardBackground, borderRadius: 12, overflow: 'hidden' },
-  rowSubtitle: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, color: theme.colors.muted, marginTop: 2 },
-  // Rows — standard 12y/18x padding, 15px text.
-  row: {
-    flexDirection: 'row',
+    backgroundColor: '#0B0D10',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    justifyContent: 'center',
   },
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  // UpIcon (^) rotated 90° → points right.
-  chev: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
+  promoText: { flex: 1, gap: 2 },
+  promoTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, color: theme.colors.text },
+  promoSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: -0.18,
+    color: theme.colors.muted,
+  },
+
+  group: { gap: 8 },
+  // Small, quiet, and set apart from the card — a label for the group, not a
+  // heading competing with the row titles.
+  groupLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+    paddingLeft: 4,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
+    overflow: 'hidden',
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  rowPressed: { backgroundColor: 'rgba(11,13,16,0.03)' },
+  // A rounded square, not a circle: it reads as an icon slot rather than an
+  // avatar, and squares tile more evenly down a list.
+  tile: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#ECEEE9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileDanger: { backgroundColor: 'rgba(255,59,48,0.10)' },
+  rowMid: { flex: 1, gap: 2 },
+  rowTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28 },
+  rowSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
+  rowValue: { fontFamily: fontFamily.medium, fontSize: 14, letterSpacing: -0.2, color: theme.colors.muted },
 }));

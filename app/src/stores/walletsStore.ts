@@ -16,6 +16,9 @@ import { usePortfolio } from './portfolioStore';
 import { useActivity } from './activityStore';
 import { useNetworks } from './networkStore';
 import { useWalletName } from './walletNameStore';
+import { clearMnemonic } from '../bridge/seedVault';
+import { useGateway } from './gatewayStore';
+import { usePendingBalance } from './pendingBalanceStore';
 
 // Registry of wallets on this device (each = a separate seed / keystore alias /
 // DB file). Mirrors the iOS WalletSession wallets registry. The primary wallet
@@ -61,6 +64,14 @@ interface WalletsState {
   switchWallet: (alias: string) => Promise<void>;
   renameWallet: (alias: string, name: string) => void;
   deleteWallet: (alias: string) => Promise<void>;
+  /**
+   * Wipe EVERY wallet on this device and return to onboarding.
+   *
+   * Destructive and irreversible: the keystore, its database and the stored
+   * recovery phrase all go. Anyone who has not written their phrase down cannot
+   * get the funds back, so the caller must confirm first.
+   */
+  logout: () => Promise<void>;
   clearPendingBackup: () => void;
 }
 
@@ -221,6 +232,59 @@ export const useWallets = create<WalletsState>((set, get) => {
             persist();
           }
         }
+      } finally {
+        set({ busy: false });
+      }
+    },
+
+    logout: async () => {
+      set({ busy: true });
+      try {
+        // Every wallet, not just the active one — a "log out" that left the
+        // other seeds on disk would not be one.
+        for (const w of get().wallets) {
+          try {
+            await deleteByAlias(w.alias);
+          } catch {}
+          try {
+            const af = accountsFileFor(w.alias);
+            if (af.exists) af.delete();
+          } catch {}
+          // The phrase lives in SecureStore, NOT in the wallet database, so
+          // wiping the DB alone would leave it behind in the keychain.
+          try {
+            await clearMnemonic(w.alias);
+          } catch {}
+        }
+        // Belt and braces: clear the primary alias too, in case the registry
+        // was empty or out of step with what is actually on disk.
+        try {
+          await deleteByAlias(PRIMARY_ALIAS);
+        } catch {}
+        try {
+          await clearMnemonic(PRIMARY_ALIAS);
+        } catch {}
+        try {
+          const f = file();
+          if (f.exists) f.delete();
+        } catch {}
+
+        // Drop everything derived from the wallet, so a new or re-imported
+        // wallet never shows the previous one's balances or history.
+        useActivity.getState().clear();
+        useGateway.getState().reset();
+        usePendingBalance.getState().clear();
+        usePortfolio.setState({ assets: [] });
+
+        setActiveAlias(PRIMARY_ALIAS);
+        set({ wallets: [], activeAlias: PRIMARY_ALIAS, pendingBackup: null });
+        useSession.setState({
+          wallet: null,
+          addresses: null,
+          mnemonic: null,
+          status: 'onboarding',
+          error: null,
+        });
       } finally {
         set({ busy: false });
       }

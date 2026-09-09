@@ -3,9 +3,10 @@ import { Modal, Pressable, ScrollView, Switch, TextInput, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Button, Card, Field, Icon, Text, useToast } from '../../src/ui';
+import { Button, Card, Field, Icon, Text, useToast, ScreenScaffold } from '../../src/ui';
 import { CryptoIcon } from '../../src/components/CryptoIcon';
 import { useTokens } from '../../src/stores/tokensStore';
+import { fontFamily } from '../../src/theme/fonts';
 import { useTokenPrefs } from '../../src/stores/tokenPrefsStore';
 import { usePortfolio } from '../../src/stores/portfolioStore';
 import { useRegistry } from '../../src/stores/registryStore';
@@ -115,14 +116,16 @@ export default function ManageTokens() {
   }, [rows, query, netFilter]);
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Icon name="chevronLeft" size={24} color={theme.colors.text} />
+    <ScreenScaffold
+      title="Manage tokens"
+      subtitle="Choose which assets show in your list. Hiding one never moves or sells it."
+      navAccessory={
+        <Pressable style={styles.addBtn} onPress={() => setShowAdd(true)} hitSlop={8}>
+          <Icon name="plus" size={14} color={theme.colors.primaryLabel} />
+          <Text style={styles.addLabel}>Add token</Text>
         </Pressable>
-        <Text variant="headline">Manage tokens</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      }
+    >
 
       <View style={styles.searchWrap}>
         <Icon name="search" size={16} color={theme.colors.muted} />
@@ -142,58 +145,57 @@ export default function ManageTokens() {
         <Icon name="chevronDown" size={14} color={theme.colors.muted} />
       </Pressable>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <Card flush>
-          {filtered.length === 0 ? (
-            <View style={styles.row}>
-              <Text variant="bodyMedium" color={theme.colors.muted}>
-                No tokens match.
-              </Text>
-            </View>
-          ) : (
-            filtered.map((r, i) => {
-              const on = !hidden.includes(r.id);
-              return (
-                <View key={r.id} style={[styles.row, i > 0 && styles.divider]}>
-                  <CryptoIcon
-                    coingeckoId={r.coingeckoId}
-                    symbol={r.symbol}
-                    colorHex={r.colorHex}
-                    imageUrl={r.imageUrl}
-                    size={38}
-                  />
-                  <View style={styles.mid}>
-                    <Text variant="bodyMedium">{r.name}</Text>
-                    <Text variant="micro" color={theme.colors.muted} numberOfLines={1}>
-                      {r.symbol} · {r.networkName}
-                    </Text>
-                  </View>
-                  {r.isCustom && (
-                    <Pressable
-                      hitSlop={8}
-                      onPress={() => {
-                        removeCustom(r.id);
-                        usePortfolio.getState().refresh();
-                      }}
-                    >
-                      <Icon name="minus" size={18} color={theme.colors.danger} />
-                    </Pressable>
-                  )}
-                  <Switch
-                    value={on}
-                    onValueChange={() => toggle(r.id)}
-                    trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
-                    thumbColor={theme.colors.appBackground}
-                  />
+      {/* The scaffold scrolls; this only supplies the list. */}
+      <View style={styles.card}>
+        {filtered.length === 0 ? (
+          <View style={styles.emptyRow}>
+            <Text style={styles.emptyText}>No tokens match “{query}”.</Text>
+          </View>
+        ) : (
+          filtered.map((r, i) => {
+            const on = !hidden.includes(r.id);
+            return (
+              <View key={r.id} style={[styles.row, i > 0 && styles.divider]}>
+                <CryptoIcon
+                  coingeckoId={r.coingeckoId}
+                  symbol={r.symbol}
+                  colorHex={r.colorHex}
+                  imageUrl={r.imageUrl}
+                  size={34}
+                />
+                <View style={styles.mid}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {r.name}
+                  </Text>
+                  <Text style={styles.rowSub} numberOfLines={1}>
+                    {r.symbol} · {r.networkName}
+                  </Text>
                 </View>
-              );
-            })
-          )}
-        </Card>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <Button title="Add a custom token" onPress={() => setShowAdd(true)} />
+                {/* Only a token YOU added can be removed; the built-in ones are
+                    hidden, not deleted, which is what the switch does. */}
+                {r.isCustom && (
+                  <Pressable
+                    hitSlop={10}
+                    style={styles.remove}
+                    onPress={() => {
+                      removeCustom(r.id);
+                      usePortfolio.getState().refresh();
+                    }}
+                  >
+                    <Text style={styles.removeLabel}>Remove</Text>
+                  </Pressable>
+                )}
+                <Switch
+                  value={on}
+                  onValueChange={() => toggle(r.id)}
+                  trackColor={{ false: 'rgba(11,13,16,0.14)', true: '#0B0D10' }}
+                  thumbColor="#FFFFFF"
+                  ios_backgroundColor="rgba(11,13,16,0.14)"
+                />
+              </View>
+            );
+          })
+        )}
       </View>
 
       {showNetPicker && (
@@ -208,30 +210,51 @@ export default function ManageTokens() {
         />
       )}
       {showAdd && <AddTokenModal onClose={() => setShowAdd(false)} />}
-    </SafeAreaView>
+    </ScreenScaffold>
   );
 }
 
+/**
+ * Network filter, presented as the same bottom sheet as the other pickers
+ * (Display currency, Auto-lock) — icon tile, label, and an inverted tile plus a
+ * check on the current choice. It was a centred dialog with plain text rows,
+ * which made one picker in the app look unlike all the others.
+ */
 function NetworkPicker({ options, selected, onSelect, onClose }: { options: string[]; selected: string; onSelect: (v: string) => void; onClose: () => void }) {
   const theme = UnistylesRuntime.getTheme();
   const rows = [{ key: ALL, label: 'All networks' }, ...options.map((o) => ({ key: o, label: o }))];
   return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <View style={styles.sheet}>
-          <Text variant="headline" style={styles.sheetTitle}>
-            Filter by network
-          </Text>
-          <ScrollView style={{ maxHeight: 360 }}>
-            {rows.map((r, i) => (
-              <Pressable key={r.key} style={[styles.pickRow, i > 0 && styles.divider]} onPress={() => onSelect(r.key)}>
-                <Text variant="bodyMedium">{r.label}</Text>
-                {selected === r.key && <Icon name="check" size={18} color={theme.colors.primary} />}
-              </Pressable>
-            ))}
-          </ScrollView>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <View style={styles.sheet}>
+        <View style={styles.grabber} />
+        <View style={styles.sheetHead}>
+          <Text style={styles.sheetTitle}>Filter by network</Text>
+          <Pressable hitSlop={10} onPress={onClose} style={styles.sheetClose}>
+            <Icon name="close" size={15} color={theme.colors.muted} />
+          </Pressable>
         </View>
-      </Pressable>
+        <ScrollView style={styles.sheetScroll}>
+          <View style={styles.card}>
+            {rows.map((r, i) => {
+              const on = selected === r.key;
+              return (
+                <Pressable
+                  key={r.key}
+                  style={[styles.pickRow, i > 0 && styles.divider]}
+                  onPress={() => onSelect(r.key)}
+                >
+                  <View style={[styles.pickTile, on && styles.pickTileOn]}>
+                    <Icon name="network" size={14} color={on ? '#ECEEE9' : theme.colors.text} />
+                  </View>
+                  <Text style={styles.pickLabel}>{r.label}</Text>
+                  {on && <Icon name="check" size={16} color={theme.colors.text} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
     </Modal>
   );
 }
@@ -367,6 +390,22 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create((theme) => ({
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 13, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary },
+  addLabel: { fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.18, color: theme.colors.primaryLabel },
+  grabber: { width: 38, height: 4, borderRadius: 2, backgroundColor: 'rgba(11,13,16,0.18)', alignSelf: 'center', marginTop: 9 },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: theme.spacing.screen, paddingTop: 18, paddingBottom: 14 },
+  sheetClose: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  sheetScroll: { paddingHorizontal: theme.spacing.screen },
+  pickTile: { width: 30, height: 30, borderRadius: 9, backgroundColor: '#ECEEE9', alignItems: 'center', justifyContent: 'center' },
+  pickTileOn: { backgroundColor: '#0B0D10' },
+  pickLabel: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  card: { backgroundColor: '#FFFFFF', borderRadius: theme.radius.xl, borderWidth: 1, borderColor: 'rgba(11,13,16,0.07)', overflow: 'hidden' },
+  rowTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  rowSub: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+  remove: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,59,48,0.10)' },
+  removeLabel: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: theme.colors.danger },
+  emptyRow: { paddingHorizontal: 14, paddingVertical: 22, alignItems: 'center' },
+  emptyText: { fontFamily: fontFamily.medium, fontSize: 13.5, color: theme.colors.muted },
   root: { flex: 1, backgroundColor: theme.colors.appBackground },
   header: {
     flexDirection: 'row',
@@ -375,47 +414,21 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing.screen,
     paddingVertical: theme.spacing.md,
   },
-  searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginHorizontal: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
-    height: 44,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.cardBackground,
-  },
-  search: { flex: 1, color: theme.colors.text, fontFamily: theme.typography.body.fontFamily, fontSize: 15 },
-  netBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    alignSelf: 'flex-start',
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md,
-    height: 36,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.cardBackground,
-  },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#FFFFFF', borderRadius: theme.radius.pill, borderWidth: 1, borderColor: 'rgba(11,13,16,0.07)', paddingHorizontal: 15, height: 46, marginHorizontal: theme.spacing.screen, marginBottom: 12 },
+  search: { flex: 1, padding: 0, fontFamily: fontFamily.medium, fontSize: 14.5, color: theme.colors.text },
+  netBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 32, borderRadius: theme.radius.pill, backgroundColor: '#ECEEE9' },
   content: { padding: theme.spacing.lg, gap: theme.spacing.md, paddingBottom: 24 },
   label: { letterSpacing: 0.5 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md },
-  divider: { borderTopWidth: 1, borderTopColor: theme.colors.border },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  divider: { borderTopWidth: 1, borderTopColor: 'rgba(11,13,16,0.06)' },
   mid: { flex: 1, gap: 2 },
   footer: { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.sm, paddingTop: theme.spacing.xs },
   chainWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
-  chainChip: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBackground },
+  chainChip: { paddingHorizontal: 13, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBackground, borderWidth: 1, borderColor: theme.colors.border },
   kvRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: theme.spacing.sm },
   previewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000066' },
-  sheet: {
-    backgroundColor: theme.colors.appBackground,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    paddingBottom: theme.spacing.xxl,
-  },
-  sheetTitle: { paddingBottom: theme.spacing.md },
-  pickRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '78%', backgroundColor: theme.colors.appBackground, borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingBottom: 34 },
+  sheetTitle: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 20, letterSpacing: -0.5, color: theme.colors.text },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingHorizontal: 14, paddingVertical: 14 },
 }));

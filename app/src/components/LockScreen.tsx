@@ -67,7 +67,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing.xs,
   },
   subtitle: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semibold,
     fontSize: 16,
     lineHeight: 22,
     letterSpacing: -0.2,
@@ -84,5 +84,5 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.primary,
     marginTop: theme.spacing.lg,
   },
-  label: { fontFamily: fontFamily.bold, fontSize: 16, color: theme.colors.primaryLabel },
+  label: { fontFamily: fontFamily.medium, fontSize: 16, color: theme.colors.primaryLabel },
 }));

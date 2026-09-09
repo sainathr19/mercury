@@ -153,7 +153,7 @@ export default function Wallets() {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Icon name="chevronLeft" size={24} color={theme.colors.text} />
+          <Icon name="back" size={24} color={theme.colors.text} />
         </Pressable>
         <Text variant="headline">Wallets & Accounts</Text>
         <View style={{ width: 24 }} />

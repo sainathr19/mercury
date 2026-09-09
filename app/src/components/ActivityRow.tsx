@@ -1,8 +1,9 @@
 import { Pressable, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Text } from '../ui/Text';
 import { CryptoIcon } from './CryptoIcon';
+import { ChainBadge } from './ChainBadge';
 import { fontFamily } from '../theme/fonts';
 import { formatUsd, txTime } from '../lib/format';
 import { useSettings } from '../stores/settingsStore';
@@ -33,6 +34,7 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
   // Re-render when the display currency (or its rate) changes — this row renders
   // fiat, and Asset/Activity screens do not subscribe on its behalf.
   useSettings((s) => s.fxTick);
+  const theme = UnistylesRuntime.getTheme();
   const failed = item.status === 'failed';
   const received = item.type === 'received';
   const isSwap = item.type === 'swapped';
@@ -75,7 +77,14 @@ export function ActivityRow({ item, onPress }: { item: ActivityItem; onPress?: (
           </View>
         </View>
       ) : (
-        <CryptoIcon coingeckoId={item.coingeckoId} symbol={item.symbol} colorHex={item.colorHex} size={32} />
+        // Token art with the network it happened on badged onto it. Two rows for
+        // the same USDC on different chains were otherwise indistinguishable.
+        <View style={styles.iconWrap}>
+          <CryptoIcon coingeckoId={item.coingeckoId} symbol={item.symbol} colorHex={item.colorHex} size={34} />
+          <View style={styles.badge}>
+            <ChainBadge chainId={item.chainId} network={item.network} size={15} ringColor={theme.colors.cardBackground} />
+          </View>
+        </View>
       )}
 
       <View style={styles.mid}>
@@ -106,10 +115,16 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  rowPressed: { opacity: 0.6 },
+  // A tint, not a fade: dropping the whole row's opacity dims the asset art
+  // too, which reads as the row going away rather than as a press.
+  rowPressed: { backgroundColor: 'rgba(11,13,16,0.03)' },
+  iconWrap: { width: 34, height: 34 },
+  // Overhangs the token art's bottom-right corner, the way a chain badge does
+  // everywhere else in the app.
+  badge: { position: 'absolute', right: -3, bottom: -2 },
   // Swap pair icon — 32px box holding two 22px marks: source top-left (behind),
   // destination bottom-right (in front, with a card-colored ring to separate).
   pair: { width: 32, height: 32 },
@@ -122,11 +137,12 @@ const styles = StyleSheet.create((theme) => ({
     padding: 1.5,
     backgroundColor: theme.colors.cardBackground,
   },
-  mid: { flex: 1, gap: 0 },
-  end: { alignItems: 'flex-end', gap: 0 },
-  title: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  // Right-column top value: medium weight (not bold) but still dark.
-  endTop: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  sub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
+  mid: { flex: 1, gap: 2 },
+  end: { alignItems: 'flex-end', gap: 2 },
+  title: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.28, color: theme.colors.text },
+  endTop: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.28, color: theme.colors.text },
+  // The secondary line was the same 15px as the title, so each row read as two
+  // equally important facts. It steps down to the app's secondary size.
+  sub: { fontSize: 12, fontFamily: fontFamily.medium, letterSpacing: -0.14, color: theme.colors.muted },
   subFailed: { color: theme.colors.danger },
 }));

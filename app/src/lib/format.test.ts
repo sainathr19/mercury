@@ -40,8 +40,19 @@ test('formatCrypto', () => {
   expect(formatCrypto(1234.567)).toBe('1,234.57');
 });
 
-test('formatFee keeps tiny L2 gas visible (where formatCrypto collapses to 0)', () => {
-  expect(formatCrypto(0.000021)).toBe('0'); // the bug this avoids
+test('formatCrypto never renders a held balance as zero', () => {
+  // 4dp collapses a small holding of an expensive asset, which read as owning
+  // nothing next to a row showing its dollar value. Small amounts fall back to
+  // more precision instead.
+  expect(formatCrypto(0.00003)).toBe('0.00003');
+  expect(formatCrypto(0.000021)).toBe('0.000021');
+  expect(formatCrypto(0.0000000001)).toBe('<0.00000001');
+  // Zero is still zero, and the ordinary path is untouched.
+  expect(formatCrypto(0)).toBe('0');
+  expect(formatCrypto(0.5)).toBe('0.5');
+});
+
+test('formatFee keeps tiny L2 gas visible', () => {
   expect(formatFee(0.000021)).toBe('0.000021');
   expect(formatFee(0.0003)).toBe('0.0003');
   expect(formatFee(0.0000000005)).toBe('<0.000001');

@@ -11,10 +11,15 @@ export function Card({ flush, style, ...rest }: CardProps) {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Borderless, flat surface — mirrors the iOS cardBackground cards.
+  // A white surface on the app's grey ground, edged by a hairline. The card
+  // used to be a near-invisible grey step with no edge at all; the border is
+  // what separates it now, so the radius can be generous without the shape
+  // going soft.
   card: (flush?: boolean) => ({
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
     padding: flush ? 0 : theme.spacing.md,
   }),

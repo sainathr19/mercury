@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Icon } from '../ui';
 import { View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import Animated, {
@@ -118,7 +119,7 @@ export function RotatingChevron({ open }: { open: boolean }) {
   const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${rot.value}deg` }] }));
   return (
     <Animated.View style={style}>
-      <ExpoImage source={require('../../assets/icons/UpIcon.svg')} style={styles.disclosureIcon} tintColor={theme.colors.text} contentFit="contain" />
+      <Icon name="chevronRight" size={18} color={theme.colors.text} />
     </Animated.View>
   );
 }

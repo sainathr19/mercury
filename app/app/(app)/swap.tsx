@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { dismiss } from '../../src/lib/nav';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Button, Card, Field, Icon, PressableScale, Text, useToast } from '../../src/ui';
+import { fontFamily } from '../../src/theme/fonts';
 import { CryptoIcon } from '../../src/components/CryptoIcon';
 import { useSession } from '../../src/stores/session';
 import { getActiveEnvironment } from '../../src/bridge/activeEnv';
@@ -227,14 +228,22 @@ export default function Swap() {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <Text variant="titleLarge">Swap</Text>
-          <PressableScale haptic={false} onPress={() => dismiss(router)}>
-            <Icon name="close" size={22} color={theme.colors.muted} />
+          <Text style={styles.pageTitle}>Swap</Text>
+          <PressableScale haptic={false} onPress={() => dismiss(router)} style={styles.closeTile}>
+            <Icon name="close" size={15} color={theme.colors.muted} />
           </PressableScale>
         </View>
-        <Text variant="subhead" color={theme.colors.muted}>
-          No exchange is available on this network yet.
-        </Text>
+        {/* Not an error — this network simply has no venue wired up. Says which
+            network, so the fix (switch networks) is obvious. */}
+        <View style={styles.unavailCard}>
+          <View style={styles.unavailTile}>
+            <Icon name="swapVert" size={18} color={theme.colors.muted} />
+          </View>
+          <Text style={styles.unavailTitle}>Swapping is not available here</Text>
+          <Text style={styles.unavailBody}>
+            No exchange is wired up on this network yet. Switch networks in Settings to swap.
+          </Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -244,9 +253,9 @@ export default function Swap() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text variant="titleLarge">{paying ? 'Pay' : 'Swap'}</Text>
-        <PressableScale haptic={false} onPress={() => dismiss(router)}>
-          <Icon name="close" size={22} color={theme.colors.muted} />
+        <Text style={styles.pageTitle}>{paying ? 'Pay' : 'Swap'}</Text>
+        <PressableScale haptic={false} onPress={() => dismiss(router)} style={styles.closeTile}>
+          <Icon name="close" size={15} color={theme.colors.muted} />
         </PressableScale>
       </View>
 
@@ -398,20 +407,64 @@ function TokenChips({
 
 const styles = StyleSheet.create((theme) => ({
   safe: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: theme.spacing.md },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingBottom: 14 },
+  pageTitle: { fontFamily: fontFamily.semibold, fontSize: 22, letterSpacing: -0.6, color: theme.colors.text },
+  closeTile: {
+    width: 32,
+    height: 32,
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  unavailCard: {
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 28,
+    paddingVertical: 32,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  unavailTile: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: theme.colors.tile,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  unavailTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  unavailBody: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    letterSpacing: -0.14,
+    textAlign: 'center',
+    color: theme.colors.muted,
+  },
   tokenRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm },
+  // White with a hairline, not `appBackground`: this screen's ground IS
+  // appBackground, so a chip painted in it was an invisible control.
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: theme.radius.pill, backgroundColor: theme.colors.appBackground,
+    paddingHorizontal: 13, height: 34,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1, borderColor: theme.colors.border,
   },
-  chipOn: { backgroundColor: theme.colors.primary },
+  chipOn: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   flip: {
     alignSelf: 'center',
-    width: 36, height: 36, borderRadius: 18,
+    width: 38, height: 38, borderRadius: 19,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1, borderColor: theme.colors.border,
     marginVertical: 8,
   },
   note: { textAlign: 'center', marginBottom: theme.spacing.sm },

@@ -10,10 +10,12 @@ interface ToastState {
 }
 
 /**
- * Toasts render through the single top "notice" pill (see SendNotice) — the old
- * bottom toast was removed. `error` → the red exclamation pill; `success` → the
- * green check pill; `info` → the blue, icon-less pill. Pass `{ sticky: true }`
- * for a long-lasting toast that stays until replaced or hidden.
+ * Toasts render through the single top notice card (see SendNotice) — the old
+ * bottom toast was removed.
+ *
+ * Every tone shares the same white pill; the tone only changes a small leading
+ * dot: `success` → green, `error` → red, `info` → neutral. Pass
+ * `{ sticky: true }` for a notice that stays until replaced or hidden.
  */
 export const useToast = create<ToastState>(() => ({
   show: (msg, tone = 'info', opts) =>

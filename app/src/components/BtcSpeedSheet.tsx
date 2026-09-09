@@ -110,15 +110,21 @@ export function BtcSpeedSheet({
 
 const styles = StyleSheet.create((theme) => ({
   // Matches the modal titles: 18px bold, -2%.
-  title: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 4, marginBottom: 24 },
-  card: { backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, overflow: 'hidden' },
+  title: { fontSize: 20, fontFamily: fontFamily.semibold, letterSpacing: -0.5, color: theme.colors.text, marginTop: 4, marginBottom: 18 },
+  card: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
   // Rows: 12/18 like the review details, no dividers.
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  label: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  label: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
   right: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   // sat/vB rate in mid grey; fiat cost dark medium (right text = medium weight).
-  rate: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: '#B0B0B0' },
-  usd: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  rate: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: '#9AA0A8' },
+  usd: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   checkbox: { width: 20, height: 20, borderRadius: 6, backgroundColor: theme.colors.faint, alignItems: 'center', justifyContent: 'center' },
   checkboxOn: { backgroundColor: theme.colors.primary },
   saveBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 24 },

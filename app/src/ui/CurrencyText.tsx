@@ -20,12 +20,25 @@ export interface CurrencyTextProps {
   fitWidth?: number;
   /** Floor for the auto-fit shrink (defaults to half of `size`). */
   minSize?: number;
+  /**
+   * Render the leading currency glyph at this fraction of `size`, raised toward
+   * the cap height — a superscript `$`.
+   *
+   * Left at 1 (the default) the glyph is simply part of the figure, which is
+   * what every screen now wants: a shrunken `$` reads as a footnote attached to
+   * the number rather than as part of it.
+   *
+   * The glyph comes from `currencyParts`, which bakes it into `whole`, so it is
+   * peeled back off here rather than threading a second format function through
+   * every caller.
+   */
+  symbolScale?: number;
 }
 
 /** Currency amount with the dollars in the text color and the `.cents` in a
  *  lighter gray (two-tone, mirrors iOS). Masking crossfades smoothly between the
  *  value and "••••" — the dots are overlaid so the width never jumps. */
-export function CurrencyText({ amount, size, masked, letterSpacing = -0.5, wholeColor, fractionColor, fitWidth, minSize }: CurrencyTextProps) {
+export function CurrencyText({ amount, size, masked, letterSpacing = -0.5, wholeColor, fractionColor, fitWidth, minSize, symbolScale }: CurrencyTextProps) {
   const theme = UnistylesRuntime.getTheme();
   const { whole, fraction } = currencyParts(amount);
 
@@ -42,7 +55,17 @@ export function CurrencyText({ amount, size, masked, letterSpacing = -0.5, whole
     return Math.max(floor, ideal);
   })();
 
-  const base = { fontFamily: fontFamily.bold, fontSize: fitted, letterSpacing } as const;
+  // Semibold, not Extrabold. Size is what makes the balance the loudest thing
+  // on the screen; at 46px Extrabold the numerals also went heavy enough to
+  // close up their counters, which is what made the figure read as a slab
+  // rather than as a number.
+  const base = { fontFamily: fontFamily.semibold, fontSize: fitted, letterSpacing } as const;
+
+  // Split "-$25,431" into its sign+glyph and its digits. Only the glyph shrinks;
+  // a minus sign stays at full size so a negative balance still reads clearly.
+  const digitAt = whole.search(/\d/);
+  const symbol = symbolScale !== undefined && symbolScale !== 1 && digitAt > 0 ? whole.slice(0, digitAt) : '';
+  const wholeDigits = symbol ? whole.slice(digitAt) : whole;
 
   const m = useDerivedValue(() => withTiming(masked ? 1 : 0, { duration: 220 }));
   const valueStyle = useAnimatedStyle(() => ({ opacity: 1 - m.value }));
@@ -51,7 +74,25 @@ export function CurrencyText({ amount, size, masked, letterSpacing = -0.5, whole
   return (
     <View>
       <Animated.View style={[{ flexDirection: 'row', alignItems: 'baseline' }, valueStyle]}>
-        <RNText style={[base, { color: wholeColor ?? theme.colors.text }]}>{whole}</RNText>
+        {!!symbol && (
+          // Baseline alignment would sit a smaller glyph on the numerals' baseline,
+          // which reads as dropped rather than raised — so it aligns to the top of
+          // the line box and is nudged down to meet the cap height.
+          <RNText
+            style={[
+              base,
+              {
+                color: wholeColor ?? theme.colors.text,
+                fontSize: fitted * (symbolScale ?? 1),
+                alignSelf: 'flex-start',
+                paddingTop: fitted * 0.14,
+              },
+            ]}
+          >
+            {symbol}
+          </RNText>
+        )}
+        <RNText style={[base, { color: wholeColor ?? theme.colors.text }]}>{wholeDigits}</RNText>
         <RNText style={[base, { color: fractionColor ?? theme.colors.muted }]}>{fraction}</RNText>
       </Animated.View>
       <Animated.View

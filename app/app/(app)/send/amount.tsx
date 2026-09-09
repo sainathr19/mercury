@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
 import { useSession } from '../../../src/stores/session';
 import { usePortfolio } from '../../../src/stores/portfolioStore';
 import { useSendDraft } from '../../../src/stores/sendDraftStore';
@@ -89,18 +89,7 @@ export default function SendAmount() {
     <View style={styles.body}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Custom header: back on top, "Enter amount" 24px below it. */}
-      <View style={styles.header}>
-        <Pressable onPress={goBack} hitSlop={10}>
-          <ExpoImage
-            source={require('../../../assets/icons/arrowLeft.svg')}
-            style={styles.backIcon}
-            tintColor={theme.colors.text}
-            contentFit="contain"
-          />
-        </Pressable>
-        <Text style={styles.pageTitle}>Enter amount</Text>
-      </View>
+      <SheetNav title="How much?" onLeading={goBack} />
 
       {/* Big amount, centered in the space between the header and the keypad. */}
       <View style={styles.amountArea}>
@@ -179,38 +168,47 @@ function Keypad({ value, onChange, maxDecimals }: { value: string; onChange: (v:
 }
 
 const styles = StyleSheet.create((theme) => ({
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.md },
-  header: {},
-  backIcon: { width: 30, height: 30 },
-  // "Enter amount" — matches the other modal titles (18px bold, -2%), 24px below the back icon.
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  // No top padding: `SheetNav` owns the clearance above the grabber, and
+  // stacking both left the nav row floating in the middle of nowhere.
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
   // Big amount, centered vertically in the remaining space.
   amountArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
-  bigAmount: { fontSize: 60, fontFamily: fontFamily.bold, letterSpacing: -1.2, textAlign: 'center' },
-  usdToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.cardBackground, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.pill },
-  usdToggleText: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
+  bigAmount: { fontSize: 66, fontFamily: fontFamily.medium, letterSpacing: -2, textAlign: 'center' },
+  usdToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 14,
+    height: 34,
+    borderRadius: theme.radius.pill,
+  },
+  usdToggleText: { fontSize: 13.5, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
   availRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.pill,
-    paddingLeft: theme.spacing.md,
-    paddingRight: theme.spacing.sm,
-    height: 48,
-    marginHorizontal: 4,
+    paddingLeft: 16,
+    paddingRight: 6,
+    height: 50,
     marginBottom: 12,
   },
   availRight: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   // Available row: 15px, "Available" + balance dark medium (symbol grey), MAX bold.
-  availLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  availBal: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  maxText: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
-  maxBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
+  availLabel: { fontSize: 13.5, fontFamily: fontFamily.medium, letterSpacing: -0.2, color: theme.colors.muted },
+  availBal: { fontSize: 13.5, fontFamily: fontFamily.semibold, letterSpacing: -0.2, color: theme.colors.text },
+  maxText: { fontSize: 13, fontFamily: fontFamily.semibold, letterSpacing: -0.2 },
+  maxBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 15, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill },
   keypad: { flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center' },
   key: { width: '33.33%', height: 56, alignItems: 'center', justifyContent: 'center' },
-  keyText: { fontSize: 24, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
-  btnDisabled: { opacity: 0.4 },
-  insufficientBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,59,48,0.12)', alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
+  keyText: { fontSize: 23, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
+  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
+  btnDisabled: { opacity: 0.35 },
+  insufficientBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,59,48,0.10)', alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
 }));

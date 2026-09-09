@@ -16,7 +16,7 @@ export default function Backup() {
   // than relying on the root-layout effect to react to the cleared mnemonic.
   const onContinue = () => {
     clearMnemonic();
-    router.replace('/(app)/home');
+    router.replace('/(app)/(tabs)/wallet');
   };
 
   return (

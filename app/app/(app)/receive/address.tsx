@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
 import { AddressQR } from '../../../src/components/AddressQR';
 import { useSession } from '../../../src/stores/session';
 import { useMercuryName } from '../../../src/stores/mercuryNameStore';
@@ -67,7 +67,7 @@ export default function ReceiveAddress() {
   const centerLogo = isUsername
     ? require('../../../assets/icons/MercuryIcon.svg')
     : network?.kind === 'address'
-      ? localTokenIcon(network.coingeckoId, UnistylesRuntime.themeName === 'dark')
+      ? localTokenIcon(network.iconKey ?? network.coingeckoId, UnistylesRuntime.themeName === 'dark')
       : undefined;
 
   async function copy() {
@@ -94,12 +94,11 @@ export default function ReceiveAddress() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <ExpoImage source={require('../../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
-        </Pressable>
-        <Text style={styles.pageTitle}>Receive</Text>
-      </View>
+      <SheetNav
+        title="Your address"
+        subtitle="Anything sent to this address on this network lands in your wallet."
+        onLeading={() => router.back()}
+      />
 
       <View style={styles.body}>
         <View ref={qrRef} collapsable={false} style={styles.qrCard}>
@@ -109,7 +108,7 @@ export default function ReceiveAddress() {
           <AddressQR
             data={payload}
             size={230}
-            coingeckoId={network?.kind === 'address' ? network.coingeckoId : ''}
+            coingeckoId={network?.kind === 'address' ? (network.iconKey ?? network.coingeckoId) : ''}
             bg={theme.colors.cardBackground}
             logo={centerLogo}
             version={isUsername ? 8 : undefined}
@@ -118,7 +117,7 @@ export default function ReceiveAddress() {
 
         <View style={styles.capsule}>
           <Pressable style={{ flex: 1 }} onPress={() => setFull((v) => !v)} disabled={isUsername}>
-            <Text variant="body" numberOfLines={1}>
+            <Text style={styles.addrText} numberOfLines={1}>
               {value ? (isUsername ? value : full ? value : shortenAddress(value, 8, 8)) : '—'}
             </Text>
           </Pressable>
@@ -191,15 +190,16 @@ function testnetLabel(network: ReceiveNetwork, choices: NetworkChoices): string 
 
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.xl },
-  header: { paddingTop: 40 },
-  backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   body: { marginTop: theme.spacing.md },
+  // The QR gets a white card with the same hairline as everything else, so the
+  // code reads as an object on the page rather than as a floating bitmap.
   qrCard: {
     alignSelf: 'center',
-    padding: theme.spacing.md,
+    padding: 18,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     marginBottom: theme.spacing.md,
   },
   capsule: {
@@ -207,11 +207,16 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     gap: theme.spacing.sm,
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.pill,
-    paddingLeft: theme.spacing.md,
-    paddingRight: theme.spacing.xs,
-    paddingVertical: theme.spacing.xs,
+    paddingLeft: 15,
+    paddingRight: 5,
+    paddingVertical: 5,
   },
+  // Monospaced: an address is an identifier you compare character by character,
+  // and it matches how addresses read everywhere else in the app.
+  addrText: { flex: 1, fontFamily: fontFamily.monoRegular, fontSize: 13.5, color: theme.colors.text },
   copyPill: {
     backgroundColor: theme.colors.primary,
     paddingHorizontal: theme.spacing.md,
@@ -225,11 +230,11 @@ const styles = StyleSheet.create((theme) => ({
   notice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: 9,
     marginTop: theme.spacing.md,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(255,59,48,0.12)',
+    padding: 13,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(255,59,48,0.10)',
   },
   // Footer buttons pinned to the bottom (spacer above pushes them down).
   footer: { marginTop: 'auto', gap: 12 },
@@ -239,6 +244,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   shareBtn: {
     flexDirection: 'row',

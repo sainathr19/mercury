@@ -2,7 +2,25 @@ import { Stack } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 
 // Content-sized form sheets (short, no internal scroll area).
+/** Settings pages that are PUSHED (not sheets), so they take a native header. */
+const PUSHED_ROUTES = [
+  'recovery',
+  'tokens',
+  'networks',
+  'wc-sessions',
+  'username',
+  'activity',
+  // The asset detail page is a push too, and was drawing its own 30pt chevron
+  // instead of taking the system one. (`transaction` is NOT here: it is a form
+  // sheet, declared below — a sheet is dismissed, not navigated back from.)
+  'asset',
+];
+
 const SHEET_ROUTES = ['wallet-name', 'wallet-import', 'settings-picker', 'wc-proposal', 'dapp-approval'];
+
+// `(tabs)` is the stack's root: every sheet below presents OVER the tab bar, so
+// the bar has to belong to a screen the sheets sit on top of, not to the stack.
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 export default function AppLayout() {
   // `contentStyle` is a static native prop (not a reactive unistyles style), so
@@ -26,6 +44,32 @@ export default function AppLayout() {
     // iOS system material (the "glassy glow"). Per-screen options inherit this;
     // native sheets (send, receive, swap, activity push, …) all render opaque.
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.appBackground } }}>
+      <Stack.Screen name="(tabs)" />
+      {/* Pushed settings pages get iOS's OWN navigation bar, so the back
+          affordance is the real system control — correct weight, correct hit
+          area, and the swipe-back gesture comes with it. The title is empty
+          because each screen carries its own large heading in the body; the
+          header exists only for the back button.
+
+          Sheets are deliberately NOT in this list: a sheet is dismissed, not
+          navigated back from, so those keep the grabber and an X. */}
+      {PUSHED_ROUTES.map((name) => (
+        <Stack.Screen
+          key={name}
+          name={name}
+          options={{
+            headerShown: true,
+            headerTitle: '',
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: theme.colors.appBackground },
+            headerTintColor: theme.colors.text,
+            // Chevron only. An empty `headerBackTitle` does NOT suppress the
+            // label — iOS falls back to the previous route's name, which here is
+            // the literal group name "(tabs)".
+            headerBackButtonDisplayMode: 'minimal',
+          }}
+        />
+      ))}
       {/* Swap slides up from the bottom as a full-screen sheet (mirrors iOS). */}
       {/* Gateway: send from the unified balance, delivered by the relayer. */}
       <Stack.Screen name="gateway-send" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
@@ -79,9 +123,6 @@ export default function AppLayout() {
       />
       {/* Receive-via-card is a multi-step flow (network → amount → confirm), so
           it needs the full-height form sheet like Send. */}
-      {/* Private (stealth) receive — a FULL-HEIGHT sheet mirroring the normal
-          network receive (QR + address + share), not a compact content-sized one. */}
-      <Stack.Screen name="stealth-receive" options={{ ...sheet, sheetAllowedDetents: [1.0] }} />
       {SHEET_ROUTES.map((name) => (
         <Stack.Screen key={name} name={name} options={{ ...sheet }} />
       ))}
@@ -91,7 +132,10 @@ export default function AppLayout() {
         name="transaction"
         options={{
           presentation: 'formSheet',
-          sheetAllowedDetents: [0.5, 1.0],
+          // Sized to its content, so the whole detail — including the explorer
+          // button — is visible without dragging. Two fixed detents opened at
+          // the shorter one and left the CTA below the fold.
+          sheetAllowedDetents: 'fitToContents',
           sheetGrabberVisible: true,
           sheetLargestUndimmedDetentIndex: 'none',
           contentStyle: { backgroundColor: theme.colors.appBackground },

@@ -12,8 +12,10 @@ export function Field({ label, error, style, ...rest }: FieldProps) {
   return (
     <View style={styles.wrap}>
       {label ? (
-        <Text variant="caption" color={mutedColor()} style={styles.label}>
-          {label.toUpperCase()}
+        // Sentence case, in the text colour. An uppercased muted label reads as
+        // a section heading rather than as the name of the field under it.
+        <Text variant="captionSemibold" style={styles.label}>
+          {label}
         </Text>
       ) : null}
       <TextInput
@@ -36,17 +38,17 @@ const mutedColor = () => UnistylesRuntime.getTheme().colors.muted;
 const dangerColor = () => UnistylesRuntime.getTheme().colors.danger;
 
 const styles = StyleSheet.create((theme) => ({
-  wrap: { width: '100%' },
-  label: { marginBottom: theme.spacing.xs, letterSpacing: 0.5 },
+  wrap: { width: '100%', gap: 7 },
+  label: { color: theme.colors.text, paddingLeft: 3 },
   input: (hasError: boolean) => ({
     backgroundColor: theme.colors.cardBackground,
     borderWidth: 1,
     borderColor: hasError ? theme.colors.danger : theme.colors.border,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     color: theme.colors.text,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-    ...theme.typography.bodyMedium,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    ...theme.typography.body,
   }),
-  error: { marginTop: theme.spacing.xs },
+  error: { paddingLeft: 3 },
 }));
