@@ -8,7 +8,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { CurrencyText, Icon, PressableScale, Text } from '../../src/ui';
 import { CryptoIcon } from '../../src/components/CryptoIcon';
-import { PixelChart } from '../../src/components/PixelChart';
+import { AreaChart } from '../../src/components/AreaChart';
+import { ChainBadge, needsChainBadge } from '../../src/components/ChainBadge';
 import { ActivityRow } from '../../src/components/ActivityRow';
 import { useSession } from '../../src/stores/session';
 import { usePortfolio } from '../../src/stores/portfolioStore';
@@ -99,8 +100,7 @@ export default function AssetDetail() {
 
   if (!asset) {
     return (
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <Header onBack={() => router.back()} />
+      <SafeAreaView style={styles.root} edges={['bottom']}>
         <Text variant="bodyMedium" color={theme.colors.muted} style={styles.center}>
           Asset not found.
         </Text>
@@ -124,41 +124,79 @@ export default function AssetDetail() {
   const ret24Up = usdReturn >= 0;
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <Header onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Hero: asset name, big balance number, then the % change + range chips. */}
-        <View style={styles.hero}>
-          <Text style={styles.assetName}>{asset.name}</Text>
-          <View style={styles.bigNumber}>
-            <CurrencyText
-              amount={displayed}
-              size={60}
-              minSize={36}
-              fitWidth={UnistylesRuntime.screen.width - theme.spacing.screen * 2}
-              letterSpacing={-1.2}
-              wholeColor="#0B0D10"
-              fractionColor="#9AA0A8"
+    <SafeAreaView style={styles.root} edges={['bottom']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Identity first, then the price. The name used to sit alone above a
+            66pt figure, so the screen opened on a number with no subject. */}
+        <View style={styles.idRow}>
+          <View style={styles.idArt}>
+            <CryptoIcon
+              coingeckoId={asset.coingeckoId}
+              symbol={asset.symbol}
+              colorHex={asset.colorHex}
+              imageUrl={asset.imageUrl}
+              size={34}
             />
-          </View>
-          <View style={styles.metaRow}>
-            <View style={styles.changeRow}>
-              <View style={rangePct >= 0 ? undefined : styles.flip}>
-                <Icon name="trendUp" size={20} color={rangePct >= 0 ? theme.colors.success : theme.colors.danger} />
+            {needsChainBadge(asset) && (
+              <View style={styles.idBadge}>
+                <ChainBadge
+                  chainId={asset.evmChainId !== undefined ? Number(asset.evmChainId) : undefined}
+                  network={asset.chain === 'solana' ? 'Solana' : undefined}
+                  size={15}
+                  ringColor={theme.colors.appBackground}
+                />
               </View>
-              <Text style={styles.changeText} color={rangePct >= 0 ? theme.colors.success : theme.colors.danger}>
-                {formatPercent(rangePct)}
-              </Text>
+            )}
+          </View>
+          <View style={styles.idMid}>
+            <Text style={styles.assetName} numberOfLines={1}>
+              {asset.name}
+            </Text>
+            <Text style={styles.assetSymbol}>{asset.symbol}</Text>
+          </View>
+          {/* The change is a pill on the same row as the identity, matching the
+              wallet screen — not a 20pt arrow competing with the price. */}
+          <View style={[styles.changePill, rangePct >= 0 ? styles.changeUp : styles.changeDown]}>
+            <View style={rangePct >= 0 ? undefined : styles.flip}>
+              <Icon name="trendUp" size={13} color={rangePct >= 0 ? theme.colors.success : theme.colors.danger} />
             </View>
-            <RangeChips value={range} onChange={setRange} />
+            <Text
+              style={[
+                styles.changeText,
+                { color: rangePct >= 0 ? theme.colors.success : theme.colors.danger },
+              ]}
+            >
+              {formatPercent(rangePct)}
+            </Text>
           </View>
         </View>
 
-        {/* Chart — always mounted so data morphs in/out of a baseline rather
-            than popping. PixelChart shows a flat placeholder until samples load. */}
-        <View style={styles.chart}>
-          <PixelChart samples={samples} activeColor={activeColor} onTouched={setTouched} />
+        <View style={styles.bigNumber}>
+          <CurrencyText
+            amount={displayed}
+            size={52}
+            minSize={34}
+            fitWidth={UnistylesRuntime.screen.width - theme.spacing.screen * 2}
+            letterSpacing={-1.6}
+            wholeColor="#0B0D10"
+            fractionColor="#9AA0A8"
+          />
+          <Text style={styles.priceCaption}>
+            {touched ? 'At the point you are holding' : 'Current price'}
+          </Text>
         </View>
+
+        {/* Chart, then the range picker under it — the chart is the subject, so
+            the control that changes it reads as belonging to it. */}
+        <View style={styles.chart}>
+          <AreaChart
+            samples={samples}
+            activeColor={activeColor}
+            width={UnistylesRuntime.screen.width - theme.spacing.screen * 2}
+            onTouched={setTouched}
+          />
+        </View>
+        <RangeChips value={range} onChange={setRange} />
 
         {/* Action bar */}
         <View style={styles.actions}>
@@ -182,33 +220,31 @@ export default function AssetDetail() {
           <CircleAction icon="receive" onPress={() => router.push('/(app)/receive')} />
         </View>
 
-        {/* Value / Balance */}
-        <View style={styles.cardRow}>
-          <View style={styles.miniCard}>
-            <View style={styles.miniTop}>
-              <Text style={styles.cardTitle}>Value</Text>
-              <Icon name="cash" size={22} color={theme.colors.text} />
-            </View>
-            <CurrencyText amount={value} size={21} />
-          </View>
-          <View style={styles.miniCard}>
-            <View style={styles.miniTop}>
-              <Text style={styles.cardTitle}>Balance</Text>
-              <CryptoIcon coingeckoId={asset.coingeckoId} symbol={asset.symbol} colorHex={asset.colorHex} size={22} />
-            </View>
-            <Text style={styles.cardValue}>
+        {/* What YOU hold, as one block. Three separate surfaces said three
+            facts about the same holding and made the page feel like a dashboard
+            rather than a position. */}
+        <View style={styles.holdCard}>
+          <View style={styles.holdTop}>
+            <Text style={styles.holdLabel}>Your holding</Text>
+            <Text style={styles.holdAmount}>
               {formatCrypto(heldAmount)} {asset.symbol}
             </Text>
           </View>
-        </View>
-
-        {/* 24H return */}
-        <View style={styles.returnRow}>
-          <Text variant="body">24H Return</Text>
-          <Text variant="titleSmall" color={ret24Up ? theme.colors.success : theme.colors.danger}>
-            {ret24Up ? '+' : '-'}
-            {formatUsd(Math.abs(usdReturn))}
-          </Text>
+          <View style={styles.holdValueRow}>
+            <CurrencyText amount={value} size={30} letterSpacing={-1} />
+          </View>
+          <View style={styles.holdFoot}>
+            <Text style={styles.holdFootLabel}>24-hour return</Text>
+            <Text
+              style={[
+                styles.holdFootValue,
+                { color: ret24Up ? theme.colors.success : theme.colors.danger },
+              ]}
+            >
+              {ret24Up ? '+' : '-'}
+              {formatUsd(Math.abs(usdReturn))}
+            </Text>
+          </View>
         </View>
 
         {/* Activity */}
@@ -228,17 +264,6 @@ export default function AssetDetail() {
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function Header({ onBack }: { onBack: () => void }) {
-  const theme = UnistylesRuntime.getTheme();
-  return (
-    <View style={styles.header}>
-      <Pressable onPress={onBack} hitSlop={12} style={styles.backBtn}>
-        <Icon name="back" size={30} color={theme.colors.text} />
-      </Pressable>
-    </View>
   );
 }
 
@@ -312,22 +337,43 @@ function CircleAction({ icon, onPress }: { icon: 'send' | 'swap' | 'receive'; on
 
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.appBackground },
-  header: { paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.md },
-  backBtn: { width: 30, height: 30 },
-  backIcon: { width: 30, height: 30 },
-  // 24px below the back arrow to the hero; md gap between sections after that.
-  content: { paddingHorizontal: theme.spacing.screen, paddingTop: 24, paddingBottom: 60, gap: theme.spacing.md },
+  // The stack's native header supplies the back button now, so the body only
+  // needs breathing room below it.
+  content: { paddingHorizontal: theme.spacing.screen, paddingTop: 8, paddingBottom: 60, gap: theme.spacing.md },
   center: { textAlign: 'center', paddingVertical: theme.spacing.xl },
-  hero: { },
-  // Asset name — 18px Bold, -2% tracking, dark.
-  assetName: { fontFamily: fontFamily.semibold, fontSize: 18, letterSpacing: -0.36, color: '#0B0D10' },
-  // 6px below the name.
-  bigNumber: { marginTop: 6 },
-  // % change (left) + range chips (right); 12px below the big number.
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
-  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: PILL_H },
-  changeText: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36 },
+  // ── Identity + price ────────────────────────────────────────────────────
+  idRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  idArt: { width: 34, height: 34 },
+  idBadge: { position: 'absolute', right: -3, bottom: -2 },
+  idMid: { flex: 1, gap: 1 },
+  assetName: { fontFamily: fontFamily.semibold, fontSize: 16, letterSpacing: -0.3, color: theme.colors.text },
+  assetSymbol: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 11,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+  },
+  changePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: theme.radius.pill,
+  },
+  changeUp: { backgroundColor: 'rgba(52,199,89,0.12)' },
+  changeDown: { backgroundColor: 'rgba(255,59,48,0.10)' },
+  changeText: { fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.2 },
   flip: { transform: [{ rotate: '180deg' }] },
+
+  bigNumber: { gap: 2 },
+  priceCaption: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
   // Range chips: labels 24px apart, height matches the sliding pill (no shift).
   // The wrapper's right padding gives the "All" pill room to overflow into.
   chipsWrap: { paddingRight: 16 },
@@ -338,22 +384,51 @@ const styles = StyleSheet.create((theme) => ({
     width: PILL_W,
     height: PILL_H,
     borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.cardBackground,
+    backgroundColor: theme.colors.tile,
   },
   chipLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
   chart: { paddingVertical: theme.spacing.sm },
   // Pay takes the remaining width; the three circle actions are fixed 48×48.
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  payBtn: { flex: 1, height: 48, borderRadius: 999, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  circleAction: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  cardRow: { flexDirection: 'row', gap: theme.spacing.md },
-  miniCard: { flex: 1, height: 120, justifyContent: 'space-between', backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, padding: theme.spacing.md },
-  miniTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  // Value / Balance card: 15px Bold title, 21px value below.
-  cardTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
-  cardValue: { fontSize: 21, fontFamily: fontFamily.medium, letterSpacing: -0.42, color: theme.colors.text },
-  returnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 56, paddingHorizontal: theme.spacing.md, backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md },
-  activityCard: { backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, padding: theme.spacing.md },
+  payBtn: { flex: 1, height: 52, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
+  circleAction: { width: 52, height: 52, borderRadius: 26, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
+  // ── Holding ─────────────────────────────────────────────────────────────
+  holdCard: {
+    padding: 14,
+    gap: 6,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  holdTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  holdLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+  },
+  holdAmount: { fontFamily: fontFamily.semibold, fontSize: 13.5, letterSpacing: -0.2, color: theme.colors.muted },
+  holdValueRow: { paddingBottom: 4 },
+  holdFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 11,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.separator,
+  },
+  holdFootLabel: { fontFamily: fontFamily.medium, fontSize: 13, letterSpacing: -0.18, color: theme.colors.muted },
+  holdFootValue: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28 },
+  activityCard: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 14,
+  },
   // Match the home section headers ("Your Assets" / "Recent Activity").
   activityTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, lineHeight: 24, marginBottom: 12 },
 }));

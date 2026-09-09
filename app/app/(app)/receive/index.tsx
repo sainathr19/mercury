@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { RECEIVE_NETWORKS, type ReceiveNetwork } from '../../../src/lib/receiveNetworks';
 import { fontFamily } from '../../../src/theme/fonts';
@@ -57,7 +57,10 @@ export default function AddFunds() {
   if (step === 'choose') {
     return (
       <View style={styles.sheet}>
-        <Text style={styles.title}>Add Funds</Text>
+        <View style={styles.heading}>
+          <Text style={styles.title}>Add funds</Text>
+          <Text style={styles.subtitle}>Ask someone to pay you, or deposit from somewhere else.</Text>
+        </View>
         <View style={styles.rows}>
           {/* Ask for a specific amount. The wallet could only push money before
               this; a payments product with no way to request it is half a
@@ -67,10 +70,12 @@ export default function AddFunds() {
               <Icon name="receive" size={20} color={theme.colors.text} />
             </View>
             <View style={styles.mid}>
-              <Text style={styles.rowTitle}>Request</Text>
-              <Text style={styles.rowSub}>Ask for an amount in USDC or EURC</Text>
+              <Text style={styles.rowTitle}>Request a payment</Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                Name an amount and share a link
+              </Text>
             </View>
-            <Icon name="chevronRight" size={18} color={theme.colors.muted} />
+            <Icon name="chevronRight" size={15} color={theme.colors.muted} />
           </PressableScale>
 
           <PressableScale style={styles.row} onPress={chooseCrypto}>
@@ -78,8 +83,10 @@ export default function AddFunds() {
               <Icon name="wallet" size={20} color={theme.colors.text} />
             </View>
             <View style={styles.mid}>
-              <Text style={styles.rowTitle}>Crypto</Text>
-              <Text style={styles.rowSub}>Deposit from an exchange or wallet</Text>
+              <Text style={styles.rowTitle}>Deposit crypto</Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                From an exchange or another wallet
+              </Text>
             </View>
             <View style={styles.cluster}>
               {CLUSTER.map((c, i) => (
@@ -88,7 +95,7 @@ export default function AddFunds() {
                 </View>
               ))}
             </View>
-            <Icon name="chevronRight" size={18} color={theme.colors.muted} />
+            <Icon name="chevronRight" size={15} color={theme.colors.muted} />
           </PressableScale>
         </View>
       </View>
@@ -99,23 +106,28 @@ export default function AddFunds() {
   return (
     <View style={{ height: screenH }}>
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="never">
-        <View style={styles.header}>
-          <Pressable onPress={back} hitSlop={10}>
-            <Icon name="back" size={30} color={theme.colors.text} />
-          </Pressable>
-          <Text style={styles.pageTitle}>Choose Network</Text>
-        </View>
+        <SheetNav
+          title="Where from?"
+          subtitle="Pick the network the sender is using. Each one has its own address."
+          onLeading={back}
+        />
 
         <View style={styles.listCard}>
-          {RECEIVE_NETWORKS.map((n) => (
-            <Pressable key={n.key} style={styles.netRow} onPress={() => selectNetwork(n)}>
+          {RECEIVE_NETWORKS.map((n, i) => (
+            <Pressable
+              key={n.key}
+              style={({ pressed }) => [styles.netRow, i > 0 && styles.divider, pressed && styles.rowPressed]}
+              onPress={() => selectNetwork(n)}
+            >
               {n.kind === 'username' ? (
-                <Icon name="mercury" size={40} />
+                <Icon name="mercury" size={34} />
               ) : (
-                <CryptoIcon coingeckoId={n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={40} />
+                <CryptoIcon coingeckoId={n.iconKey ?? n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={34} />
               )}
-              <Text style={styles.netName}>{n.name}</Text>
-              <Icon name="chevronRight" size={18} color={theme.colors.muted} />
+              <Text style={styles.netName} numberOfLines={1}>
+                {n.name}
+              </Text>
+              <Icon name="chevronRight" size={15} color={theme.colors.muted} />
             </Pressable>
           ))}
         </View>
@@ -126,34 +138,46 @@ export default function AddFunds() {
 
 const styles = StyleSheet.create((theme) => ({
   // --- Add Funds chooser (medium detent) ---
-  sheet: { paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.lg },
-  title: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.5, color: theme.colors.text, paddingBottom: 18 },
-  rows: { gap: 12 },
+  sheet: { paddingHorizontal: theme.spacing.screen, paddingTop: 26, paddingBottom: theme.spacing.lg, gap: 16 },
+  heading: { gap: 5 },
+  title: { fontSize: 22, fontFamily: fontFamily.semibold, letterSpacing: -0.6, color: theme.colors.text },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: fontFamily.medium,
+    letterSpacing: -0.18,
+    color: theme.colors.muted,
+  },
+  rows: { gap: 10 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    gap: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.xl,
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
+  // A rounded square, matching the icon slots on the More page — squares tile
+  // more evenly down a list than circles do.
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.appBackground,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: theme.colors.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
   mid: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
-  rowSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
+  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.28, color: theme.colors.text },
+  rowSub: { fontSize: 12.5, fontFamily: fontFamily.medium, letterSpacing: -0.14, color: theme.colors.muted },
   cluster: { flexDirection: 'row', alignItems: 'center' },
   clusterRing: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
     borderColor: theme.colors.cardBackground,
     backgroundColor: theme.colors.cardBackground,
@@ -161,23 +185,22 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  clusterOverlap: { marginLeft: -10 },
+  clusterOverlap: { marginLeft: -9 },
   // UpIcon (^) rotated 90° so it points right — the row disclosure chevron.
   chev: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
 
   // --- Choose Network (full detent) ---
-  content: { paddingBottom: 40 },
-  header: { paddingHorizontal: theme.spacing.screen, paddingTop: 40 },
-  backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  content: { paddingHorizontal: theme.spacing.screen, paddingBottom: 40, gap: theme.spacing.md },
   listCard: {
-    marginHorizontal: theme.spacing.screen,
-    marginTop: theme.spacing.md,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
   },
-  netRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  netName: { flex: 1, fontSize: 17, fontFamily: fontFamily.semibold, letterSpacing: -0.34, color: theme.colors.text },
+  netRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  divider: { borderTopWidth: 1, borderTopColor: theme.colors.separator },
+  rowPressed: { backgroundColor: 'rgba(11,13,16,0.03)' },
+  netName: { flex: 1, fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.28, color: theme.colors.text },
   brandIcon: { width: 40, height: 40, borderRadius: 20 },
 }));

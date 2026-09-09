@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { BtcSpeedSheet } from '../../../src/components/BtcSpeedSheet';
 import { useSession } from '../../../src/stores/session';
@@ -438,13 +438,11 @@ export default function SendConfirm() {
     <View style={styles.body}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Custom header: back on top, "Review" 24px below it. */}
-      <View style={styles.header}>
-        <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} hitSlop={10}>
-          <Icon name="back" size={30} color={theme.colors.text} />
-        </Pressable>
-        <Text style={styles.pageTitle}>Review</Text>
-      </View>
+      <SheetNav
+        title="Check this over"
+        subtitle="Nothing moves until you confirm. Transfers cannot be reversed."
+        onLeading={() => router.back()}
+      />
 
       {/* Amount (48px bold) + USD (24px bold grey) on the left, icon on the right. */}
       <View style={styles.reviewHead}>
@@ -543,30 +541,37 @@ export default function SendConfirm() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.md },
-  header: {},
-  backIcon: { width: 30, height: 30 },
-  // "Review" — matches the other modal titles (18px bold, -2%), 24px below back.
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
-  reviewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: 12 },
+  // No top padding: `SheetNav` owns the clearance above the grabber, and
+  // stacking both left the nav row floating in the middle of nowhere.
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
+  reviewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: 18 },
   // Sending amount 48px bold; USD 24px bold grey.
-  reviewAmount: { fontSize: 48, fontFamily: fontFamily.semibold, letterSpacing: -0.96, color: theme.colors.text },
-  reviewUsd: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.48, marginTop: 2 },
+  reviewAmount: { fontSize: 48, fontFamily: fontFamily.semibold, letterSpacing: -1.6, color: theme.colors.text },
+  reviewUsd: { fontSize: 21, fontFamily: fontFamily.medium, letterSpacing: -0.5, marginTop: 4 },
   // Details card 24px below the amount; rows 12/18, no dividers.
-  card: { marginTop: 24, backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  rowLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  rowValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  card: {
+    marginTop: 22,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 14, paddingVertical: 13 },
+  // The label steps back so the VALUE is what you read down the card — on a
+  // review screen the values are the content and the labels are the index.
+  rowLabel: { fontSize: 13.5, fontFamily: fontFamily.medium, letterSpacing: -0.2, color: theme.colors.muted },
+  rowValue: { flexShrink: 1, fontSize: 14, fontFamily: fontFamily.semibold, letterSpacing: -0.2, color: theme.colors.text },
   rowValueStack: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
-  rowSub: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, color: theme.colors.muted },
+  rowSub: { fontSize: 12, fontFamily: fontFamily.medium, letterSpacing: -0.14, color: theme.colors.muted },
   feeRight: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   // Crypto amount mid grey; fiat cost dark. Both medium weight.
-  feeValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: '#9AA0A8' },
-  feeUsd: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
+  feeValue: { flexShrink: 1, fontSize: 13.5, fontFamily: fontFamily.medium, letterSpacing: -0.2, color: theme.colors.muted },
+  feeUsd: { fontSize: 14, fontFamily: fontFamily.semibold, letterSpacing: -0.2, color: theme.colors.text },
   // UpIcon rotated 90° → points right, as a "tap to change" affordance.
   chevron: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
-  primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
-  btnDisabled: { opacity: 0.4 },
+  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
+  btnDisabled: { opacity: 0.35 },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   faceId: { width: 18, height: 18 },
 }));

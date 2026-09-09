@@ -4,15 +4,18 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, SheetNav, SheetNavButton, Text } from '../../../src/ui';
+import * as Clipboard from 'expo-clipboard';
 import { useScan, parseScanned } from '../../../src/stores/scanStore';
+import { CryptoIcon } from '../../../src/components/CryptoIcon';
+import { ChainBadge, needsChainBadge } from '../../../src/components/ChainBadge';
 import { useRecentAddresses } from '../../../src/stores/recentAddressStore';
 import { useSendDraft } from '../../../src/stores/sendDraftStore';
 import { authClient } from '../../../src/bridge/auth';
 import { isEnsName, resolveEns } from '../../../src/bridge/ens';
 import { validateHandle } from '../../../src/bridge/username';
 import { validateAddr, chainOf, detectAddressChain, CHAIN_LABEL } from '../../../src/lib/sendHelpers';
-import { shortenAddress, relativeTime } from '../../../src/lib/format';
+import { formatCrypto, relativeTime, shortenAddress } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
 
 const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -233,42 +236,91 @@ export default function SendAddress() {
     statusError = addrError;
   }
 
+  async function pasteAddress() {
+    tap();
+    const t = (await Clipboard.getStringAsync()).trim();
+    if (!t) return;
+    patch({ address: parseScanned(t) });
+  }
+
   return (
     <View style={styles.body}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Custom header: back on top, then "Send <token>" with the QR scanner on
           its right, 24px below the back icon. */}
-      <View style={styles.header}>
-        <Pressable onPress={() => { tap(); router.back(); }} hitSlop={10}>
-          <Icon name="back" size={30} color={theme.colors.text} />
-        </Pressable>
-        <View style={styles.titleRow}>
-          <Text style={styles.pageTitle}>{flowLabel} {asset.symbol}</Text>
-          <Pressable onPress={() => { tap(); router.push('/(app)/scan'); }} hitSlop={10}>
-            <Icon name="scan" size={24} color={theme.colors.text} />
-          </Pressable>
+      <SheetNav
+        title={`${flowLabel} ${asset.symbol}`}
+        subtitle="Paste an address, or scan a code. Mercury checks it before you continue."
+        onLeading={() => { tap(); router.back(); }}
+        accessory={
+          <SheetNavButton onPress={() => { tap(); router.push('/(app)/scan'); }}>
+            <Icon name="scan" size={16} color={theme.colors.text} />
+          </SheetNavButton>
+        }
+      />
+      {/* What is being sent, and on which network. The step used to name the
+          symbol in its title and show nothing else, so "Send USDT" gave no way
+          to tell WHICH of several USDT holdings was about to move. */}
+      <View style={styles.assetStrip}>
+        <View style={styles.assetArt}>
+          <CryptoIcon
+            coingeckoId={asset.coingeckoId}
+            symbol={asset.symbol}
+            colorHex={asset.colorHex}
+            imageUrl={asset.imageUrl}
+            size={32}
+          />
+          {needsChainBadge(asset) && (
+            <View style={styles.assetArtBadge}>
+              <ChainBadge
+                chainId={asset.evmChainId !== undefined ? Number(asset.evmChainId) : undefined}
+                network={asset.chain === 'solana' ? 'Solana' : undefined}
+                size={14}
+                ringColor={theme.colors.cardBackground}
+              />
+            </View>
+          )}
+        </View>
+        <View style={styles.assetMid}>
+          <Text style={styles.assetName} numberOfLines={1}>
+            {asset.name}
+          </Text>
+          <Text style={styles.assetSub} numberOfLines={1}>
+            {`${formatCrypto(asset.amount)} ${asset.symbol} available`}
+          </Text>
         </View>
       </View>
 
-      {/* Address input — grey box (fixed height so the check doesn't shift it). */}
-      <View style={styles.inputWrap}>
-        <TextInput
-          value={address}
-          onChangeText={(v) => patch({ address: v })}
-          placeholder={inputPlaceholder}
-          placeholderTextColor={theme.colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
-        {showSpinner ? (
-          <ActivityIndicator size="small" color={theme.colors.muted} />
-        ) : showCheck ? (
-          <View style={styles.checkBadge}>
-            <Icon name="check" size={14} color="#FFFFFF" />
-          </View>
-        ) : null}
+      {/* The recipient field, with Paste beside it. Scan stays in the nav row
+          where it can be reached without leaving the field. */}
+      <View style={styles.fieldCard}>
+        <View style={styles.fieldHead}>
+          <Text style={styles.fieldLabel}>Send to</Text>
+          <Pressable style={styles.pasteBtn} onPress={pasteAddress}>
+            <Icon name="copy" size={12} color={theme.colors.text} />
+            <Text style={styles.pasteLabel}>Paste</Text>
+          </Pressable>
+        </View>
+        <View style={styles.inputWrap}>
+          <TextInput
+            value={address}
+            onChangeText={(v) => patch({ address: v })}
+            placeholder={inputPlaceholder}
+            placeholderTextColor={theme.colors.faint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+            style={styles.input}
+          />
+          {showSpinner ? (
+            <ActivityIndicator size="small" color={theme.colors.muted} />
+          ) : showCheck ? (
+            <View style={styles.checkBadge}>
+              <Icon name="check" size={14} color="#FFFFFF" />
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {/* Fixed-height status row — reserves space so an error never shifts the
@@ -283,7 +335,7 @@ export default function SendAddress() {
 
       {validRecents.length > 0 && (
         <View style={styles.recentCard}>
-          <Text style={styles.recentTitle}>Recently Used</Text>
+          <Text style={styles.recentTitle}>Sent here before</Text>
           {validRecents.slice(0, 5).map((r) => (
             <Pressable key={r.address} style={styles.recentRow} onPress={() => { tap(); patch({ address: r.address }); }}>
               <Text style={styles.recentAddr} numberOfLines={1}>
@@ -346,38 +398,93 @@ export default function SendAddress() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.md },
-  header: {},
-  backIcon: { width: 30, height: 30 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text },
-  // Grey box, 12px radius, 12/18 padding. The check is sized to the text line
-  // (19px) so it doesn't grow the row / shift the layout when it appears.
-  inputWrap: {
-    marginTop: theme.spacing.md,
+  // No top padding: `SheetNav` owns the clearance above the grabber, and
+  // stacking both left the nav row floating in the middle of nowhere.
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
+  assetStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
+    gap: 12,
+    marginTop: theme.spacing.md,
+    padding: 13,
+    borderRadius: theme.radius.xl,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  input: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, padding: 0 },
+  assetArt: { width: 32, height: 32 },
+  assetArtBadge: { position: 'absolute', right: -3, bottom: -2 },
+  assetMid: { flex: 1, gap: 2 },
+  assetName: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  assetSub: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+
+  fieldCard: {
+    marginTop: 10,
+    padding: 13,
+    gap: 9,
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  fieldHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  fieldLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+  },
+  pasteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 28,
+    paddingHorizontal: 11,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.tile,
+  },
+  pasteLabel: { fontFamily: fontFamily.semibold, fontSize: 12, letterSpacing: -0.1, color: theme.colors.text },
+  // Inside the field card now, so it needs no surface of its own — just the
+  // row that holds the input and its validity mark. The check is sized to the
+  // text line so it cannot grow the row when it appears.
+  inputWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    padding: 0,
+    color: theme.colors.text,
+    fontFamily: fontFamily.monoRegular,
+    fontSize: 13.5,
+    lineHeight: 20,
+  },
   checkBadge: { width: 19, height: 19, borderRadius: 9.5, backgroundColor: theme.colors.success, alignItems: 'center', justifyContent: 'center' },
   // Fixed (compact) height so an error/hint never shifts the layout — it appears in place.
-  statusRow: { minHeight: 16, marginTop: 4, paddingHorizontal: 18, justifyContent: 'center' },
+  statusRow: { minHeight: 16, marginTop: 6, paddingHorizontal: 4, justifyContent: 'center' },
   recentCard: {
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.md,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
   },
-  recentTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4 },
-  recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  recentAddr: { flex: 1, fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
-  recentTime: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
+  recentTitle: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 12,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+    paddingHorizontal: 14,
+    paddingTop: 13,
+    paddingBottom: 3,
+  },
+  recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 14, paddingVertical: 11 },
+  recentAddr: { flex: 1, fontFamily: fontFamily.monoRegular, fontSize: 13, color: theme.colors.text },
+  recentTime: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
   spacer: { flex: 1 },
-  primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
-  primaryBtnDisabled: { backgroundColor: theme.colors.muted },
+  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
+  // Disabled keeps the shape and drops the ink. A muted-grey fill read as a
+  // different, live button.
+  primaryBtnDisabled: { opacity: 0.35 },
 }));

@@ -424,7 +424,7 @@ const styles = StyleSheet.create((theme) => ({
   mid: { flex: 1, gap: 2 },
   footer: { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.sm, paddingTop: theme.spacing.xs },
   chainWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm },
-  chainChip: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBackground },
+  chainChip: { paddingHorizontal: 13, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, backgroundColor: theme.colors.cardBackground, borderWidth: 1, borderColor: theme.colors.border },
   kvRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: theme.spacing.sm },
   previewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.sm },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' },

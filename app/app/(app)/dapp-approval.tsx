@@ -138,8 +138,10 @@ const styles = StyleSheet.create((theme) => ({
   center: { textAlign: 'center' },
   detailCard: {
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 14,
   },
   actions: { flexDirection: 'row', gap: theme.spacing.md, marginTop: theme.spacing.xl },
   btn: { flex: 1 },

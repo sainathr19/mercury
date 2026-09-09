@@ -14,6 +14,7 @@ import { useBrowser } from '../../src/stores/browserStore';
 import { useBookmarks } from '../../src/stores/bookmarkStore';
 import { handleRpc, originOf, resolveUrl, EVM_PROVIDER_SCRIPT, RpcError, type DappSession } from '../../src/bridge/web3';
 import { getActiveEvmChainId } from '../../src/bridge/evmChain';
+import { fontFamily } from '../../src/theme/fonts';
 
 const UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
@@ -127,8 +128,8 @@ export default function Browser() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <View style={styles.bar}>
-        <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Icon name="back" size={22} color={theme.colors.text} />
+        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.navBtn}>
+          <Icon name="back" size={18} color={theme.colors.text} />
         </Pressable>
 
         {editing ? (
@@ -150,17 +151,17 @@ export default function Browser() {
         ) : (
           <Pressable style={styles.address} onPress={beginEdit}>
             <Icon name={nav.loading ? 'globe' : 'lock'} size={12} color={theme.colors.muted} />
-            <Text variant="subheadSemibold" numberOfLines={1} style={styles.host}>
+            <Text numberOfLines={1} style={styles.host}>
               {host}
             </Text>
           </Pressable>
         )}
 
-        <Pressable onPress={openOverview} hitSlop={8} style={styles.tabCount}>
-          <Text variant="bodyMedium">{tabs.length}</Text>
+        <Pressable onPress={openOverview} hitSlop={8} style={styles.navBtn}>
+          <Text style={styles.tabCount}>{tabs.length}</Text>
         </Pressable>
-        <Pressable onPress={() => setMenu(true)} hitSlop={8}>
-          <Icon name="ellipsis" size={18} color={theme.colors.text} />
+        <Pressable onPress={() => setMenu(true)} hitSlop={8} style={styles.navBtn}>
+          <Icon name="ellipsis" size={17} color={theme.colors.text} />
         </Pressable>
       </View>
 
@@ -194,8 +195,10 @@ export default function Browser() {
                   m.run();
                 }}
               >
-                <Icon name={m.icon} size={18} color={theme.colors.text} />
-                <Text variant="bodyMedium">{m.label}</Text>
+                <View style={styles.menuTile}>
+                  <Icon name={m.icon} size={14} color={theme.colors.text} />
+                </View>
+                <Text style={styles.menuLabel}>{m.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -207,13 +210,11 @@ export default function Browser() {
         <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
           <View style={styles.ovHeader}>
             <Pressable onPress={() => addTab()} hitSlop={10} style={styles.ovIconBtn}>
-              <Icon name="plus" size={20} color={theme.colors.text} />
+              <Icon name="plus" size={17} color={theme.colors.text} />
             </Pressable>
-            <Text variant="headline">Tabs</Text>
+            <Text style={styles.ovTitle}>Tabs</Text>
             <Pressable onPress={() => setOverview(false)} style={styles.ovDoneBtn}>
-              <Text variant="subheadBold" color={theme.colors.primaryLabel}>
-                Done
-              </Text>
+              <Text style={styles.ovDoneLabel}>Done</Text>
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.ovGrid}>
@@ -237,11 +238,11 @@ export default function Browser() {
                     ) : (
                       <Icon name="globe" size={14} color={theme.colors.muted} />
                     )}
-                    <Text variant="captionSemibold" numberOfLines={1} style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={styles.ovCardTitle}>
                       {title}
                     </Text>
-                    <Pressable onPress={() => closeTab(t.id)} hitSlop={8}>
-                      <Icon name="close" size={14} color={theme.colors.muted} />
+                    <Pressable onPress={() => closeTab(t.id)} hitSlop={10}>
+                      <Icon name="close" size={11} color={theme.colors.muted} />
                     </Pressable>
                   </View>
                   <View style={styles.ovCardBody}>
@@ -346,108 +347,147 @@ const BrowserTab = forwardRef<TabHandle, { initialUrl: string; active: boolean; 
 
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.appBackground },
+  // The chrome sits on the app ground with white controls on it, and a hairline
+  // to separate it from the page — the inherited `cardBackground` (#EAEBEA) is
+  // within two points of `appBackground`, so the pill and the tab chip were
+  // invisible shapes rather than controls.
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.screen,
-    paddingVertical: theme.spacing.sm,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(11,13,16,0.07)',
   },
+  // One shape for every control in the bar, so back / count / menu line up and
+  // all have a real 34pt hit area.
+  navBtn: {
+    minWidth: 34,
+    height: 34,
+    paddingHorizontal: 7,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabCount: { fontFamily: fontFamily.semibold, fontSize: 13.5, letterSpacing: -0.1, color: theme.colors.text },
   address: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 36,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.cardBackground,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
   },
-  host: { maxWidth: '70%' },
-  // Editable address field — same grey box as the display bar.
+  host: {
+    maxWidth: '78%',
+    fontFamily: fontFamily.semibold,
+    fontSize: 14,
+    letterSpacing: -0.24,
+    color: theme.colors.text,
+  },
   addressInput: {
     flex: 1,
-    height: 36,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.colors.cardBackground,
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.pill,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.14)',
     color: theme.colors.text,
-    fontFamily: theme.typography.body.fontFamily,
+    fontFamily: fontFamily.medium,
     fontSize: 14,
   },
-  // Small filled chip (no outline) with the tab count centered inside.
-  tabCount: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 8,
-    backgroundColor: theme.colors.cardBackground,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progress: { height: 2, width: '40%' },
-  web: { flex: 1 },
+  // Loading bar: the app's own ink, not the accent blue.
+  progress: { height: 2, width: '40%', backgroundColor: '#0B0D10' },
+  web: { flex: 1, backgroundColor: '#FFFFFF' },
   // Each tab is an absolute-fill wrapper (they overlap in `web`); the WebView
   // fills the wrapper via flex. Extra tabs no longer push content downward.
   tab: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   webFill: { flex: 1 },
   hidden: { opacity: 0, zIndex: -1 },
+
   // Dropdown: subtle scrim, card pinned to the top-right (under the ⋯ button).
-  menuBackdrop: { flex: 1, alignItems: 'flex-end', paddingRight: theme.spacing.screen, backgroundColor: '#00000022' },
+  menuBackdrop: { flex: 1, alignItems: 'flex-end', paddingRight: 14, backgroundColor: 'rgba(0,0,0,0.16)' },
   menuCard: {
-    width: 230,
-    backgroundColor: theme.colors.appBackground,
-    borderRadius: theme.radius.lg,
-    paddingVertical: theme.spacing.xs,
+    width: 236,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 8,
   },
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: 16, paddingVertical: 12 },
-  menuDivider: { borderTopWidth: 1, borderTopColor: theme.colors.border },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 11 },
+  menuDivider: { borderTopWidth: 1, borderTopColor: 'rgba(11,13,16,0.06)' },
+  menuTile: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: '#ECEEE9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.24, color: theme.colors.text },
+
   ovHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.screen,
-    paddingVertical: theme.spacing.md,
+    paddingTop: 20,
+    paddingBottom: 14,
   },
-  // Circular "+" button and a pill "Done" button — both read as buttons.
+  ovTitle: { fontFamily: fontFamily.semibold, fontSize: 20, letterSpacing: -0.5, color: theme.colors.text },
   ovIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.cardBackground,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   ovDoneBtn: {
-    height: 36,
-    paddingHorizontal: 18,
+    height: 34,
+    paddingHorizontal: 17,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ovGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md, padding: theme.spacing.screen },
-  // Portrait (rectangle) cards, soft rounded, no harsh black border.
+  ovDoneLabel: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.2, color: theme.colors.primaryLabel },
+  ovGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: theme.spacing.screen, paddingBottom: 24 },
   ovCard: {
-    width: '47%',
+    width: '47.5%',
     aspectRatio: 0.72,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.cardBackground,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
     overflow: 'hidden',
   },
-  // Active tab: a soft grey ring (matches the app), not a black border.
-  ovCardActive: { borderWidth: 2, borderColor: theme.colors.muted },
-  ovCardHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8 },
-  ovFav: { width: 16, height: 16, borderRadius: 4 },
-  ovCardBody: { flex: 1, backgroundColor: theme.colors.appBackground },
+  // Active tab: the app's ink, so which tab you are on is unmistakable. The old
+  // grey ring was the same value as the card's own edge.
+  ovCardActive: { borderWidth: 2, borderColor: '#0B0D10' },
+  ovCardHead: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 9 },
+  ovCardTitle: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.18, color: theme.colors.text },
+  ovFav: { width: 16, height: 16, borderRadius: 5 },
+  ovCardBody: { flex: 1, backgroundColor: '#ECEEE9' },
   ovPreview: { width: '100%', height: '100%' },
   ovPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  ovPlaceholderIcon: { width: 44, height: 44, borderRadius: 12 },
+  ovPlaceholderIcon: { width: 44, height: 44, borderRadius: 13 },
 }));

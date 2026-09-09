@@ -12,6 +12,7 @@ import type { PortfolioAsset } from '../../../src/bridge/portfolio';
 import { useScan, parsePayment, type ScannedPayment } from '../../../src/stores/scanStore';
 import { useSendDraft, type PrivateFlow } from '../../../src/stores/sendDraftStore';
 import { useStealth } from '../../../src/stores/stealthStore';
+import { useGateway } from '../../../src/stores/gatewayStore';
 import {
   formatStealthAmount,
   symbolForFamily,
@@ -23,9 +24,11 @@ import {
 } from '../../../src/bridge/stealth';
 import { useSession } from '../../../src/stores/session';
 import { estimateFee, type SendChain } from '../../../src/bridge/transfer';
-import { PICK_CHAINS, chainOf, chainIconKeyFor, detectAddressChain, type ChainKey } from '../../../src/lib/sendHelpers';
+import { PICK_CHAINS, chainOf, detectAddressChain, type ChainKey } from '../../../src/lib/sendHelpers';
+import { chainName } from '../../../src/lib/chains';
+import { ChainBadge, needsChainBadge } from '../../../src/components/ChainBadge';
 import { isScanToPay, resolveScanTarget } from '../../../src/lib/scanResolve';
-import { formatCrypto } from '../../../src/lib/format';
+import { formatCrypto, formatUsd } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
 import { posthog } from '../../../src/lib/posthog';
 
@@ -51,10 +54,15 @@ export default function SendFlow() {
   const screenH = UnistylesRuntime.screen.height;
 
   const isPrivate = params.private === '1';
-  // There is no Shield/Send chooser any more: Shield was the private path, and
-  // private sends are gone, which left a "chooser" with one option on it. Send
-  // now opens straight on the fund picker, and Back from there exits the flow.
-  const [step] = useState<'pick'>('pick');
+  // Private funds have their own list and no chooser — the Gateway rail cannot
+  // move them.
+  const isSpendPick = isPrivate;
+  // Two ways to send, so the sheet opens on a chooser again — but for a real
+  // choice this time. The old chooser offered Shield vs Send and went away with
+  // private sends; this one offers the Gateway rail (USDC, any chain, seconds)
+  // against an ordinary on-chain transfer, which are genuinely different
+  // products with different reach.
+  const [step, setStep] = useState<'choose' | 'pick'>(isPrivate ? 'pick' : 'choose');
 
   const { assets, market } = usePortfolio();
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
@@ -63,6 +71,10 @@ export default function SendFlow() {
   const shield = useSendDraft((s) => s.shield);
   const privateFlow = useSendDraft((s) => s.privateFlow);
   const stealthPayments = useStealth((s) => s.payments);
+  // Only USDC already settled into Gateway can take the instant rail, so the
+  // row says how much that is rather than promising a speed for money that
+  // would have to be deposited first.
+  const gwSpendable = useGateway((g) => g.spendable);
 
   const [pickQuery, setPickQuery] = useState('');
   // Default the chain filter to a scanned address's family, so scanning e.g. an
@@ -103,12 +115,18 @@ export default function SendFlow() {
     reset(seed);
     // Every send is a plain public transfer now.
     patch({ shield: false, privateFlow: null });
-    // Straight to full height: the picker needs it, and there is no short
-    // chooser step to size the sheet down for any more.
-    navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
+    // The chooser is two rows tall; the picker needs the whole screen. The
+    // SAME sheet grows between them (see `openPicker`).
+    navigation.getParent()?.setOptions({ sheetAllowedDetents: isPrivate ? [1.0] : [0.5] });
     // A scanned PLAIN chain address (not a stealth meta) skips Choose Asset — see
     // the auto-pick effect. Stealth metas keep the chooser (they fund many assets).
     if (!isPrivate && isScanToPay(pay)) scanPay.current = pay;
+    // A scan that will resolve to an asset skips the chooser entirely — the
+    // user already said what they are paying.
+    if (!isPrivate && isScanToPay(pay)) {
+      setStep('pick');
+      navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
+    }
     // A scanned recipient that keeps the chooser (a @username, a stealth1, or a
     // bare EVM address whose chain the user must choose) → remember it so the
     // address step opens pre-filled once an asset is picked.
@@ -156,13 +174,33 @@ export default function SendFlow() {
     }
   }, [assets, patch, router]);
 
-  /** Back from the fund picker closes the whole sheet — the picker is the first
-   *  step now, so there is nothing behind it to return to. */
+  /** Grow the sheet and swap to the asset picker. */
+  function openPicker() {
+    tap();
+    setStep('pick');
+    navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
+  }
+
+  /** Back from the picker returns to the chooser and shrinks the sheet with it;
+   *  from the chooser there is nothing behind, so it dismisses. */
   function back() {
     tap();
+    if (step === 'pick' && !isSpendPick) {
+      setStep('choose');
+      navigation.getParent()?.setOptions({ sheetAllowedDetents: [0.5] });
+      return;
+    }
     const parent = navigation.getParent();
     if (parent) parent.goBack();
     else router.back();
+  }
+
+  /** The Gateway rail: USDC that is already settled, deliverable to any
+   *  supported chain in seconds. A separate screen because it asks for a
+   *  DESTINATION network, which an ordinary transfer never does. */
+  function openInstant() {
+    tap();
+    router.push('/(app)/gateway-send');
   }
 
   // Assets the wallet holds, grouped by chain and sorted by value. In private
@@ -323,31 +361,106 @@ export default function SendFlow() {
   }
 
 
-  const isSpendPick = isPrivate || privateFlow === 'spend';
+  // ── Step one: which rail ────────────────────────────────────────────────
+  if (step === 'choose') {
+    return (
+      <View style={styles.chooser}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {/* The grabber dismisses this too, but every other sheet in the app
+            pairs it with an X for reach — one-handed, the top of the screen is
+            easier to hit than a downward drag. */}
+        <View style={styles.chooserHead}>
+          <View style={styles.chooserHeadText}>
+            <Text style={styles.title}>Send money</Text>
+            <Text style={styles.subtitle}>Two ways out, depending on what you are moving.</Text>
+          </View>
+          <Pressable hitSlop={10} onPress={back} style={styles.close}>
+            <Icon name="close" size={15} color={theme.colors.muted} />
+          </Pressable>
+        </View>
 
+        <PressableScale style={styles.choice} onPress={openInstant}>
+          <View style={[styles.choiceTile, styles.choiceTileAccent]}>
+            <Icon name="bolt" size={18} color={theme.colors.primaryLabel} />
+          </View>
+          <View style={styles.choiceMid}>
+            <View style={styles.choiceTitleRow}>
+              <Text style={styles.choiceTitle}>Send instantly</Text>
+              <View style={styles.choiceTag}>
+                <Text style={styles.choiceTagText}>USDC</Text>
+              </View>
+            </View>
+            <Text style={styles.choiceSub} numberOfLines={1}>
+              {gwSpendable > 0
+                ? `${formatUsd(gwSpendable)} ready · lands in seconds`
+                : 'Any supported network, in seconds'}
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={15} color={theme.colors.muted} />
+        </PressableScale>
+
+        <PressableScale style={styles.choice} onPress={openPicker}>
+          <View style={styles.choiceTile}>
+            <Icon name="arrowUpRight" size={18} color={theme.colors.text} />
+          </View>
+          <View style={styles.choiceMid}>
+            <Text style={styles.choiceTitle}>Send from your wallet</Text>
+            <Text style={styles.choiceSub} numberOfLines={1}>
+              Any asset, on its own network
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={15} color={theme.colors.muted} />
+        </PressableScale>
+
+        <View style={styles.chooserNote}>
+          <Icon name="info" size={13} color={theme.colors.muted} />
+          <Text style={styles.chooserNoteText}>
+            Instant sends move USDC you have already settled, so they clear in one step. Everything
+            else waits for its own network.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Step two: which asset ───────────────────────────────────────────────
   return (
     <View style={{ height: screenH }}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* ONE scrolling column, not `SheetScaffold`.
+          The scaffold pins a footer, which needs a `flex: 1` body — and a flex
+          child inside this sheet collapses to zero, stacking the header and the
+          list on top of each other. The wrapper above already fixes the height
+          (see the route's detent comment), so the header simply scrolls with
+          the content. Same title/subtitle/close language, no flex. */}
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="never"
+        showsVerticalScrollIndicator={false}
       >
-        {/* Back on top, title 24px below it. */}
         <View style={styles.header}>
-          <Pressable onPress={back} hitSlop={10}>
-            <Icon name="back" size={30} color={theme.colors.text} />
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{isSpendPick ? 'Select funds' : 'What are you sending?'}</Text>
+            <Text style={styles.subtitle}>
+              {isSpendPick
+                ? 'Private funds you have received, grouped by asset.'
+                : 'Pick the asset to send. Balances are what you can spend right now.'}
+            </Text>
+          </View>
+          <Pressable hitSlop={10} onPress={back} style={styles.close}>
+            <Icon name="close" size={15} color={theme.colors.muted} />
           </Pressable>
-          <Text style={styles.pageTitle}>{isSpendPick ? 'Select funds' : 'Choose Assets'}</Text>
         </View>
 
         {isSpendPick ? (
           <View style={styles.listCard}>
             {!hasAnySpendable ? (
-              <Text variant="bodyMedium" color={theme.colors.muted} style={styles.empty}>
-                No private funds to spend yet
-              </Text>
+              <Empty
+                title="Nothing to spend yet"
+                body="Private funds you receive will be listed here."
+              />
             ) : (
               <>
                 {/* One aggregated row per asset (combines that asset's addresses). */}
@@ -361,25 +474,26 @@ export default function SendFlow() {
           </View>
         ) : (
           <>
-            {/* Grey, 12px-rounded, no icon. */}
             <View style={styles.searchWrap}>
+              <Icon name="search" size={16} color={theme.colors.muted} />
               <TextInput
                 value={pickQuery}
                 onChangeText={setPickQuery}
-                placeholder="Search token"
-                placeholderTextColor={theme.colors.muted}
+                placeholder="Search your assets"
+                placeholderTextColor={theme.colors.faint}
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={styles.search}
               />
               {pickQuery.length > 0 && (
                 <Pressable onPress={() => setPickQuery('')} hitSlop={8}>
-                  <Icon name="close" size={16} color={theme.colors.muted} />
+                  <Icon name="close" size={14} color={theme.colors.muted} />
                 </Pressable>
               )}
             </View>
 
-            {/* Text-only chips — horizontally scrollable. */}
+            {/* Chain filter. Scanning an address pre-selects its family, so this
+                row also tells you why the list is narrowed. */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -390,10 +504,15 @@ export default function SendFlow() {
               {PICK_CHAINS.map((c) => {
                 const on = pickChain === c.key;
                 return (
-                  <Pressable key={c.key} onPress={() => { tap(); setPickChain(c.key); }} style={[styles.chip, on && styles.chipOn]}>
-                    <Text style={[styles.chipText, { color: on ? theme.colors.primaryLabel : theme.colors.text }]}>
-                      {c.label}
-                    </Text>
+                  <Pressable
+                    key={c.key}
+                    onPress={() => {
+                      tap();
+                      setPickChain(c.key);
+                    }}
+                    style={[styles.chip, on && styles.chipOn]}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
                   </Pressable>
                 );
               })}
@@ -401,27 +520,52 @@ export default function SendFlow() {
 
             <View style={styles.listCard}>
               {tokens.length === 0 ? (
-                <Text variant="bodyMedium" color={theme.colors.muted} style={styles.empty}>
-                  No tokens found
-                </Text>
+                <Empty
+                  title={pickQuery.trim() ? 'No match' : 'Nothing to send yet'}
+                  body={
+                    pickQuery.trim()
+                      ? `Nothing you hold matches \u201c${pickQuery.trim()}\u201d.`
+                      : 'Once this wallet holds something, it will be listed here.'
+                  }
+                />
               ) : (
-                tokens.map((a) => (
-                  <Pressable key={a.id} style={styles.assetRow} onPress={() => selectAsset(a)}>
-                    <CryptoIcon
-                      coingeckoId={a.coingeckoId}
-                      symbol={a.symbol}
-                      colorHex={a.colorHex}
-                      imageUrl={a.imageUrl}
-                      size={32}
-                      chainKey={chainIconKeyFor(a)}
-                    />
+                tokens.map((a, i) => (
+                  <Pressable
+                    key={a.id}
+                    style={({ pressed }) => [styles.assetRow, i > 0 && styles.divider, pressed && styles.rowPressed]}
+                    onPress={() => selectAsset(a)}
+                  >
+                    <View style={styles.assetArt}>
+                      <CryptoIcon
+                        coingeckoId={a.coingeckoId}
+                        symbol={a.symbol}
+                        colorHex={a.colorHex}
+                        imageUrl={a.imageUrl}
+                        size={34}
+                      />
+                      {needsChainBadge(a) && (
+                        <View style={styles.assetArtBadge}>
+                          <ChainBadge
+                            chainId={a.evmChainId !== undefined ? Number(a.evmChainId) : undefined}
+                            network={networkLabel(a)}
+                            size={15}
+                            ringColor={theme.colors.cardBackground}
+                          />
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.assetMid}>
-                      <Text style={styles.assetName}>{a.name}</Text>
-                      <Text style={styles.assetBalance} color={theme.colors.muted}>
-                        {`${formatCrypto(a.amount)} ${a.symbol}`}
+                      <Text style={styles.assetName} numberOfLines={1}>
+                        {a.name}
+                      </Text>
+                      {/* The network is part of the identity here, not a detail:
+                          ETH is listed once per chain, so three rows read as the
+                          same asset three times without it. */}
+                      <Text style={styles.assetBalance} numberOfLines={1}>
+                        {`${formatCrypto(a.amount)} ${a.symbol} · ${networkLabel(a)}`}
                       </Text>
                     </View>
-                    <CurrencyText amount={liveValue(a, market)} size={21} letterSpacing={-0.42} />
+                    <CurrencyText amount={liveValue(a, market)} size={18} letterSpacing={-0.4} />
                   </Pressable>
                 ))
               )}
@@ -433,102 +577,193 @@ export default function SendFlow() {
   );
 }
 
-function ChooseRow({
-  icon,
-  title,
-  subtitle,
-  onPress,
-}: {
-  icon: 'shield' | 'send';
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}) {
+/** Which network a holding lives on, for the row's second line. */
+function networkLabel(a: PortfolioAsset): string {
+  if (a.chain === 'bitcoin') return 'Bitcoin';
+  if (a.chain === 'solana') return 'Solana';
+  return a.evmChainId !== undefined ? chainName(a.evmChainId) : 'Ethereum';
+}
+
+/** Empty state inside a list card: a tile, a heading, one line of why. A single
+ *  grey sentence in the middle of a card reads as a failure rather than as a
+ *  state. */
+function Empty({ title, body }: { title: string; body: string }) {
   const theme = UnistylesRuntime.getTheme();
   return (
-    <PressableScale style={styles.row} onPress={onPress}>
-      <View style={styles.iconWrap}>
-        <Icon name={icon} size={20} color={theme.colors.text} />
+    <View style={styles.empty}>
+      <View style={styles.emptyTile}>
+        <Icon name="wallet" size={17} color={theme.colors.muted} />
       </View>
-      <View style={styles.mid}>
-        <Text style={styles.rowTitle}>{title}</Text>
-        <Text style={styles.rowSub}>{subtitle}</Text>
-      </View>
-      <Icon name="chevronRight" size={18} color={theme.colors.muted} />
-    </PressableScale>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyBody}>{body}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // --- Chooser (medium detent) ---
-  sheet: { paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.lg },
-  chooseHeader: {
+  // ── Chooser ─────────────────────────────────────────────────────────────
+  chooser: { paddingHorizontal: theme.spacing.screen, paddingTop: 26, paddingBottom: theme.spacing.lg, gap: 10 },
+  chooserHead: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingBottom: 18,
+    gap: theme.spacing.md,
+    paddingBottom: 6,
   },
-  rows: { gap: 12 },
-  row: {
+  chooserHeadText: { flexShrink: 1, gap: 5 },
+  choice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    gap: 12,
+    padding: 13,
+    borderRadius: theme.radius.xl,
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.appBackground,
+  choiceTile: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: theme.colors.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mid: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
-  rowSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
-  chev: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
+  // The instant rail is the faster path, so its slot carries the app's ink —
+  // the one visual difference between two otherwise identical rows.
+  choiceTileAccent: { backgroundColor: theme.colors.primary },
+  choiceMid: { flex: 1, gap: 2 },
+  choiceTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  choiceTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  choiceTag: { paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: theme.radius.pill, backgroundColor: theme.colors.tile },
+  choiceTagText: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 9.5,
+    letterSpacing: 0.3,
+    color: theme.colors.muted,
+  },
+  choiceSub: { fontFamily: fontFamily.medium, fontSize: 12.5, letterSpacing: -0.14, color: theme.colors.muted },
+  chooserNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    marginTop: 4,
+    padding: 13,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(11,13,16,0.04)',
+  },
+  chooserNoteText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    lineHeight: 16.5,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
 
-  // --- Picker (full detent) ---
-  content: { paddingBottom: 40 },
-  header: { paddingHorizontal: theme.spacing.screen, paddingTop: 40 },
-  backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  content: { paddingHorizontal: theme.spacing.screen, paddingBottom: 40, gap: theme.spacing.md },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+    // Clear of the grabber, which sits in the sheet's own top few points.
+    paddingTop: 26,
+    paddingBottom: 2,
+  },
+  headerText: { flexShrink: 1, gap: 5 },
+  title: { fontFamily: fontFamily.semibold, fontSize: 20, letterSpacing: -0.5, color: theme.colors.text },
+  subtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: -0.18,
+    color: theme.colors.muted,
+  },
+  close: {
+    width: 30,
+    height: 30,
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.cardBackground,
+  },
+
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginHorizontal: theme.spacing.screen,
-    marginTop: theme.spacing.md,
+    gap: 9,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 15,
+    height: 46,
   },
-  search: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, padding: 0 },
-  chipsScroll: { marginTop: 12 },
-  chipsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.spacing.screen },
+  search: {
+    flex: 1,
+    padding: 0,
+    fontFamily: fontFamily.medium,
+    fontSize: 14.5,
+    letterSpacing: -0.24,
+    color: theme.colors.text,
+  },
+
+  // Negative margins so the strip scrolls edge-to-edge inside the sheet's own
+  // horizontal padding, instead of stopping short of both edges.
+  chipsScroll: { marginHorizontal: -theme.spacing.screen },
+  chipsRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: theme.spacing.screen },
+  // White on the sheet's own ground, not `tile`: the sheet IS the ground, so a
+  // tile-coloured chip would be the same value as what it sits on.
   chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
+    height: 34,
+    paddingHorizontal: 15,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chipOn: { backgroundColor: theme.colors.primary },
-  chipText: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
+  chipOn: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  chipText: { fontFamily: fontFamily.semibold, fontSize: 13.5, letterSpacing: -0.2, color: theme.colors.muted },
+  chipTextOn: { color: theme.colors.primaryLabel },
+
   listCard: {
-    marginHorizontal: theme.spacing.screen,
-    marginTop: 12,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
   },
-  assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 12 },
-  assetMid: { flex: 1, gap: 0 },
-  assetName: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
-  assetBalance: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
-  empty: { textAlign: 'center', paddingVertical: theme.spacing.xxl },
+  assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  divider: { borderTopWidth: 1, borderTopColor: theme.colors.separator },
+  rowPressed: { backgroundColor: 'rgba(11,13,16,0.03)' },
+  assetArt: { width: 34, height: 34 },
+  assetArtBadge: { position: 'absolute', right: -3, bottom: -2 },
+  assetMid: { flex: 1, gap: 2 },
+  assetName: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
+  assetBalance: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+
+  empty: { alignItems: 'center', gap: 7, paddingHorizontal: 28, paddingVertical: 30 },
+  emptyTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: theme.colors.tile,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  emptyTitle: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.28, color: theme.colors.text },
+  emptyBody: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    letterSpacing: -0.14,
+    textAlign: 'center',
+    color: theme.colors.muted,
+  },
+
   resolving: { height: 220, alignItems: 'center', justifyContent: 'center' },
 }));

@@ -110,8 +110,14 @@ export function BtcSpeedSheet({
 
 const styles = StyleSheet.create((theme) => ({
   // Matches the modal titles: 18px bold, -2%.
-  title: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 4, marginBottom: 24 },
-  card: { backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, overflow: 'hidden' },
+  title: { fontSize: 20, fontFamily: fontFamily.semibold, letterSpacing: -0.5, color: theme.colors.text, marginTop: 4, marginBottom: 18 },
+  card: {
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
   // Rows: 12/18 like the review details, no dividers.
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
   label: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },

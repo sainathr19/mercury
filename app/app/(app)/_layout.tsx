@@ -3,7 +3,18 @@ import { useUnistyles } from 'react-native-unistyles';
 
 // Content-sized form sheets (short, no internal scroll area).
 /** Settings pages that are PUSHED (not sheets), so they take a native header. */
-const PUSHED_ROUTES = ['recovery', 'tokens', 'networks', 'wc-sessions', 'username', 'activity'];
+const PUSHED_ROUTES = [
+  'recovery',
+  'tokens',
+  'networks',
+  'wc-sessions',
+  'username',
+  'activity',
+  // The asset detail page is a push too, and was drawing its own 30pt chevron
+  // instead of taking the system one. (`transaction` is NOT here: it is a form
+  // sheet, declared below — a sheet is dismissed, not navigated back from.)
+  'asset',
+];
 
 const SHEET_ROUTES = ['wallet-name', 'wallet-import', 'settings-picker', 'wc-proposal', 'dapp-approval'];
 
@@ -121,7 +132,10 @@ export default function AppLayout() {
         name="transaction"
         options={{
           presentation: 'formSheet',
-          sheetAllowedDetents: [0.5, 1.0],
+          // Sized to its content, so the whole detail — including the explorer
+          // button — is visible without dragging. Two fixed detents opened at
+          // the shorter one and left the CTA below the fold.
+          sheetAllowedDetents: 'fitToContents',
           sheetGrabberVisible: true,
           sheetLargestUndimmedDetentIndex: 'none',
           contentStyle: { backgroundColor: theme.colors.appBackground },

@@ -41,17 +41,26 @@ import { useGateway } from '../stores/gatewayStore';
 import { getActiveAccount } from '../bridge/account';
 import { useTokenPrefs } from '../stores/tokenPrefsStore';
 import { ActivityRow } from '../components/ActivityRow';
-import { formatUsd, formatPercent } from '../lib/format';
+import { CryptoIcon } from '../components/CryptoIcon';
+import { ChainBadge, needsChainBadge } from '../components/ChainBadge';
+import type { MarketSnapshot, PortfolioAsset } from '../bridge/portfolio';
+import { formatUsd, formatPercent, formatCrypto } from '../lib/format';
 import { pushOnce } from '../lib/nav';
 import { fontFamily } from '../theme/fonts';
-import { chainName } from '../lib/chains';
-
-/** Mercury settles on Arc, so the network pill names it from the registry
- *  rather than tracking a per-screen selection. */
-const ARC_CHAIN_ID = 5042002n;
 
 /** Light selection haptic for plain Pressables (PressableScale fires its own). */
 const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+/** The mark's ink fills its box, and Switzer's cap height is 0.68em, so a
+ *  wordmark whose caps stand exactly as tall as the mark is the mark's size /
+ *  0.68. `WORDMARK_TRIM` pulls it back from that: matched exactly, at Black, the
+ *  word dominated the header — the mark should lead the lockup. */
+const MARK_SIZE = 20;
+const WORDMARK_TRIM = 0.82;
+const WORDMARK_SIZE = Math.round((MARK_SIZE / 0.68) * WORDMARK_TRIM);
+
+/** Cards on the rail before "View all" takes over. */
+const RAIL_MAX = 6;
 
 export function WalletDashboard() {
   const theme = UnistylesRuntime.getTheme();
@@ -115,6 +124,12 @@ export function WalletDashboard() {
       : undefined;
   const isEmpty = shown.length === 0 || shown.every((a) => a.amount === 0);
   const positive = change >= 0;
+  // What the rail shows: held assets, biggest first, capped — the rest are one
+  // tap away behind "View all". Sorting by live value (not by amount) is what
+  // makes the first card the one worth seeing.
+  const railAssets = [...shown]
+    .sort((a, b) => liveValue(b, market) - liveValue(a, market))
+    .slice(0, RAIL_MAX);
 
   async function onRefresh() {
     // Haptic on every pull — even when there's nothing to load — so the gesture confirms.
@@ -163,78 +178,57 @@ export function WalletDashboard() {
         <View style={[styles.topCard, { paddingTop: insets.top + 6 }]}>
           <View style={styles.brandRow}>
             <View style={styles.brand}>
-              <Icon name="mercury" size={21} color={theme.colors.text} />
+              <Icon name="mercury" size={MARK_SIZE} color={theme.colors.text} />
               <RNText style={styles.wordmark}>Mercury</RNText>
             </View>
-            <View style={styles.iconBtns}>
-              <IconButton icon="chartLine" onPress={() => pushOnce('/(app)/activity')} />
-              <IconButton icon="qrcode" onPress={() => router.push('/(app)/receive')} />
-            </View>
+            {/* Activity and Scan both already have a way in — "View all" on the
+                history header, and the Scan circle in the action band — so the
+                only control up here is the one that changes what the screen
+                shows. */}
+            <IconButton
+              icon={hidden ? 'eyeOff' : 'eye'}
+              onPress={() => {
+                tap();
+                setHidden((v) => !v);
+              }}
+            />
           </View>
 
+          {/* The 24h change rides on the label row rather than under the
+              figure: it is a caption ON the balance, and sitting it beside the
+              word "Balance" lines both up on one baseline instead of leaving a
+              third loose line below. */}
           <HeroBalance
             amount={total}
             label="Balance"
             masked={hidden}
             onPress={() => setHidden((v) => !v)}
             labelAccessory={
-              // The network is the one piece of context that changes what the
-              // number means, so it sits with the label rather than in settings.
-              <PressableScale style={styles.netPill} onPress={() => pushOnce('/(app)/networks')}>
-                <Text variant="captionSemibold">{chainName(ARC_CHAIN_ID)}</Text>
-                <Icon name="chevronRight" size={12} color={theme.colors.muted} />
-              </PressableScale>
-            }
-            footer={
               isEmpty ? undefined : hidden ? (
-                <View style={styles.changeRow}>
-                  <Text variant="headlineMedium" style={styles.changeText} color={theme.colors.faint}>
-                    •••
-                  </Text>
+                <View style={styles.changePill}>
+                  <RNText style={[styles.changeText, { color: theme.colors.faint }]}>•••</RNText>
                 </View>
               ) : status === 'loading' && total === 0 ? (
-                <Shimmer width={96} height={16} radius={8} />
+                <Shimmer width={72} height={26} radius={13} />
               ) : (
-                <View style={styles.changeRow}>
+                <View style={[styles.changePill, positive ? styles.changeUp : styles.changeDown]}>
                   <View style={positive ? undefined : styles.flip}>
-                    <Icon name="trendUp" size={17} color={positive ? theme.colors.success : theme.colors.danger} />
+                    <Icon name="trendUp" size={13} color={positive ? theme.colors.success : theme.colors.danger} />
                   </View>
-                  <Text
-                    variant="headlineMedium"
-                    style={styles.changeText}
-                    color={positive ? theme.colors.success : theme.colors.danger}
+                  <RNText
+                    style={[
+                      styles.changeText,
+                      { color: positive ? theme.colors.success : theme.colors.danger },
+                    ]}
                   >
                     {formatPercent(change)}
-                  </Text>
+                  </RNText>
                 </View>
               )
             }
           />
 
-          <View style={styles.tiles}>
-            <Tile
-              title="Cash"
-              icon="cash"
-              balance={cash}
-              masked={hidden}
-              note={cashNote}
-              onPress={() => router.push('/(app)/gateway-send')}
-            />
-            <Tile
-              title="Investments"
-              icon="investments"
-              balance={invest}
-              masked={hidden}
-            />
-            {/* The narrow third tile is the way through to the per-token list,
-                which this layout no longer shows inline. */}
-            <PressableScale style={styles.arrowTile} onPress={() => pushOnce('/(app)/tokens')}>
-              <RNText style={styles.tileTitle}>Assets</RNText>
-              <View style={styles.arrowMark}>
-                <Icon name="chevronRight" size={16} color={theme.colors.text} />
-              </View>
-            </PressableScale>
-          </View>
+          <AssetRail assets={railAssets} market={market} masked={hidden} />
         </View>
 
         {/* ── The band: the dark ground between the two cards ─────────────── */}
@@ -298,58 +292,113 @@ export function WalletDashboard() {
   );
 }
 
+/**
+ * The assets rail: one card per held asset, scrolling sideways, then a card
+ * through to the full list.
+ *
+ * This replaced three fixed tiles (Cash / Investments / Assets). Two of them
+ * were sums of a category the user never asked about, and the third was an
+ * arrow — so the card told you how much you had in the abstract but never WHAT
+ * you held. The rail answers the second question, which is the one you open a
+ * wallet to ask.
+ */
+function AssetRail({
+  assets,
+  market,
+  masked,
+}: {
+  assets: PortfolioAsset[];
+  market: Record<string, MarketSnapshot>;
+  masked: boolean;
+}) {
+  const theme = UnistylesRuntime.getTheme();
+  const router = useRouter();
+
+  if (assets.length === 0) {
+    return (
+      <PressableScale style={styles.railEmpty} onPress={() => router.push('/(app)/receive')}>
+        <View style={styles.railEmptyTile}>
+          <Icon name="arrowDownLeft" size={17} color={theme.colors.text} />
+        </View>
+        <View style={styles.railEmptyMid}>
+          <RNText style={styles.railEmptyTitle}>Nothing here yet</RNText>
+          <RNText style={styles.railEmptySub}>Add funds to get started</RNText>
+        </View>
+        <Icon name="chevronRight" size={15} color={theme.colors.muted} />
+      </PressableScale>
+    );
+  }
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.rail}
+      contentContainerStyle={styles.railRow}
+    >
+      {assets.map((a) => (
+        <PressableScale
+          key={a.id}
+          style={styles.assetCard}
+          // The asset screen looks its subject up by COINGECKO id, not by the
+          // per-chain asset id — passing `a.id` is what made every tap land on
+          // "Asset not found".
+          onPress={() => pushOnce({ pathname: '/(app)/asset', params: { id: a.coingeckoId } })}
+        >
+          {/* `CryptoIcon`'s own `chainKey` badge is not used: it only knows the
+              chains we ship art for locally and falls back to Ethereum for the
+              rest, so every Arc asset wore an Ethereum badge. */}
+          <View style={styles.assetArt}>
+            <CryptoIcon
+              coingeckoId={a.coingeckoId}
+              symbol={a.symbol}
+              colorHex={a.colorHex}
+              imageUrl={a.imageUrl}
+              size={32}
+            />
+            {needsChainBadge(a) && (
+              <View style={styles.assetArtBadge}>
+                <ChainBadge
+                  chainId={a.evmChainId !== undefined ? Number(a.evmChainId) : undefined}
+                  network={a.chain === 'solana' ? 'Solana' : undefined}
+                  size={15}
+                  ringColor="#ECEEE9"
+                />
+              </View>
+            )}
+          </View>
+          <View style={styles.assetCardText}>
+            <RNText style={styles.assetSymbol} numberOfLines={1}>
+              {a.symbol}
+            </RNText>
+            <RNText style={styles.assetValue} numberOfLines={1}>
+              {masked ? '••••' : formatUsd(liveValue(a, market))}
+            </RNText>
+            <RNText style={styles.assetAmount} numberOfLines={1}>
+              {masked ? '••••' : `${formatCrypto(a.amount)} ${a.symbol}`}
+            </RNText>
+          </View>
+        </PressableScale>
+      ))}
+
+      {/* Sits at the END of the rail, so it is what you reach by scrolling
+          rather than a control competing with the first card. */}
+      <PressableScale style={styles.viewAllCard} onPress={() => pushOnce('/(app)/tokens')}>
+        <View style={styles.viewAllMark}>
+          <Icon name="chevronRight" size={16} color={theme.colors.primaryLabel} />
+        </View>
+        <RNText style={styles.viewAllLabel}>View all</RNText>
+      </PressableScale>
+    </ScrollView>
+  );
+}
+
 /** Round icon button, as used at the top right of the balance card. */
 function IconButton({ icon, onPress }: { icon: IconName; onPress: () => void }) {
   const theme = UnistylesRuntime.getTheme();
   return (
     <PressableScale style={styles.iconBtn} onPress={onPress}>
       <Icon name={icon} size={17} color={theme.colors.text} />
-    </PressableScale>
-  );
-}
-
-/**
- * One account tile: label and glyph on top, figure on the bottom.
- *
- * `note` is said only when part of the figure is not yet usable, so the tile
- * stays a single number in the ordinary case.
- */
-function Tile({
-  title,
-  icon,
-  balance,
-  masked,
-  note,
-  onPress,
-}: {
-  title: string;
-  icon: IconName;
-  balance: number;
-  masked: boolean;
-  note?: string;
-  onPress?: () => void;
-}) {
-  const theme = UnistylesRuntime.getTheme();
-  const body = (
-    <>
-      <View style={styles.tileTop}>
-        <RNText style={styles.tileTitle}>{title}</RNText>
-        <Icon name={icon} size={18} color={theme.colors.text} />
-      </View>
-      <View>
-        <CurrencyText amount={balance} size={19} symbolScale={0.62} fractionColor={theme.colors.faint} masked={masked} />
-        {!!note && !masked && (
-          <Text variant="caption" color={theme.colors.muted} numberOfLines={1}>
-            {note}
-          </Text>
-        )}
-      </View>
-    </>
-  );
-  if (!onPress) return <View style={styles.tile}>{body}</View>;
-  return (
-    <PressableScale style={styles.tile} onPress={onPress}>
-      {body}
     </PressableScale>
   );
 }
@@ -404,8 +453,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 20 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  wordmark: { fontFamily: fontFamily.black, fontSize: 17, letterSpacing: -0.2, color: theme.colors.text },
-  iconBtns: { flexDirection: 'row', gap: 8 },
+  wordmark: {
+    // Extrabold, not Black: at header size Black closed up the counters and
+    // read as a heavier thing than the mark beside it.
+    fontFamily: fontFamily.heavy,
+    fontSize: WORDMARK_SIZE,
+    letterSpacing: -0.6,
+    color: theme.colors.text,
+    // Trim the face's line-height padding so the cap sits level with the mark
+    // instead of riding a taller line box.
+    includeFontPadding: false,
+  },
   iconBtn: {
     width: 38,
     height: 38,
@@ -414,42 +472,85 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  netPill: {
+  // Tinted to the direction it reports, so up and down are distinguishable
+  // before the number is read.
+  changePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    height: 28,
-    paddingLeft: 12,
-    paddingRight: 8,
+    gap: 4,
+    height: 26,
+    paddingHorizontal: 10,
     borderRadius: theme.radius.pill,
     backgroundColor: '#F2F2F2',
   },
-  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 20 },
-  changeText: { fontSize: 17, letterSpacing: -0.34 },
+  changeUp: { backgroundColor: 'rgba(52,199,89,0.12)' },
+  changeDown: { backgroundColor: 'rgba(255,59,48,0.10)' },
+  changeText: { fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.2 },
   flip: { transform: [{ rotate: '180deg' }] },
 
-  tiles: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  tile: {
-    flex: 1,
-    minHeight: 92,
-    backgroundColor: '#ECEEE9',
+  // ── Assets rail ─────────────────────────────────────────────────────────
+  // Negative margins so the rail scrolls edge-to-edge through the card's own
+  // horizontal padding instead of stopping short of both edges.
+  rail: { marginTop: 18, marginHorizontal: -theme.spacing.screen },
+  railRow: { flexDirection: 'row', gap: 10, paddingHorizontal: theme.spacing.screen },
+  assetCard: {
+    width: 132,
+    gap: 12,
+    padding: 13,
     borderRadius: 20,
-    padding: 14,
+    backgroundColor: '#ECEEE9',
+  },
+  assetArt: { width: 32, height: 32 },
+  assetArtBadge: { position: 'absolute', right: -3, bottom: -2 },
+  assetCardText: { gap: 1 },
+  assetSymbol: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 11,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: theme.colors.muted,
+  },
+  assetValue: { fontFamily: fontFamily.semibold, fontSize: 19, letterSpacing: -0.5, color: theme.colors.text },
+  assetAmount: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+
+  viewAllCard: {
+    width: 96,
+    gap: 12,
+    padding: 13,
+    borderRadius: 20,
+    backgroundColor: '#ECEEE9',
     justifyContent: 'space-between',
   },
-  // Narrower than the two figure tiles: it carries an affordance, not a number.
-  arrowTile: {
-    width: 74,
-    minHeight: 92,
-    backgroundColor: '#ECEEE9',
-    borderRadius: 20,
-    padding: 14,
-    justifyContent: 'space-between',
+  viewAllMark: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  arrowMark: { alignSelf: 'flex-start' },
-  tileTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  tileTitle: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.28, color: theme.colors.text },
-  tileIcon: { width: 18, height: 18 },
+  viewAllLabel: { fontFamily: fontFamily.semibold, fontSize: 13.5, letterSpacing: -0.24, color: theme.colors.text },
+
+  railEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 18,
+    padding: 13,
+    borderRadius: 20,
+    backgroundColor: '#ECEEE9',
+  },
+  railEmptyTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railEmptyMid: { flex: 1, gap: 2 },
+  railEmptyTitle: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.28, color: theme.colors.text },
+  railEmptySub: { fontFamily: fontFamily.medium, fontSize: 12.5, letterSpacing: -0.14, color: theme.colors.muted },
 
   bottomCard: {
     zIndex: 1,
