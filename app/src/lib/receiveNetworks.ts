@@ -8,6 +8,13 @@ export type ReceiveNetwork =
       kind: 'address';
       addrKey: 'btc' | 'eth' | 'sol';
       coingeckoId: string;
+      /**
+       * Local art key, when the network's own mark is not the native coin's.
+       * Arc's native coin IS USDC, so pricing must keep `coingeckoId:
+       * 'usd-coin'` — but drawing the USDC disc for the NETWORK made Arc
+       * indistinguishable from a USDC balance.
+       */
+      iconKey?: string;
       symbol: string;
       colorHex: string;
       uriScheme: string;
@@ -26,6 +33,7 @@ export type ReceiveNetwork =
 export const RECEIVE_NETWORKS: ReceiveNetwork[] = [
   { key: 'mercury', name: 'Mercury', kind: 'username' },
   { key: 'bitcoin', name: 'Bitcoin', kind: 'address', addrKey: 'btc', coingeckoId: 'bitcoin', symbol: 'BTC', colorHex: '#FF991A', uriScheme: 'bitcoin' },
+  { key: 'arc', name: 'Arc', kind: 'address', addrKey: 'eth', coingeckoId: 'usd-coin', iconKey: 'arc', symbol: 'USDC', colorHex: '#1B3158', uriScheme: 'ethereum', chainIds: { testnet: 5042002n } },
   { key: 'ethereum', name: 'Ethereum', kind: 'address', addrKey: 'eth', coingeckoId: 'ethereum', symbol: 'ETH', colorHex: '#25292E', uriScheme: 'ethereum', chainIds: { mainnet: 1n, testnet: 11155111n } },
   { key: 'arbitrum', name: 'Arbitrum', kind: 'address', addrKey: 'eth', coingeckoId: 'arbitrum', symbol: 'ARB', colorHex: '#28A0F0', uriScheme: 'ethereum', chainIds: { mainnet: 42161n, testnet: 421614n } },
   { key: 'base', name: 'Base', kind: 'address', addrKey: 'eth', coingeckoId: 'base', symbol: 'BASE', colorHex: '#0052FF', uriScheme: 'ethereum', chainIds: { mainnet: 8453n, testnet: 84532n } },
@@ -40,7 +48,6 @@ export const RECEIVE_NETWORKS: ReceiveNetwork[] = [
   // Arc is a stablecoin chain whose NATIVE coin is USDC itself, so it borrows
   // USDC's icon rather than carrying one of its own. Same 0x address as every
   // other EVM network.
-  { key: 'arc', name: 'Arc', kind: 'address', addrKey: 'eth', coingeckoId: 'usd-coin', symbol: 'USDC', colorHex: '#2775CA', uriScheme: 'ethereum', chainIds: { testnet: 5042002n } },
 ];
 
 export function receiveNetwork(key: string): ReceiveNetwork | undefined {
