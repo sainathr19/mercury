@@ -1,17 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { PressableScale, Text, useToast } from '../../src/ui';
+import { Icon, SheetScaffold, Text, useToast } from '../../src/ui';
 import { useMercuryName } from '../../src/stores/mercuryNameStore';
 import { NAME_PARENT, fullName } from '../../src/bridge/mercuryName';
 import { fontFamily } from '../../src/theme/fonts';
 
+/** Enough room for the placeholder before anything is typed. */
+const MIN_INPUT_W = 96;
+
 /** Create / edit the Mercury name — a real ENS subname, free, resolvable by any
- *  wallet or explorer. Live availability as you type; Save signs a claim with
- *  the wallet key and publishes the EVM, Solana and Bitcoin addresses together. */
+ *  wallet or explorer. Live availability as you type; Claim signs with the wallet
+ *  key and publishes the EVM, Solana and Bitcoin addresses together. */
 export default function CreateUsername() {
   const router = useRouter();
   const theme = UnistylesRuntime.getTheme();
@@ -19,11 +20,17 @@ export default function CreateUsername() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const st = useMercuryName();
   const inputRef = useRef<TextInput>(null);
+  // The suffix has to sit immediately after what you type, not at the far edge —
+  // "alice        .mercurywallet.eth" does not read as one name. TextInput has
+  // no intrinsic width, so it is measured from its content and the field grows
+  // with it.
+  const [inputW, setInputW] = useState(0);
   const currentLabel = st.name ? st.name.replace(`.${NAME_PARENT}`, '') : null;
+  const editing = mode === 'edit';
 
   useEffect(() => {
     st.begin();
-    if (mode === 'edit' && currentLabel) st.setInput(currentLabel);
+    if (editing && currentLabel) st.setInput(currentLabel);
     const t = setTimeout(() => inputRef.current?.focus(), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,87 +49,141 @@ export default function CreateUsername() {
     }
   }
 
-  return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{mode === 'edit' ? 'Edit Name' : 'Claim Your Name'}</Text>
-        <Text style={styles.subtitle} color={theme.colors.muted}>
-          A free ENS name under {NAME_PARENT}. Anyone can pay it — on Arc, Base, Solana or Bitcoin.
-        </Text>
-      </View>
+  // One line under the field, and only ever one: the format rule, the taken
+  // reason, a failed check, or the confirmation. "Taken" and "could not check"
+  // are kept apart on purpose — telling someone a name is taken because a
+  // request timed out sends them off to pick a worse one.
+  const status = st.formatError
+    ? { tone: theme.colors.danger, text: st.formatError }
+    : st.status === 'taken'
+      ? { tone: theme.colors.danger, text: st.statusReason ?? 'That name is already taken.' }
+      : st.status === 'unknown'
+        ? { tone: theme.colors.muted, text: 'Could not check that name right now.' }
+        : st.status === 'available'
+          ? { tone: theme.colors.success, text: `${fullName(st.input)} is available.` }
+          : { tone: theme.colors.muted, text: 'Letters, numbers and hyphens. 3–20 characters.' };
 
+  return (
+    <SheetScaffold
+      title={editing ? 'Change your name' : 'Choose a name'}
+      subtitle={`Your name lives under ${NAME_PARENT} and works in any wallet that reads ENS.`}
+      onClose={() => router.back()}
+      scroll={false}
+      cta={{
+        label: st.saving ? 'Claiming…' : editing ? 'Save name' : 'Claim name',
+        onPress: onSave,
+        disabled: !canSave,
+        busy: st.saving,
+      }}
+    >
+      {/* The suffix sits inside the field, so what you are typing reads as part
+          of the finished name rather than as a bare word. */}
       <View style={styles.field}>
         <TextInput
           ref={inputRef}
           value={st.input}
           onChangeText={st.setInput}
-          placeholder="username"
-          placeholderTextColor={theme.colors.muted}
+          placeholder="yourname"
+          placeholderTextColor={theme.colors.faint}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
+          spellCheck={false}
           maxLength={30}
           returnKeyType="done"
           onSubmitEditing={onSave}
-          style={styles.input}
+          onContentSizeChange={(e) => setInputW(e.nativeEvent.contentSize.width)}
+          style={[styles.input, { width: Math.max(MIN_INPUT_W, Math.ceil(inputW) + 2) }]}
         />
-        <Text style={styles.suffix} color={theme.colors.muted}>
+        <Text style={styles.suffix} numberOfLines={1}>
           .{NAME_PARENT}
         </Text>
-        {st.status === 'available' && (
-          <ExpoImage source={require('../../assets/icons/CheckIcon.svg')} style={styles.badge} tintColor={theme.colors.success} contentFit="contain" />
-        )}
-        {st.status === 'taken' && (
-          <ExpoImage source={require('../../assets/icons/AlertIcon.svg')} style={styles.badge} tintColor={theme.colors.danger} contentFit="contain" />
-        )}
+        <View style={styles.grow} />
+        {st.checking && <View style={styles.dotChecking} />}
+        {st.status === 'available' && <Icon name="check" size={17} color={theme.colors.success} />}
+        {st.status === 'taken' && <Icon name="warning" size={17} color={theme.colors.danger} />}
       </View>
 
-      {st.formatError ? (
-        <Text style={styles.helperError} color={theme.colors.danger}>
-          {st.formatError}
-        </Text>
-      ) : st.status === 'taken' ? (
-        <Text style={styles.helperError} color={theme.colors.danger}>
-          {st.statusReason ?? 'That name is taken.'}
-        </Text>
-      ) : st.status === 'unknown' ? (
-        // Not the same as taken, and saying so would send them off to pick a
-        // worse name because a request timed out.
-        <Text style={styles.helperHint} color={theme.colors.muted}>
-          Could not check that name right now.
-        </Text>
-      ) : st.status === 'available' ? (
-        <Text style={styles.helperOk} color={theme.colors.success}>
-          {fullName(st.input)} is yours.
-        </Text>
-      ) : null}
+      <Text style={[styles.status, { color: status.tone }]}>{status.text}</Text>
 
-      <View style={styles.spacer} />
-      <PressableScale style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]} disabled={!canSave} onPress={onSave}>
-        <Text style={styles.saveLabel} color={theme.colors.primaryLabel}>
-          {st.saving ? 'Claiming…' : 'Claim'}
+      <View style={styles.note}>
+        <Icon name="info" size={14} color={theme.colors.muted} />
+        <Text style={styles.noteText}>
+          Claiming writes the name on-chain and cannot be undone. The name is yours, not Mercury's.
         </Text>
-      </PressableScale>
-    </SafeAreaView>
+      </View>
+    </SheetScaffold>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  root: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
-  header: { paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.md },
-  title: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text },
-  subtitle: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, marginTop: 6, lineHeight: 18 },
-  // Name field — grey box, standard 12y/18x padding.
-  field: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: theme.colors.cardBackground, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 18 },
-  suffix: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
-  input: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.medium, fontSize: 15, letterSpacing: -0.3, padding: 0 },
-  badge: { width: 20, height: 20 },
-  helperError: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, marginTop: 8, paddingHorizontal: 4 },
-  helperHint: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, marginTop: 8, paddingHorizontal: 4 },
-  helperHintBold: { fontSize: 13, fontFamily: fontFamily.bold, letterSpacing: -0.26 },
-  helperOk: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, marginTop: 8, paddingHorizontal: 4 },
-  spacer: { flex: 1 },
-  saveBtn: { height: 52, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  saveBtnDisabled: { backgroundColor: theme.colors.muted },
-  saveLabel: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
+  // Clears the sheet's grabber, and gives the close control a row of its own so
+  // it can never sit on top of the subtitle.
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10 },
+  grabSpace: { width: 1, height: 1 },
+  close: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  heading: { gap: 6 },
+  title: { fontFamily: fontFamily.semibold, fontSize: 26, letterSpacing: -0.9, color: theme.colors.text },
+  subtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 15,
+    lineHeight: 21,
+    letterSpacing: -0.24,
+    color: theme.colors.muted,
+  },
+  field: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // No gap: the label and its suffix are one string, visually.
+    gap: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
+    paddingVertical: 15,
+    paddingHorizontal: 16,
+  },
+  // Monospaced: a name is an identifier, and it lines up with how the claimed
+  // name is shown on the Username screen's card.
+  input: {
+    padding: 0,
+    fontFamily: fontFamily.monoRegular,
+    fontSize: 16,
+    color: theme.colors.text,
+  },
+  suffix: { flexShrink: 1, fontFamily: fontFamily.monoRegular, fontSize: 16, color: theme.colors.faint },
+  grow: { flex: 1, minWidth: 8 },
+  dotChecking: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.colors.faint },
+
+  status: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: -0.18,
+    paddingHorizontal: 4,
+  },
+
+  note: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    padding: 13,
+    borderRadius: theme.radius.lg,
+    backgroundColor: 'rgba(11,13,16,0.04)',
+  },
+  noteText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
 }));

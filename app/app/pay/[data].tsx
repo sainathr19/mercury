@@ -24,5 +24,5 @@ export default function Pay() {
   // push: this route is a redirect and must not sit in the back stack.
   return payment
     ? <Redirect href={{ pathname: '/(app)/send', params: { step: 'pick' } }} />
-    : <Redirect href="/(app)/home" />;
+    : <Redirect href="/(app)/(tabs)/wallet" />;
 }

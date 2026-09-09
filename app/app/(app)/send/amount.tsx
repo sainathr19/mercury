@@ -92,12 +92,7 @@ export default function SendAmount() {
       {/* Custom header: back on top, "Enter amount" 24px below it. */}
       <View style={styles.header}>
         <Pressable onPress={goBack} hitSlop={10}>
-          <ExpoImage
-            source={require('../../../assets/icons/arrowLeft.svg')}
-            style={styles.backIcon}
-            tintColor={theme.colors.text}
-            contentFit="contain"
-          />
+          <Icon name="back" size={30} color={theme.colors.text} />
         </Pressable>
         <Text style={styles.pageTitle}>Enter amount</Text>
       </View>
@@ -183,12 +178,12 @@ const styles = StyleSheet.create((theme) => ({
   header: {},
   backIcon: { width: 30, height: 30 },
   // "Enter amount" — matches the other modal titles (18px bold, -2%), 24px below the back icon.
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   // Big amount, centered vertically in the remaining space.
   amountArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
-  bigAmount: { fontSize: 60, fontFamily: fontFamily.bold, letterSpacing: -1.2, textAlign: 'center' },
+  bigAmount: { fontSize: 60, fontFamily: fontFamily.semibold, letterSpacing: -1.2, textAlign: 'center' },
   usdToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.cardBackground, paddingHorizontal: theme.spacing.md, paddingVertical: 8, borderRadius: theme.radius.pill },
-  usdToggleText: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
+  usdToggleText: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
   availRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -204,12 +199,12 @@ const styles = StyleSheet.create((theme) => ({
   availRight: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   // Available row: 15px, "Available" + balance dark medium (symbol grey), MAX bold.
   availLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  availBal: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
-  maxText: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
+  availBal: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
+  maxText: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
   maxBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.pill },
   keypad: { flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center' },
   key: { width: '33.33%', height: 56, alignItems: 'center', justifyContent: 'center' },
-  keyText: { fontSize: 24, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  keyText: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },
   btnDisabled: { opacity: 0.4 },
   insufficientBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,59,48,0.12)', alignItems: 'center', justifyContent: 'center', marginTop: theme.spacing.md, marginBottom: theme.spacing.sm },

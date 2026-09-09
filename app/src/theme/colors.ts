@@ -10,14 +10,14 @@
 // Both palettes MUST expose identical keys (Unistyles theme typing depends on it).
 
 export const lightColors = {
-  appBackground: '#F5F5F5',
+  appBackground: '#ECEEE9',
   cardBackground: '#EAEBEA',
   border: 'rgba(0,0,0,0.10)',
   separator: 'rgba(0,0,0,0.12)',
 
-  text: '#000000',
-  muted: 'rgba(60,60,67,0.60)', // iOS secondaryLabel (light)
-  faint: 'rgba(60,60,67,0.30)',
+  text: '#0B0D10',
+  muted: '#5F646D', // ~5.6:1 on the app ground — readable at 13px
+  faint: '#9AA0A8', // decorative only: dividers, dimmed cents, placeholders
 
   primary: '#000000', // Color.primary surface (button bg)
   primaryLabel: '#FFFFFF', // primaryButtonLabel on top of primary
@@ -50,8 +50,8 @@ export const darkColors: ColorTokens = {
   separator: 'rgba(255,255,255,0.15)',
 
   text: '#FFFFFF',
-  muted: 'rgba(235,235,245,0.60)', // iOS secondaryLabel (dark)
-  faint: 'rgba(235,235,245,0.30)',
+  muted: '#A7ACB5', // the light-theme pairing, inverted
+  faint: '#6B7079',
 
   primary: '#FFFFFF',
   primaryLabel: '#000000',

@@ -28,7 +28,6 @@ import { useDappApproval } from '../src/stores/dappApprovalStore';
 import { LockScreen } from '../src/components/LockScreen';
 import { SendNotice } from '../src/components/SendNotice';
 import { useAuth } from '../src/stores/authStore';
-import { useBackup } from '../src/stores/backupStore';
 import { syncAddressesToHub } from '../src/bridge/hubAddresses';
 import { pollSeamlessReceives, resetSeamlessBaseline } from '../src/bridge/seamless';
 import { walletExists } from '../src/bridge/wallet';
@@ -62,7 +61,6 @@ export default function RootLayout() {
 
   useEffect(() => {
     startNetworkMonitor(); // offline/online connectivity toasts
-    useBackup.getState().hydrateNeedsBackup(); // fast local read → mandatory-backup gate
     hydrateSettings(); // apply saved appearance before first paint of app content
     useAuth.getState().bootstrap(); // silent hub-session refresh; drives the mandatory-sign-in gate
     useTokenPrefs.getState().hydrate(); // hidden-token list, before the first portfolio paint
@@ -255,12 +253,12 @@ export default function RootLayout() {
       // step instead of home).
       const inSetup =
         segments[0] === '(auth)' &&
-        (segments[1] === 'restore' || segments[1] === 'enable-faceid' || segments[1] === 'backup-prompt');
+        (segments[1] === 'enable-faceid' || segments[1] === 'backup');
       // `/pay` is a deep-link landing route that immediately forwards into
       // (app). Without this it is neither inApp nor inSetup, so the guard sent
       // every payment link straight to home and the payment was lost.
       const inPay = segments[0] === 'pay';
-      if (!mnemonic && !inApp && !inSetup && !inPay) router.replace('/(app)/home');
+      if (!mnemonic && !inApp && !inSetup && !inPay) router.replace('/(app)/(tabs)/wallet');
     }
   }, [status, authStatus, mnemonic, segments, router]);
 

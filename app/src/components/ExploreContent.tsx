@@ -200,6 +200,6 @@ const styles = StyleSheet.create((theme) => ({
   fav: { width: 32, height: 32 },
   mid: { flex: 1, gap: 2 },
   // Name on top / link below — both 15px.
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   rowSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
 }));

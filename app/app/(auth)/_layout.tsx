@@ -7,8 +7,6 @@ export default function AuthLayout() {
       <Stack.Screen name="enable-faceid" />
       <Stack.Screen name="backup" />
       <Stack.Screen name="import" />
-      <Stack.Screen name="restore" />
-      <Stack.Screen name="backup-prompt" />
     </Stack>
   );
 }

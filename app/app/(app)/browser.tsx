@@ -128,7 +128,7 @@ export default function Browser() {
     <SafeAreaView style={styles.root} edges={['top']}>
       <View style={styles.bar}>
         <Pressable onPress={() => router.back()} hitSlop={8}>
-          <Icon name="chevronLeft" size={22} color={theme.colors.text} />
+          <Icon name="back" size={22} color={theme.colors.text} />
         </Pressable>
 
         {editing ? (

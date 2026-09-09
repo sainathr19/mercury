@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Text } from '../../src/ui';
+import { Icon, Text } from '../../src/ui';
 import { ActivityRow } from '../../src/components/ActivityRow';
 import { pushOnce } from '../../src/lib/nav';
 import { byRecency } from '../../src/lib/activity-merge';
@@ -56,12 +56,7 @@ export default function Activity() {
       {/* Back arrow on top, then the page title 24px below it (left-aligned). */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
-          <ExpoImage
-            source={require('../../assets/icons/arrowLeft.svg')}
-            style={styles.backIcon}
-            tintColor={theme.colors.text}
-            contentFit="contain"
-          />
+          <Icon name="back" size={30} color={theme.colors.text} />
         </Pressable>
         <Text style={styles.pageTitle}>Activity</Text>
       </View>
@@ -112,7 +107,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   backIcon: { width: 30, height: 30 },
   // Title 24px below the back icon: 18px bold, -2% tracking.
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   // Page scroller: the RefreshControl spinner renders at the top of this view →
   // above the card, outside the box.
   scroll: { flex: 1 },
@@ -134,7 +129,7 @@ const styles = StyleSheet.create((theme) => ({
   // Section header ("Today"/"Yesterday"): 12px y / 18px x padding, bold.
   sectionHeader: {
     fontSize: 15,
-    fontFamily: fontFamily.bold,
+    fontFamily: fontFamily.semibold,
     letterSpacing: -0.3,
     color: theme.colors.text,
     paddingHorizontal: 18,

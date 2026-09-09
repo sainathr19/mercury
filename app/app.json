@@ -11,15 +11,7 @@
       "requireFullScreen": true,
       "bundleIdentifier": "run.mercury.wallet",
       "buildNumber": "2",
-      "icon": "./assets/Mercury.icon",
-      "entitlements": {
-        "com.apple.developer.icloud-container-identifiers": [
-          "iCloud.run.mercury.wallet"
-        ],
-        "com.apple.developer.icloud-services": [
-          "CloudKit"
-        ]
-      }
+      "icon": "./assets/Mercury.icon"
     },
     "android": {
       "package": "run.mercury.wallet",
@@ -56,7 +48,6 @@
       "expo-sharing",
       "./plugins/withoutPush",
       "@react-native-google-signin/google-signin",
-      "expo-apple-authentication",
       "expo-web-browser",
       "expo-localization"
     ],

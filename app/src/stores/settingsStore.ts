@@ -49,8 +49,9 @@ function persist(data: Persisted): void {
 }
 
 export function applyAppearance(appearance: Appearance): void {
-  // The app never follows the system appearance: light is the only base theme.
-  // Dark is applied exclusively by stealth (private) mode via `applyPrivateTheme`.
+  // The app never follows the system appearance. Light is the base theme; dark is
+  // reachable only by the user choosing it in Appearance. (It was previously
+  // forced on by stealth mode, which no longer exists.)
   UnistylesRuntime.setAdaptiveThemes(false);
   UnistylesRuntime.setTheme(appearance === 'dark' ? 'dark' : 'light');
 }
@@ -76,7 +77,9 @@ interface SettingsState {
   // Bumped when the display-currency conversion rate/symbol changes, so money
   // formatted through the pure helpers in lib/format re-renders (see fx subscribe).
   fxTick: number;
-  /** True while stealth (private) mode is on. Global so background pollers can
+  /** Retained only as an always-false guard for the dormant stealth scanner in
+   *  `stealthStore`. Nothing sets it any more — the private-mode UI is gone.
+   *  Was: true while stealth (private) mode is on. Global so background pollers can
    *  gate stealth receive notifications on it (notify only when the user is
    *  actually viewing private mode). */
   privateActive: boolean;
@@ -92,8 +95,6 @@ interface SettingsState {
   onBackground: () => void;
   onForeground: () => void;
   unlock: () => Promise<void>;
-  /** Force the dark palette while private mode is on; restore on exit (iOS parity). */
-  applyPrivateTheme: (on: boolean) => void;
 }
 
 function save(get: () => SettingsState): void {
@@ -224,15 +225,6 @@ export const useSettings = create<SettingsState>((set, get) => ({
     if (auth.reason === 'no-device-auth') {
       set({ isLocked: false, autoLock: 'never' });
       save(get);
-    }
-  },
-  applyPrivateTheme: (on) => {
-    set({ privateActive: on });
-    if (on) {
-      UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme('dark');
-    } else {
-      applyAppearance(get().appearance);
     }
   },
 }));

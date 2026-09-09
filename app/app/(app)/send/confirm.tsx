@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { PressableScale, Text } from '../../../src/ui';
+import { Icon, PressableScale, Text } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { BtcSpeedSheet } from '../../../src/components/BtcSpeedSheet';
 import { useSession } from '../../../src/stores/session';
@@ -441,12 +441,7 @@ export default function SendConfirm() {
       {/* Custom header: back on top, "Review" 24px below it. */}
       <View style={styles.header}>
         <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }} hitSlop={10}>
-          <ExpoImage
-            source={require('../../../assets/icons/arrowLeft.svg')}
-            style={styles.backIcon}
-            tintColor={theme.colors.text}
-            contentFit="contain"
-          />
+          <Icon name="back" size={30} color={theme.colors.text} />
         </Pressable>
         <Text style={styles.pageTitle}>Review</Text>
       </View>
@@ -457,7 +452,7 @@ export default function SendConfirm() {
           <Text style={styles.reviewAmount} numberOfLines={1} adjustsFontSizeToFit>
             {formatCrypto(cryptoAmount)} {asset.symbol}
           </Text>
-          <Text style={styles.reviewUsd} color="#B0B0B0">
+          <Text style={styles.reviewUsd} color="#9AA0A8">
             {formatUsd(cryptoAmount * price)}
           </Text>
         </View>
@@ -509,12 +504,7 @@ export default function SendConfirm() {
             </Text>
             {/* BTC: chevron (UpIcon rotated to point right) opens the speed sheet. */}
             {isBtc && (
-              <ExpoImage
-                source={require('../../../assets/icons/UpIcon.svg')}
-                style={styles.chevron}
-                tintColor={theme.colors.text}
-                contentFit="contain"
-              />
+              <Icon name="chevronRight" size={18} color={theme.colors.text} />
             )}
           </View>
         </Pressable>
@@ -539,12 +529,7 @@ export default function SendConfirm() {
           </Text>
         ) : (
           <View style={styles.btnRow}>
-            <ExpoImage
-              source={require('../../../assets/icons/faceIDIcon.svg')}
-              style={styles.faceId}
-              tintColor={theme.colors.primaryLabel}
-              contentFit="contain"
-            />
+            <Icon name="faceid" size={18} color={theme.colors.primaryLabel} />
             <Text variant="body" color={theme.colors.primaryLabel}>
               Send
             </Text>
@@ -562,22 +547,22 @@ const styles = StyleSheet.create((theme) => ({
   header: {},
   backIcon: { width: 30, height: 30 },
   // "Review" — matches the other modal titles (18px bold, -2%), 24px below back.
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   reviewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: 12 },
   // Sending amount 48px bold; USD 24px bold grey.
-  reviewAmount: { fontSize: 48, fontFamily: fontFamily.bold, letterSpacing: -0.96, color: theme.colors.text },
-  reviewUsd: { fontSize: 24, fontFamily: fontFamily.bold, letterSpacing: -0.48, marginTop: 2 },
+  reviewAmount: { fontSize: 48, fontFamily: fontFamily.semibold, letterSpacing: -0.96, color: theme.colors.text },
+  reviewUsd: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.48, marginTop: 2 },
   // Details card 24px below the amount; rows 12/18, no dividers.
   card: { marginTop: 24, backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  rowLabel: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  rowLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
   rowValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
   rowValueStack: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
   rowSub: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.26, color: theme.colors.muted },
   feeRight: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   // Crypto amount mid grey; fiat cost dark. Both medium weight.
-  feeValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: '#B0B0B0' },
-  feeUsd: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  feeValue: { flexShrink: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: '#9AA0A8' },
+  feeUsd: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   // UpIcon rotated 90° → points right, as a "tap to change" affordance.
   chevron: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
   primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },

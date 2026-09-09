@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text, useToast } from '../../../src/ui';
+import { Icon, PressableScale, Text } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { RECEIVE_NETWORKS, type ReceiveNetwork } from '../../../src/lib/receiveNetworks';
 import { fontFamily } from '../../../src/theme/fonts';
@@ -20,7 +20,7 @@ const CLUSTER = [
 
 /**
  * "Add Funds" — one sheet that grows (mirrors Send). Opens at the medium detent
- * on the Cash App / Crypto chooser; tapping Crypto raises the detent to [1.0]
+ * on the Request / Crypto chooser; tapping Crypto raises the detent to [1.0]
  * and shows "Choose Network" (with a back arrow, like Send's Choose Assets).
  * Picking a network PUSHES the address screen (so swipe-back returns here).
  */
@@ -28,7 +28,6 @@ export default function AddFunds() {
   const theme = UnistylesRuntime.getTheme();
   const navigation = useNavigation();
   const router = useRouter();
-  const show = useToast((s) => s.show);
   const screenH = UnistylesRuntime.screen.height;
 
   const [step, setStep] = useState<'choose' | 'network'>('choose');
@@ -60,17 +59,6 @@ export default function AddFunds() {
       <View style={styles.sheet}>
         <Text style={styles.title}>Add Funds</Text>
         <View style={styles.rows}>
-          <PressableScale style={styles.row} onPress={() => { tap(); show('Cash App transfers are coming soon.', 'info'); }}>
-            <View style={[styles.iconWrap, { backgroundColor: '#00D632' }]}>
-              <ExpoImage source={require('../../../assets/icons/CashAppIcon.svg')} style={styles.cashIcon} tintColor="#FFFFFF" contentFit="contain" />
-            </View>
-            <View style={styles.mid}>
-              <Text style={styles.rowTitle}>Cash App</Text>
-              <Text style={styles.rowSub}>Transfer from Cash App</Text>
-            </View>
-            <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
-          </PressableScale>
-
           {/* Ask for a specific amount. The wallet could only push money before
               this; a payments product with no way to request it is half a
               product. */}
@@ -82,7 +70,7 @@ export default function AddFunds() {
               <Text style={styles.rowTitle}>Request</Text>
               <Text style={styles.rowSub}>Ask for an amount in USDC or EURC</Text>
             </View>
-            <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
+            <Icon name="chevronRight" size={18} color={theme.colors.muted} />
           </PressableScale>
 
           <PressableScale style={styles.row} onPress={chooseCrypto}>
@@ -100,7 +88,7 @@ export default function AddFunds() {
                 </View>
               ))}
             </View>
-            <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
+            <Icon name="chevronRight" size={18} color={theme.colors.muted} />
           </PressableScale>
         </View>
       </View>
@@ -113,7 +101,7 @@ export default function AddFunds() {
       <ScrollView contentContainerStyle={styles.content} contentInsetAdjustmentBehavior="never">
         <View style={styles.header}>
           <Pressable onPress={back} hitSlop={10}>
-            <ExpoImage source={require('../../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
+            <Icon name="back" size={30} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.pageTitle}>Choose Network</Text>
         </View>
@@ -122,12 +110,12 @@ export default function AddFunds() {
           {RECEIVE_NETWORKS.map((n) => (
             <Pressable key={n.key} style={styles.netRow} onPress={() => selectNetwork(n)}>
               {n.kind === 'username' ? (
-                <ExpoImage source={require('../../../assets/icons/MercuryIcon.svg')} style={styles.brandIcon} contentFit="contain" />
+                <Icon name="mercury" size={40} />
               ) : (
                 <CryptoIcon coingeckoId={n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={40} />
               )}
               <Text style={styles.netName}>{n.name}</Text>
-              <ExpoImage source={require('../../../assets/icons/UpIcon.svg')} style={styles.chev} tintColor={theme.colors.muted} contentFit="contain" />
+              <Icon name="chevronRight" size={18} color={theme.colors.muted} />
             </Pressable>
           ))}
         </View>
@@ -139,7 +127,7 @@ export default function AddFunds() {
 const styles = StyleSheet.create((theme) => ({
   // --- Add Funds chooser (medium detent) ---
   sheet: { paddingHorizontal: theme.spacing.screen, paddingTop: 40, paddingBottom: theme.spacing.lg },
-  title: { fontSize: 24, fontFamily: fontFamily.bold, letterSpacing: -0.5, color: theme.colors.text, paddingBottom: 18 },
+  title: { fontSize: 24, fontFamily: fontFamily.semibold, letterSpacing: -0.5, color: theme.colors.text, paddingBottom: 18 },
   rows: { gap: 12 },
   row: {
     flexDirection: 'row',
@@ -158,9 +146,8 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cashIcon: { width: 14, height: 21 },
   mid: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   rowSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
   cluster: { flexDirection: 'row', alignItems: 'center' },
   clusterRing: {
@@ -182,7 +169,7 @@ const styles = StyleSheet.create((theme) => ({
   content: { paddingBottom: 40 },
   header: { paddingHorizontal: theme.spacing.screen, paddingTop: 40 },
   backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   listCard: {
     marginHorizontal: theme.spacing.screen,
     marginTop: theme.spacing.md,
@@ -191,7 +178,6 @@ const styles = StyleSheet.create((theme) => ({
     overflow: 'hidden',
   },
   netRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  netName: { flex: 1, fontSize: 17, fontFamily: fontFamily.bold, letterSpacing: -0.34, color: theme.colors.text },
+  netName: { flex: 1, fontSize: 17, fontFamily: fontFamily.semibold, letterSpacing: -0.34, color: theme.colors.text },
   brandIcon: { width: 40, height: 40, borderRadius: 20 },
-  lnIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(247,147,26,0.12)' },
 }));

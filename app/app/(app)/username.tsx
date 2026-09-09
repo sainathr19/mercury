@@ -1,107 +1,209 @@
-import { Pressable, View } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { PressableScale, Text } from '../../src/ui';
+import { Icon, PressableScale, Text, type IconName } from '../../src/ui';
 import { useMercuryName } from '../../src/stores/mercuryNameStore';
 import { fontFamily } from '../../src/theme/fonts';
 
-const BENEFITS = [
+const PARENT = 'mercurywallet.eth';
+
+/** What the name buys you. Rewritten to say what it DOES rather than what it is
+ *  — "a real ENS name" means nothing to someone who has not met ENS. */
+const BENEFITS: { icon: IconName; title: string; sub: string }[] = [
   {
-    icon: require('../../assets/icons/WorldIconRounded.svg'),
-    title: 'One name, every chain',
-    sub: 'Your Arc, Base, Solana and Bitcoin addresses all under one name.',
+    icon: 'name',
+    title: 'People pay the name, not the address',
+    sub: 'No 42 characters to read out, and nothing to mistype.',
   },
   {
-    icon: require('../../assets/icons/ShieldIconRounded.svg'),
-    title: 'A real ENS name, free',
-    sub: 'Any wallet or explorer can resolve it. Costs nothing and no gas.',
+    icon: 'globe',
+    title: 'Works outside Mercury',
+    sub: 'Any wallet or explorer that speaks ENS can find you by it.',
   },
   {
-    icon: require('../../assets/icons/KeyIconRounded.svg'),
+    icon: 'key',
     title: 'Only your key can claim it',
-    sub: 'No account and no sign-in — your wallet signs for itself.',
+    sub: 'No account, no email, no sign-in. Your wallet signs for itself.',
   },
 ];
 
-/** The Mercury name. Unset → what it is for, plus "Claim your name". Set →
- *  shows the full ENS name with an edit button. */
+/**
+ * The Mercury name.
+ *
+ * The name is presented as a card rather than a text field, because it is the
+ * thing you hand to someone — the same object whether it is claimed or not. When
+ * unclaimed the card is shown greyed with a placeholder, so the reward is
+ * visible before the work.
+ */
 export default function Username() {
   const router = useRouter();
   const theme = UnistylesRuntime.getTheme();
   const handle = useMercuryName((s) => s.name);
+  const claimed = !!handle;
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <ExpoImage source={require('../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
-        </Pressable>
-        <Text style={styles.title}>Your Name</Text>
-      </View>
+    <SafeAreaView style={styles.root} edges={['bottom']}>
+      <View style={styles.body}>
+        <View style={styles.heading}>
+          <Text style={styles.title}>{claimed ? 'Your name' : 'Claim your name'}</Text>
+          <Text style={styles.subtitle}>
+            {claimed
+              ? 'This is what people type to pay you. It resolves to every address this wallet holds.'
+              : 'Pick a name once. It becomes the address people use to pay you, everywhere.'}
+          </Text>
+        </View>
 
-      {handle ? (
-        <>
-          <View style={styles.field}>
-            <Text style={styles.fieldText}>{handle}</Text>
+        {/* The card. Dark and monospaced, so the name reads as an identifier you
+            would write down rather than as a form value. */}
+        <View style={[styles.card, !claimed && styles.cardEmpty]}>
+          <View style={styles.cardTop}>
+            <Icon name="mercury" size={18} color={claimed ? '#ECEEE9' : theme.colors.faint} />
+            <View style={[styles.tag, !claimed && styles.tagEmpty]}>
+              <Text style={[styles.tagText, !claimed && styles.tagTextEmpty]}>
+                {claimed ? 'Active' : 'Not claimed'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.spacer} />
-          <PressableScale style={styles.primaryBtn} onPress={() => router.push({ pathname: '/(app)/username-create', params: { mode: 'edit' } })}>
-            <Text style={styles.primaryLabel}>Edit name</Text>
-          </PressableScale>
-        </>
-      ) : (
-        <>
-          <View style={styles.card}>
+
+          <Text style={[styles.name, !claimed && styles.nameEmpty]} numberOfLines={2}>
+            {claimed ? handle : 'yourname'}
+            <Text style={[styles.nameParent, !claimed && styles.nameEmpty]}>.{PARENT}</Text>
+          </Text>
+
+          <View style={styles.cardMeta}>
+            <Text style={[styles.metaText, !claimed && styles.metaEmpty]}>ENS · SEPOLIA</Text>
+            <Text style={[styles.metaText, !claimed && styles.metaEmpty]}>YOURS TO KEEP</Text>
+          </View>
+        </View>
+
+        {!claimed && (
+          <View style={styles.benefits}>
             {BENEFITS.map((b) => (
               <View key={b.title} style={styles.benefit}>
+                <View style={styles.tile}>
+                  <Icon name={b.icon} size={15} color={theme.colors.text} />
+                </View>
                 <View style={styles.benefitMid}>
                   <Text style={styles.benefitTitle}>{b.title}</Text>
                   <Text style={styles.benefitSub}>{b.sub}</Text>
                 </View>
-                <ExpoImage source={b.icon} style={styles.benefitIcon} contentFit="contain" />
               </View>
             ))}
           </View>
+        )}
+      </View>
 
-          <View style={styles.spacer} />
-          <PressableScale style={styles.primaryBtn} onPress={() => router.push('/(app)/username-create')}>
-            <Text style={styles.primaryLabel}>Claim your name</Text>
-          </PressableScale>
-        </>
-      )}
+      <PressableScale
+        style={styles.cta}
+        onPress={() =>
+          router.push(
+            claimed
+              ? { pathname: '/(app)/username-create', params: { mode: 'edit' } }
+              : '/(app)/username-create',
+          )
+        }
+      >
+        <Text style={styles.ctaLabel}>{claimed ? 'Change name' : 'Choose a name'}</Text>
+      </PressableScale>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  root: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
-  header: { paddingTop: theme.spacing.md },
-  backBtn: { width: 30, height: 30 },
-  backIcon: { width: 30, height: 30 },
-  // "Username" — 18px bold, -2%, 24px below the back arrow.
-  title: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  root: { flex: 1, backgroundColor: theme.colors.appBackground, paddingHorizontal: theme.spacing.screen },
 
-  // Benefits card (unset state).
-  card: { marginTop: theme.spacing.lg, backgroundColor: theme.colors.cardBackground, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 18 },
-  benefit: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingVertical: 12 },
-  benefitMid: { flex: 1, gap: 2 },
-  benefitTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  benefitSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
-  benefitIcon: { width: 32, height: 32 },
-
-  // Set state — read-only handle field.
-  field: {
-    marginTop: theme.spacing.lg,
-    backgroundColor: theme.colors.cardBackground,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+  body: { flex: 1, gap: 20, paddingTop: 4 },
+  heading: { gap: 6 },
+  title: { fontFamily: fontFamily.semibold, fontSize: 26, letterSpacing: -0.9, color: theme.colors.text },
+  subtitle: {
+    fontFamily: fontFamily.medium,
+    fontSize: 15,
+    lineHeight: 21,
+    letterSpacing: -0.24,
+    color: theme.colors.muted,
   },
-  fieldText: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
 
-  spacer: { flex: 1 },
-  primaryBtn: { height: 52, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  primaryLabel: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.primaryLabel },
+  card: {
+    backgroundColor: '#0B0D10',
+    borderRadius: 22,
+    padding: 18,
+    gap: 16,
+  },
+  // Unclaimed: the same object, drained of colour. It is a preview, not a
+  // disabled control.
+  cardEmpty: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.08)',
+    borderStyle: 'dashed',
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tag: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(236,238,233,0.14)',
+  },
+  tagEmpty: { backgroundColor: '#ECEEE9' },
+  tagText: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: '#ECEEE9',
+  },
+  tagTextEmpty: { color: theme.colors.muted },
+
+  // Monospaced, and the parent domain steps back — the label the user chose is
+  // the part that matters, the suffix is fixed.
+  name: { fontFamily: fontFamily.monoRegular, fontSize: 20, lineHeight: 26, color: '#ECEEE9' },
+  nameParent: { color: 'rgba(236,238,233,0.45)' },
+  nameEmpty: { color: theme.colors.faint },
+
+  cardMeta: { flexDirection: 'row', justifyContent: 'space-between' },
+  metaText: {
+    fontFamily: fontFamily.monoRegular,
+    fontSize: 9.5,
+    letterSpacing: 0.6,
+    color: 'rgba(236,238,233,0.45)',
+  },
+  metaEmpty: { color: theme.colors.faint },
+
+  benefits: { gap: 4 },
+  benefit: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 8 },
+  tile: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(11,13,16,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  benefitMid: { flex: 1, gap: 2 },
+  benefitTitle: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.text },
+  benefitSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
+
+  cta: {
+    height: 54,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  ctaLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 16,
+    letterSpacing: -0.32,
+    color: theme.colors.primaryLabel,
+  },
 }));

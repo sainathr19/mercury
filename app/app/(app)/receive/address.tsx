@@ -96,7 +96,7 @@ export default function ReceiveAddress() {
     <View style={styles.root}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
-          <ExpoImage source={require('../../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
+          <Icon name="back" size={30} color={theme.colors.text} />
         </Pressable>
         <Text style={styles.pageTitle}>Receive</Text>
       </View>
@@ -193,7 +193,7 @@ const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.xl },
   header: { paddingTop: 40 },
   backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   body: { marginTop: theme.spacing.md },
   qrCard: {
     alignSelf: 'center',

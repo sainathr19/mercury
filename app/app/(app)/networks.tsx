@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, Switch, TextInput, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Button, Card, Field, Icon, Text, useToast } from '../../src/ui';
+import { Button, Card, Field, Icon, Text, useToast, ScreenScaffold } from '../../src/ui';
 import { useSession } from '../../src/stores/session';
 import { useNetworks } from '../../src/stores/networkStore';
 import { STEALTH_RELAY_URL } from '../../src/bridge/hubConfig';
@@ -58,14 +58,10 @@ export default function Networks() {
   }
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Icon name="chevronLeft" size={24} color={theme.colors.text} />
-        </Pressable>
-        <Text variant="headline">Networks</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <ScreenScaffold
+      title="Networks"
+      subtitle="The endpoints Mercury reads balances from and broadcasts through."
+    >
 
       <ScrollView contentContainerStyle={styles.content}>
         <Section title="Environment">
@@ -169,7 +165,7 @@ export default function Networks() {
           onAdd={(cfg) => setChains((cs) => (cs.some((c) => c.chainId === cfg.chainId) ? cs : [...cs, cfg]))}
         />
       )}
-    </SafeAreaView>
+    </ScreenScaffold>
   );
 }
 
@@ -402,7 +398,7 @@ const styles = StyleSheet.create((theme) => ({
   content: { padding: theme.spacing.lg, gap: theme.spacing.md, paddingBottom: 80 },
   sectionLabel: { letterSpacing: 0.5 },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md },
-  divider: { borderTopWidth: 1, borderTopColor: theme.colors.border },
+  divider: { borderTopWidth: 1, borderTopColor: 'rgba(11,13,16,0.06)' },
   mid: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   note: { paddingHorizontal: 4 },

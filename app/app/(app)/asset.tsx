@@ -138,7 +138,7 @@ export default function AssetDetail() {
               fitWidth={UnistylesRuntime.screen.width - theme.spacing.screen * 2}
               letterSpacing={-1.2}
               wholeColor="#0B0D10"
-              fractionColor="#B0B0B0"
+              fractionColor="#9AA0A8"
             />
           </View>
           <View style={styles.metaRow}>
@@ -236,7 +236,7 @@ function Header({ onBack }: { onBack: () => void }) {
   return (
     <View style={styles.header}>
       <Pressable onPress={onBack} hitSlop={12} style={styles.backBtn}>
-        <ExpoImage source={require('../../assets/icons/arrowLeft.svg')} style={styles.backIcon} tintColor={theme.colors.text} contentFit="contain" />
+        <Icon name="back" size={30} color={theme.colors.text} />
       </Pressable>
     </View>
   );
@@ -320,13 +320,13 @@ const styles = StyleSheet.create((theme) => ({
   center: { textAlign: 'center', paddingVertical: theme.spacing.xl },
   hero: { },
   // Asset name — 18px Bold, -2% tracking, dark.
-  assetName: { fontFamily: fontFamily.bold, fontSize: 18, letterSpacing: -0.36, color: '#0B0D10' },
+  assetName: { fontFamily: fontFamily.semibold, fontSize: 18, letterSpacing: -0.36, color: '#0B0D10' },
   // 6px below the name.
   bigNumber: { marginTop: 6 },
   // % change (left) + range chips (right); 12px below the big number.
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
   changeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: PILL_H },
-  changeText: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36 },
+  changeText: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36 },
   flip: { transform: [{ rotate: '180deg' }] },
   // Range chips: labels 24px apart, height matches the sliding pill (no shift).
   // The wrapper's right padding gives the "All" pill room to overflow into.
@@ -340,7 +340,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.cardBackground,
   },
-  chipLabel: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3 },
+  chipLabel: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
   chart: { paddingVertical: theme.spacing.sm },
   // Pay takes the remaining width; the three circle actions are fixed 48×48.
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -350,10 +350,10 @@ const styles = StyleSheet.create((theme) => ({
   miniCard: { flex: 1, height: 120, justifyContent: 'space-between', backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, padding: theme.spacing.md },
   miniTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   // Value / Balance card: 15px Bold title, 21px value below.
-  cardTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
-  cardValue: { fontSize: 21, fontFamily: fontFamily.bold, letterSpacing: -0.42, color: theme.colors.text },
+  cardTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
+  cardValue: { fontSize: 21, fontFamily: fontFamily.medium, letterSpacing: -0.42, color: theme.colors.text },
   returnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 56, paddingHorizontal: theme.spacing.md, backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md },
   activityCard: { backgroundColor: theme.colors.cardBackground, borderRadius: theme.radius.md, padding: theme.spacing.md },
   // Match the home section headers ("Your Assets" / "Recent Activity").
-  activityTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, lineHeight: 24, marginBottom: 12 },
+  activityTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, lineHeight: 24, marginBottom: 12 },
 }));

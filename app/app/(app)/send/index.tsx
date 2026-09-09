@@ -51,14 +51,10 @@ export default function SendFlow() {
   const screenH = UnistylesRuntime.screen.height;
 
   const isPrivate = params.private === '1';
-  const startOnPick = params.step === 'pick';
-  // Stealth mode skips the shield/spend chooser entirely (opens straight on the
-  // fund picker), so back from the picker must EXIT the flow — not reveal a
-  // chooser the user never saw. Only a real chooser-first open sets this true.
-  const cameFromChooser = useRef(!startOnPick && !isPrivate).current;
-  // Stealth (private) mode has no shield/spend chooser — Send is always "spend
-  // received funds", so open straight into the fund picker.
-  const [step, setStep] = useState<'choose' | 'pick'>(startOnPick || isPrivate ? 'pick' : 'choose');
+  // There is no Shield/Send chooser any more: Shield was the private path, and
+  // private sends are gone, which left a "chooser" with one option on it. Send
+  // now opens straight on the fund picker, and Back from there exits the flow.
+  const [step] = useState<'pick'>('pick');
 
   const { assets, market } = usePortfolio();
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
@@ -105,12 +101,11 @@ export default function SendFlow() {
     const pay = scanned ? parsePayment(scanned) : null;
     const seed = pay?.address ?? '';
     reset(seed);
-    // Preload the user's own stealth meta-address so Shield can skip the address
-    // step and shield straight to it; also refresh received funds for Spend.
-    useStealth.getState().load().then(() => useStealth.getState().scanNow());
-    // Stealth Send skips the chooser → seed the spend flow directly.
-    if (isPrivate) patch({ shield: false, privateFlow: 'spend' });
-    if (startOnPick || isPrivate) navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
+    // Every send is a plain public transfer now.
+    patch({ shield: false, privateFlow: null });
+    // Straight to full height: the picker needs it, and there is no short
+    // chooser step to size the sheet down for any more.
+    navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
     // A scanned PLAIN chain address (not a stealth meta) skips Choose Asset — see
     // the auto-pick effect. Stealth metas keep the chooser (they fund many assets).
     if (!isPrivate && isScanToPay(pay)) scanPay.current = pay;
@@ -161,27 +156,13 @@ export default function SendFlow() {
     }
   }, [assets, patch, router]);
 
-  // Every option leads into the SAME steps (pick → address → amount → review).
-  // `shield` routes the address step + send to the private path; `privateFlow`
-  // distinguishes paying someone privately vs spending received funds.
-  function startFlow(next: { shield: boolean; privateFlow: PrivateFlow }) {
-    posthog.capture('send_type_selected', {
-      send_type: next.privateFlow ?? (next.shield ? 'shield' : 'send'),
-    });
-    patch({ shield: next.shield, privateFlow: next.privateFlow });
-    setStep('pick');
-    navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
-  }
+  /** Back from the fund picker closes the whole sheet — the picker is the first
+   *  step now, so there is nothing behind it to return to. */
   function back() {
     tap();
-    if (cameFromChooser) {
-      setStep('choose');
-      navigation.getParent()?.setOptions({ sheetAllowedDetents: [0.5] });
-    } else {
-      const parent = navigation.getParent();
-      if (parent) parent.goBack();
-      else router.back();
-    }
+    const parent = navigation.getParent();
+    if (parent) parent.goBack();
+    else router.back();
   }
 
   // Assets the wallet holds, grouped by chain and sorted by value. In private
@@ -341,51 +322,6 @@ export default function SendFlow() {
     );
   }
 
-  if (step === 'choose') {
-    return (
-      <View>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.sheet}>
-          <Text variant="headline" style={styles.chooseHeader}>
-            {isPrivate ? 'Send privately' : 'Send Funds'}
-          </Text>
-          <View style={styles.rows}>
-            {isPrivate ? (
-              <>
-                <ChooseRow
-                  icon="shield"
-                  title="Shield funds"
-                  subtitle="From your mainnet wallet to a stealth address or @username"
-                  onPress={() => startFlow({ shield: true, privateFlow: 'pay' })}
-                />
-                <ChooseRow
-                  icon="send"
-                  title="Spend"
-                  subtitle="Spend funds you received privately"
-                  onPress={() => startFlow({ shield: false, privateFlow: 'spend' })}
-                />
-              </>
-            ) : (
-              <>
-                <ChooseRow
-                  icon="shield"
-                  title="Shield"
-                  subtitle="Send privately to a stealth address"
-                  onPress={() => startFlow({ shield: true, privateFlow: null })}
-                />
-                <ChooseRow
-                  icon="send"
-                  title="Send"
-                  subtitle="Transfer to any address"
-                  onPress={() => startFlow({ shield: false, privateFlow: null })}
-                />
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-    );
-  }
 
   const isSpendPick = isPrivate || privateFlow === 'spend';
 
@@ -401,12 +337,7 @@ export default function SendFlow() {
         {/* Back on top, title 24px below it. */}
         <View style={styles.header}>
           <Pressable onPress={back} hitSlop={10}>
-            <ExpoImage
-              source={require('../../../assets/icons/arrowLeft.svg')}
-              style={styles.backIcon}
-              tintColor={theme.colors.text}
-              contentFit="contain"
-            />
+            <Icon name="back" size={30} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.pageTitle}>{isSpendPick ? 'Select funds' : 'Choose Assets'}</Text>
         </View>
@@ -523,12 +454,7 @@ function ChooseRow({
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSub}>{subtitle}</Text>
       </View>
-      <ExpoImage
-        source={require('../../../assets/icons/UpIcon.svg')}
-        style={styles.chev}
-        tintColor={theme.colors.muted}
-        contentFit="contain"
-      />
+      <Icon name="chevronRight" size={18} color={theme.colors.muted} />
     </PressableScale>
   );
 }
@@ -561,7 +487,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
   },
   mid: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  rowTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   rowSub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
   chev: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
 
@@ -569,7 +495,7 @@ const styles = StyleSheet.create((theme) => ({
   content: { paddingBottom: 40 },
   header: { paddingHorizontal: theme.spacing.screen, paddingTop: 40 },
   backIcon: { width: 30, height: 30 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text, marginTop: 24 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -581,7 +507,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 12,
     paddingHorizontal: 18,
   },
-  search: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.medium, fontSize: 15, letterSpacing: -0.3, padding: 0 },
+  search: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, padding: 0 },
   chipsScroll: { marginTop: 12 },
   chipsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.spacing.screen },
   chip: {
@@ -591,7 +517,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.cardBackground,
   },
   chipOn: { backgroundColor: theme.colors.primary },
-  chipText: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3 },
+  chipText: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3 },
   listCard: {
     marginHorizontal: theme.spacing.screen,
     marginTop: 12,
@@ -601,7 +527,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   assetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 12 },
   assetMid: { flex: 1, gap: 0 },
-  assetName: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  assetName: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   assetBalance: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
   empty: { textAlign: 'center', paddingVertical: theme.spacing.xxl },
   resolving: { height: 220, alignItems: 'center', justifyContent: 'center' },

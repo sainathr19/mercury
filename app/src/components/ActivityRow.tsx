@@ -124,9 +124,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   mid: { flex: 1, gap: 0 },
   end: { alignItems: 'flex-end', gap: 0 },
-  title: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text },
+  title: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   // Right-column top value: medium weight (not bold) but still dark.
-  endTop: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  endTop: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   sub: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
   subFailed: { color: theme.colors.danger },
 }));

@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import * as Haptics from 'expo-haptics';
 
-// 'sent'/'received' → green + check, 'error' → red + alert, 'online' → blue, no
-// icon (used for the "back online" connectivity toast).
+// Tone of a notice. All four share one dark surface; SendNotice maps each to an
+// accent colour and a glyph ('online' is the "back online" connectivity notice).
 export type SendNoticeKind = 'sent' | 'received' | 'error' | 'online';
 
 export interface SendNoticeData {
@@ -10,6 +10,8 @@ export interface SendNoticeData {
   message: string;
   /** Bumped every show() so the pill re-mounts and its entrance animation replays. */
   id: number;
+  /** How long this notice stays up, in ms — or null when sticky. */
+  duration: number | null;
 }
 
 interface SendNoticeState {
@@ -64,12 +66,15 @@ export const useSendNotice = create<SendNoticeState>((set) => ({
     seq += 1;
     const fallback =
       kind === 'sent' ? 'Sent' : kind === 'received' ? 'Received' : kind === 'online' ? 'Back online' : 'Something went wrong';
-    set({ notice: { kind, message: message ?? fallback, id: seq } });
+    // Errors get longer: they are usually a sentence to read and act on, not an
+    // acknowledgement to glance at.
+    const duration = sticky ? null : kind === 'error' ? 4200 : 2800;
+    set({ notice: { kind, message: message ?? fallback, id: seq, duration } });
     // Every notice gets a tone-appropriate haptic, fired here so all callers
     // (toasts, connectivity, send results) are covered in one place.
     sendResultHaptic(kind);
     // Sticky notices persist until explicitly cleared or replaced by another.
-    if (!sticky) timer = setTimeout(() => set({ notice: null }), kind === 'error' ? 3400 : 2600);
+    if (duration !== null) timer = setTimeout(() => set({ notice: null }), duration);
   },
   clear: () => {
     if (timer) clearTimeout(timer);

@@ -29,5 +29,5 @@ export function pushOnce(href: Parameters<typeof router.push>[0]): void {
  */
 export function dismiss(router: ReturnType<typeof useRouter>): void {
   if (router.canGoBack()) router.back();
-  else router.replace('/(app)/home');
+  else router.replace('/(app)/(tabs)/wallet');
 }

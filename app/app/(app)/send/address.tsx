@@ -48,16 +48,11 @@ export default function SendAddress() {
   const isUsername = trimmed.startsWith('@');
   const handle = isUsername ? trimmed.slice(1).toLowerCase() : '';
 
-  // Header verb + input placeholder per flow.
-  const flowLabel = privateFlow === 'pay' ? 'Pay' : privateFlow === 'spend' ? 'Send' : shield ? 'Shield' : 'Send';
-  const inputPlaceholder =
-    privateFlow === 'pay'
-      ? 'Stealth address or @username'
-      : privateFlow === 'spend'
-        ? 'Address, stealth address, or @username'
-        : shield
-          ? 'Enter private address'
-          : 'Enter address or username';
+  // One verb and one placeholder: every send is a plain public transfer now, and
+  // the private flows that needed the other wordings are gone. Paying a NAME is
+  // the product's whole pitch, so the placeholder leads with it.
+  const flowLabel = 'Send';
+  const inputPlaceholder = 'Enter a name or address';
 
   // An @username resolves to the recipient's stealth meta-address, so a
   // username send is a private (shield) send. Resolve it (debounced) at the hub.
@@ -246,12 +241,7 @@ export default function SendAddress() {
           its right, 24px below the back icon. */}
       <View style={styles.header}>
         <Pressable onPress={() => { tap(); router.back(); }} hitSlop={10}>
-          <ExpoImage
-            source={require('../../../assets/icons/arrowLeft.svg')}
-            style={styles.backIcon}
-            tintColor={theme.colors.text}
-            contentFit="contain"
-          />
+          <Icon name="back" size={30} color={theme.colors.text} />
         </Pressable>
         <View style={styles.titleRow}>
           <Text style={styles.pageTitle}>{flowLabel} {asset.symbol}</Text>
@@ -360,7 +350,7 @@ const styles = StyleSheet.create((theme) => ({
   header: {},
   backIcon: { width: 30, height: 30 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24 },
-  pageTitle: { fontSize: 18, fontFamily: fontFamily.bold, letterSpacing: -0.36, color: theme.colors.text },
+  pageTitle: { fontSize: 18, fontFamily: fontFamily.semibold, letterSpacing: -0.36, color: theme.colors.text },
   // Grey box, 12px radius, 12/18 padding. The check is sized to the text line
   // (19px) so it doesn't grow the row / shift the layout when it appears.
   inputWrap: {
@@ -373,7 +363,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 12,
     paddingHorizontal: 18,
   },
-  input: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.medium, fontSize: 15, letterSpacing: -0.3, padding: 0 },
+  input: { flex: 1, color: theme.colors.text, fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, padding: 0 },
   checkBadge: { width: 19, height: 19, borderRadius: 9.5, backgroundColor: theme.colors.success, alignItems: 'center', justifyContent: 'center' },
   // Fixed (compact) height so an error/hint never shifts the layout — it appears in place.
   statusRow: { minHeight: 16, marginTop: 4, paddingHorizontal: 18, justifyContent: 'center' },
@@ -383,9 +373,9 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.radius.md,
     overflow: 'hidden',
   },
-  recentTitle: { fontSize: 15, fontFamily: fontFamily.bold, letterSpacing: -0.3, color: theme.colors.text, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4 },
+  recentTitle: { fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 4 },
   recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 18, paddingVertical: 12 },
-  recentAddr: { flex: 1, fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.text },
+  recentAddr: { flex: 1, fontSize: 15, fontFamily: fontFamily.semibold, letterSpacing: -0.3, color: theme.colors.text },
   recentTime: { fontSize: 15, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted },
   spacer: { flex: 1 },
   primaryBtn: { height: 48, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
