@@ -158,7 +158,7 @@ export function WalletDashboard() {
   const actions: Action[] = [
     { key: 'send', label: 'Send', icon: 'arrowUpRight', onPress: () => router.push('/(app)/send') },
     { key: 'receive', label: 'Receive', icon: 'arrowDownLeft', onPress: () => router.push('/(app)/receive') },
-    { key: 'swap', label: 'Swap', icon: 'swap', accent: 'mint', onPress: () => router.push('/(app)/swap') },
+    { key: 'swap', label: 'Swap', icon: 'swap', accent: 'mint', onPress: () => router.push('/(app)/swaps') },
     { key: 'scan', label: 'Scan a code', icon: 'scan', accent: 'lilac', onPress: () => pushOnce('/(app)/scan') },
   ];
 

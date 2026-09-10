@@ -6,6 +6,17 @@ import { useUnistyles } from 'react-native-unistyles';
 const PUSHED_ROUTES = [
   'recovery',
   'tokens',
+  // Cross-chain swaps (Flashnet Orchestra). Pushed PAGES, not a sheet: an order
+  // takes minutes and outlives the screen that started it, so the history is a
+  // section of a page you navigate back to.
+  //
+  // Registered as two SIBLINGS, with no `swaps/_layout.tsx` between them. A
+  // nested stack gave the composer TWO headers — the parent's, carrying the
+  // back chevron, plus the nested one, empty but still occupying its full
+  // height — which is where the dead band above the title came from. Flat,
+  // each screen has exactly one.
+  'swaps/index',
+  'swaps/order',
   'networks',
   'wc-sessions',
   'username',
