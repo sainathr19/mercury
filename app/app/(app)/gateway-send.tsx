@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { dismiss } from '../../src/lib/nav';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, Text, useToast } from '../../src/ui';
+import { HoldToConfirm, Icon, PressableScale, Text, useToast } from '../../src/ui';
 import { ChainBadge } from '../../src/components/ChainBadge';
 import { useScan, parseScanned } from '../../src/stores/scanStore';
 import { formatUsd } from '../../src/lib/format';
@@ -289,20 +289,17 @@ export default function GatewaySend() {
         )}
       </ScrollView>
 
+      {/* Held, not tapped. This rail has no review step — the tap that used to
+          sit here was the only thing between a typed address and a transfer
+          that cannot be undone, and it was the same gesture as every harmless
+          button above it. Matches the wallet send's final action. */}
       <View style={styles.footer}>
-        <PressableScale
-          style={[styles.cta, !ready && styles.ctaOff]}
-          disabled={!ready || busy}
-          onPress={submit}
-        >
-          {busy ? (
-            <ActivityIndicator color={theme.colors.primaryLabel} />
-          ) : (
-            <Text style={styles.ctaLabel}>
-              {valid ? `Send ${formatUsd(value)}` : 'Send'}
-            </Text>
-          )}
-        </PressableScale>
+        <HoldToConfirm
+          label={valid ? `Hold to send ${formatUsd(value)}` : 'Hold to send'}
+          busy={busy}
+          disabled={!ready}
+          onConfirm={submit}
+        />
       </View>
 
     </SafeAreaView>
@@ -482,22 +479,7 @@ const styles = StyleSheet.create((theme) => ({
   },
 
   // ── Footer ────────────────────────────────────────────────────────────────
-  footer: { paddingHorizontal: theme.spacing.screen, paddingTop: 8, paddingBottom: theme.spacing.md },
-  cta: {
-    height: 54,
-    borderRadius: theme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.primary,
-  },
-  ctaOff: { opacity: 0.35 },
-  ctaLabel: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 16,
-    letterSpacing: -0.32,
-    color: theme.colors.primaryLabel,
-  },
-
+  footer: { paddingHorizontal: theme.spacing.screen, paddingTop: 8, paddingBottom: 30 },
   // ── Destination picker sheet ──────────────────────────────────────────────
   // A page sheet gets no system grabber, so it draws its own.
   pickGrabber: {

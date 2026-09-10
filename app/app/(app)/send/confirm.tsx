@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Image as ExpoImage } from 'expo-image';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
+import { HoldToConfirm, Icon, SheetNav, Text } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
+import { ChainBadge, needsChainBadge } from '../../../src/components/ChainBadge';
+import { TransferRail } from '../../../src/components/TransferRail';
 import { BtcSpeedSheet } from '../../../src/components/BtcSpeedSheet';
 import { useSession } from '../../../src/stores/session';
+import { useWalletName } from '../../../src/stores/walletNameStore';
 import { usePortfolio } from '../../../src/stores/portfolioStore';
 import { useActivity } from '../../../src/stores/activityStore';
 import { useRecentAddresses } from '../../../src/stores/recentAddressStore';
@@ -33,7 +35,8 @@ function stealthChainFor(a: PortfolioAsset): StealthChain | undefined {
 }
 import { requireAuth, authFailureMessage } from '../../../src/lib/biometrics';
 import { mapError } from '../../../src/lib/errors';
-import { formatUsd, formatCrypto, formatFee, shortenAddress } from '../../../src/lib/format';
+import { formatUsd, formatCrypto, formatFee, formatTotal, relativeTime } from '../../../src/lib/format';
+import { chainName } from '../../../src/lib/chains';
 import { fontFamily } from '../../../src/theme/fonts';
 import { posthog } from '../../../src/lib/posthog';
 
@@ -42,6 +45,8 @@ export default function SendConfirm() {
   const navigation = useNavigation();
   const theme = UnistylesRuntime.getTheme();
   const wallet = useSession((s) => s.wallet);
+  const addresses = useSession((s) => s.addresses);
+  const walletName = useWalletName((s) => s.name);
   const { market, refresh } = usePortfolio();
   const recents = useRecentAddresses();
   const asset = useSendDraft((s) => s.asset);
@@ -60,6 +65,9 @@ export default function SendConfirm() {
   const patch = useSendDraft((s) => s.patch);
 
   const [speedOpen, setSpeedOpen] = useState(false);
+  useEffect(() => {
+    recents.hydrate();
+  }, [recents]);
 
   if (!asset) return null;
 
@@ -434,106 +442,168 @@ export default function SendConfirm() {
     }
   }
 
+  // ── what the review actually has to show ─────────────────────────────────
+  const family = chainOf(asset);
+  const fromAddress = addresses
+    ? family === 'btc'
+      ? addresses.btc
+      : family === 'sol'
+        ? addresses.sol
+        : addresses.eth
+    : undefined;
+  // The asset carries its own network name; `chainName` covers the chains the
+  // registry has no label for (Arc and Tempo included).
+  const network =
+    asset.networkName ??
+    (asset.evmChainId !== undefined ? chainName(asset.evmChainId) : undefined) ??
+    (family === 'btc' ? 'Bitcoin' : family === 'sol' ? 'Solana' : undefined);
+  const isPrivate = shield || privateFlow === 'spend';
+  // Only meaningful when the fee comes out of the SAME balance as the transfer —
+  // a token's gas is paid in the chain's native coin, so there is no single
+  // figure to total. Private paths take their fee inside the stealth path.
+  const feeInSameAsset = !isPrivate && !asset.tokenContract && !asset.tokenMint;
+  const total = feeInSameAsset && fee != null ? cryptoAmount + fee : null;
+  // Matched on the handle as well as the address: a send to `@alice` is recorded
+  // under the handle, so comparing addresses alone would call a familiar
+  // recipient new the moment they were paid by name.
+  const dest = address.trim().toLowerCase();
+  const seenBefore = recents.list.find(
+    (r) => r.address.toLowerCase() === dest || (!!recipientHandle && r.address.toLowerCase() === recipientHandle.toLowerCase()),
+  );
+
   return (
     <View style={styles.body}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <SheetNav
-        title="Check this over"
-        subtitle="Nothing moves until you confirm. Transfers cannot be reversed."
+        title="Review"
+        subtitle="Nothing moves until you hold Send."
         onLeading={() => router.back()}
       />
 
-      {/* Amount (48px bold) + USD (24px bold grey) on the left, icon on the right. */}
-      <View style={styles.reviewHead}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.reviewAmount} numberOfLines={1} adjustsFontSizeToFit>
+      {/* Scrolls, so a long recipient or an extra fact row cannot push the
+          action off a small screen. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* The figure, centred under its own mark. Left-aligned with the icon
+            floating off to the right, the two read as unrelated objects. */}
+        <View style={styles.hero}>
+          <View style={styles.heroArt}>
+            <CryptoIcon
+              coingeckoId={asset.coingeckoId}
+              symbol={asset.symbol}
+              colorHex={asset.colorHex}
+              imageUrl={asset.imageUrl}
+              size={44}
+            />
+            {needsChainBadge(asset) && (
+              <View style={styles.heroBadge}>
+                <ChainBadge
+                  chainId={asset.evmChainId !== undefined ? Number(asset.evmChainId) : undefined}
+                  network={asset.chain === 'solana' ? 'Solana' : undefined}
+                  size={17}
+                  ringColor={theme.colors.appBackground}
+                />
+              </View>
+            )}
+          </View>
+          <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit>
             {formatCrypto(cryptoAmount)} {asset.symbol}
           </Text>
-          <Text style={styles.reviewUsd} color="#9AA0A8">
-            {formatUsd(cryptoAmount * price)}
-          </Text>
+          <Text style={styles.heroUsd}>{formatUsd(cryptoAmount * price)}</Text>
         </View>
-        <CryptoIcon
-          coingeckoId={asset.coingeckoId}
-          symbol={asset.symbol}
-          colorHex={asset.colorHex}
-          imageUrl={asset.imageUrl}
-          size={48}
+
+        <TransferRail
+          fromName={walletName}
+          fromAddress={fromAddress}
+          toName={recipientHandle}
+          toAddress={address}
+          network={network}
+          chainId={asset.evmChainId !== undefined ? Number(asset.evmChainId) : undefined}
+          via={isPrivate ? 'Private' : undefined}
         />
-      </View>
 
-      {/* Details — no dividers, every row 12/18. */}
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>To</Text>
-          {/* When a name resolved, show the ADDRESS underneath it. A name is a
-              claim, not a guarantee — anyone may publish a record pointing
-              anywhere, and ENS proves who owns the name, never that the address
-              inside belongs to them. Showing only the name asks the user to
-              trust a lookup they cannot see the result of. */}
-          <View style={styles.rowValueStack}>
-            <Text style={styles.rowValue} numberOfLines={1}>
-              {recipientHandle ?? shortenAddress(address, 8, 6)}
-            </Text>
-            {!!recipientHandle && (
-              <Text style={styles.rowSub} numberOfLines={1}>
-                {shortenAddress(address, 8, 6)}
-              </Text>
-            )}
-          </View>
-        </View>
-        {/* Shield + spend settle via the private path — the network fee is handled
-            inside the stealth path, so the fee row is omitted here. */}
-        {!shield && privateFlow !== 'spend' && (
-        <Pressable
-          style={styles.row}
-          disabled={!isBtc}
-          onPress={isBtc ? () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSpeedOpen(true); } : undefined}
-        >
-          <Text style={styles.rowLabel}>Network fee</Text>
-          <View style={styles.feeRight}>
-            {/* Crypto amount mid grey; the fiat cost dark. Both medium weight. */}
-            <Text style={styles.feeValue} numberOfLines={1}>
-              {fee != null ? `${formatFee(fee)} ${feeSymbol}` : 'Estimating…'}
-              {fee != null && feePrice > 0 ? (
-                <Text style={styles.feeUsd}>{`  ${formatUsd(fee * feePrice)}`}</Text>
-              ) : null}
-            </Text>
-            {/* BTC: chevron (UpIcon rotated to point right) opens the speed sheet. */}
-            {isBtc && (
-              <Icon name="chevronRight" size={18} color={theme.colors.text} />
-            )}
-          </View>
-        </Pressable>
-        )}
-      </View>
-
-      <View style={{ flex: 1 }} />
-      <PressableScale
-        style={[styles.primaryBtn, (sending || insufficient) && styles.btnDisabled]}
-        onPress={sending || insufficient ? undefined : doSend}
-      >
-        {sending ? (
-          <View style={styles.btnRow}>
-            <ActivityIndicator color={theme.colors.primaryLabel} />
-            <Text variant="body" color={theme.colors.primaryLabel}>
-              Sending
-            </Text>
-          </View>
-        ) : insufficient ? (
-          <Text variant="body" color={theme.colors.primaryLabel}>
-            Insufficient balance
+        {/* Have they been paid before? The one thing a review screen can tell
+            you that the amount and the fee cannot: whether this destination is
+            new. A mistyped address is always new, and someone you pay weekly
+            never is — which makes this the cheapest catch on the screen. */}
+        <View style={[styles.history, seenBefore ? styles.historyKnown : styles.historyNew]}>
+          <Icon
+            name={seenBefore ? 'checkCircle' : 'info'}
+            size={14}
+            color={seenBefore ? theme.colors.success : theme.colors.warning}
+          />
+          <Text style={styles.historyText}>
+            {seenBefore
+              ? `You sent here ${relativeTime(seenBefore.ts)}`
+              : 'First time sending to this address'}
           </Text>
-        ) : (
-          <View style={styles.btnRow}>
-            <Icon name="faceid" size={18} color={theme.colors.primaryLabel} />
-            <Text variant="body" color={theme.colors.primaryLabel}>
-              Send
-            </Text>
+        </View>
+
+        {/* Shield + spend settle via the private path — the network fee is
+            handled inside the stealth path, so there is nothing to show. */}
+        {!isPrivate && (
+          <View style={styles.card}>
+            <Pressable
+              style={styles.row}
+              disabled={!isBtc}
+              onPress={
+                isBtc
+                  ? () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSpeedOpen(true);
+                    }
+                  : undefined
+              }
+            >
+              <Text style={styles.rowLabel}>Network fee</Text>
+              <View style={styles.rowRight}>
+                <Text style={styles.rowValue} numberOfLines={1}>
+                  {fee != null ? `${formatFee(fee)} ${feeSymbol}` : 'Estimating…'}
+                </Text>
+                {fee != null && feePrice > 0 && (
+                  <Text style={styles.rowSub}>{formatUsd(fee * feePrice)}</Text>
+                )}
+                {/* BTC is the one chain whose fee is a choice the payer makes. */}
+                {isBtc && <Icon name="chevronRight" size={16} color={theme.colors.faint} />}
+              </View>
+            </Pressable>
+
+            {total != null && (
+              <>
+                <View style={styles.hair} />
+                <View style={styles.row}>
+                  <Text style={styles.rowLabel}>Leaves your wallet</Text>
+                  <Text style={styles.rowValue} numberOfLines={1}>
+                    {formatTotal(total, cryptoAmount)} {asset.symbol}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         )}
-      </PressableScale>
+      </ScrollView>
+
+      {/* The warning belongs BESIDE the action, not in a subtitle three hundred
+          points above it where it is read once and forgotten. */}
+      <View style={styles.notice}>
+        <Icon name="info" size={13} color={theme.colors.muted} />
+        <Text style={styles.noticeText}>Sent funds cannot be recalled. Check the address above.</Text>
+      </View>
+
+      <HoldToConfirm
+        label="Hold to send"
+        holdingLabel="Keep holding"
+        icon="faceid"
+        busy={sending}
+        busyLabel="Sending"
+        disabled={insufficient}
+        disabledLabel="Not enough balance"
+        onConfirm={doSend}
+      />
 
       {isBtc && <BtcSpeedSheet visible={speedOpen} onClose={() => setSpeedOpen(false)} />}
     </View>
@@ -543,35 +613,52 @@ export default function SendConfirm() {
 const styles = StyleSheet.create((theme) => ({
   // No top padding: `SheetNav` owns the clearance above the grabber, and
   // stacking both left the nav row floating in the middle of nowhere.
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
-  reviewHead: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginTop: 18 },
-  // Sending amount 48px bold; USD 24px bold grey.
-  reviewAmount: { fontSize: 48, fontFamily: fontFamily.semibold, letterSpacing: -1.6, color: theme.colors.text },
-  reviewUsd: { fontSize: 21, fontFamily: fontFamily.medium, letterSpacing: -0.5, marginTop: 4 },
-  // Details card 24px below the amount; rows 12/18, no dividers.
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: 30 },
+  scroll: { flex: 1, marginHorizontal: -theme.spacing.screen },
+  scrollBody: { paddingHorizontal: theme.spacing.screen, paddingTop: 18, paddingBottom: 14, gap: 14 },
+
+  hero: { alignItems: 'center', gap: 10, paddingBottom: 4 },
+  heroArt: { width: 44, height: 44 },
+  heroBadge: { position: 'absolute', right: -4, bottom: -3 },
+  heroAmount: { fontSize: 40, fontFamily: fontFamily.semibold, letterSpacing: -1.2, color: theme.colors.text },
+  heroUsd: { fontSize: 16, fontFamily: fontFamily.medium, letterSpacing: -0.3, color: theme.colors.muted, marginTop: -4 },
+
   card: {
-    marginTop: 22,
     backgroundColor: theme.colors.cardBackground,
     borderRadius: theme.radius.xl,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: 'hidden',
   },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 14, paddingVertical: 13 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  hair: { height: 1, marginHorizontal: 14, backgroundColor: theme.colors.separator },
   // The label steps back so the VALUE is what you read down the card — on a
   // review screen the values are the content and the labels are the index.
   rowLabel: { fontSize: 13.5, fontFamily: fontFamily.medium, letterSpacing: -0.2, color: theme.colors.muted },
+  rowRight: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowValue: { flexShrink: 1, fontSize: 14, fontFamily: fontFamily.semibold, letterSpacing: -0.2, color: theme.colors.text },
-  rowValueStack: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
-  rowSub: { fontSize: 12, fontFamily: fontFamily.medium, letterSpacing: -0.14, color: theme.colors.muted },
-  feeRight: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  // Crypto amount mid grey; fiat cost dark. Both medium weight.
-  feeValue: { flexShrink: 1, fontSize: 13.5, fontFamily: fontFamily.medium, letterSpacing: -0.2, color: theme.colors.muted },
-  feeUsd: { fontSize: 14, fontFamily: fontFamily.semibold, letterSpacing: -0.2, color: theme.colors.text },
-  // UpIcon rotated 90° → points right, as a "tap to change" affordance.
-  chevron: { width: 18, height: 18, transform: [{ rotate: '90deg' }] },
-  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
-  btnDisabled: { opacity: 0.35 },
-  btnRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  faceId: { width: 18, height: 18 },
+  rowSub: { fontSize: 13, fontFamily: fontFamily.medium, letterSpacing: -0.18, color: theme.colors.muted },
+
+  history: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderRadius: theme.radius.lg,
+  },
+  // Tinted, not carded: it is a remark about the rail above it, not another fact.
+  historyNew: { backgroundColor: 'rgba(255,149,0,0.12)' },
+  historyKnown: { backgroundColor: theme.colors.tile },
+  historyText: { flex: 1, fontSize: 12.5, fontFamily: fontFamily.medium, letterSpacing: -0.18, color: theme.colors.text },
+
+  notice: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingBottom: 12 },
+  noticeText: { fontSize: 12, fontFamily: fontFamily.medium, letterSpacing: -0.16, color: theme.colors.muted },
 }));

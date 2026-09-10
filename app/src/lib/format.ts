@@ -140,6 +140,23 @@ export function formatFee(amount: number): string {
   return amount.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+/**
+ * A total that actually shows what was added to it.
+ *
+ * `formatCrypto` rounds to 4dp, so `amount + fee` on any chain with a cheap fee
+ * renders as the amount itself — a row whose only job is to say "the fee comes
+ * out of this too" showing it not coming out (0.0001 + 0.000045 ETH → "0.0001").
+ * Keeps the readable format whenever it is faithful and reaches for more digits
+ * only when it would otherwise lie.
+ */
+export function formatTotal(total: number, part: number): string {
+  const coarse = formatCrypto(total);
+  if (coarse !== formatCrypto(part)) return coarse;
+  // A difference below 8dp is not displayable at any sane precision, so the
+  // two reading the same is then the honest answer.
+  return total.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+}
+
 /** Signed percent: +2.41% / -1.12%. */
 export function formatPercent(pct: number): string {
   const sign = pct >= 0 ? '+' : '-';
