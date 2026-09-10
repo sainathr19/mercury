@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { File, Paths } from 'expo-file-system';
 import { UnistylesRuntime } from 'react-native-unistyles';
 import * as Notifications from 'expo-notifications';
+import { armIncomingWatch, disarmIncomingWatch } from '../lib/incomingWatch';
+import { getActiveEvmChainId } from '../bridge/evmChain';
 import { setCurrencySymbol } from '../lib/format';
 import { refreshRates, subscribeCurrencyRate } from '../lib/currency';
 import { requireAuth } from '../lib/biometrics';
@@ -180,14 +182,31 @@ export const useSettings = create<SettingsState>((set, get) => ({
       set({ notificationsEnabled: status === 'granted' });
     } catch {}
   },
+  /**
+   * Ask for permission, then arm or disarm the background watch to match.
+   *
+   * The permission and the watch are two separate things and both have to be
+   * true: granting permission with no registered task means a wallet that is
+   * allowed to notify and never does.
+   */
   toggleNotifications: async () => {
     try {
       const current = await Notifications.getPermissionsAsync();
-      if (current.status === 'undetermined') {
-        await Notifications.requestPermissionsAsync();
+      const granted =
+        current.status === 'granted'
+          ? true
+          : current.status === 'undetermined'
+            ? (await Notifications.requestPermissionsAsync()).status === 'granted'
+            : // Already denied: only the OS Settings app can change it.
+              false;
+      set({ notificationsEnabled: granted });
+
+      if (granted) {
+        const addr = useSession.getState().addresses?.eth;
+        if (addr) await armIncomingWatch(addr, getActiveEvmChainId());
+      } else {
+        await disarmIncomingWatch();
       }
-      // If already decided, the OS Settings app is where it changes; just refresh.
-      await get().refreshNotifications();
     } catch {}
   },
 
