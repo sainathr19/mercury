@@ -4,6 +4,7 @@ import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { BLOCKSCOUT_BASES, mapEvmActivity, type RawEvmTx, type RawEvmTokenTx } from '../lib/evm-activity';
 import { graphActivity, graphCoversChain } from './graph';
 import { chainsForEnvironment } from '../lib/chains';
+import { tokenSymbol } from '../lib/tokenText';
 
 export type TxType = 'sent' | 'received' | 'swapped';
 export type TxStatus = 'pending' | 'confirmed' | 'failed';
@@ -349,7 +350,9 @@ export function pendingSendItem(args: {
   shielded?: boolean;
 }): ActivityItem {
   const meta = CHAIN_META[args.chain];
-  const symbol = args.asset?.symbol ?? meta.symbol;
+  // Reaches here already cleaned (the portfolio scrubs on ingest), but a
+  // send row is not the place to depend on a caller having done it.
+  const symbol = tokenSymbol(args.asset?.symbol ?? meta.symbol);
   return {
     id: args.id,
     symbol,
@@ -386,14 +389,18 @@ export function incomingHintItem(args: {
   explorerUrl?: string;
   network?: string;
 }): ActivityItem {
+  // Attacker-controlled: an ERC-20 receive carries the token contract's own
+  // symbol field. Cleaned BEFORE it is interpolated into `amountText`, which is
+  // the string the row actually draws.
+  const symbol = tokenSymbol(args.symbol);
   return {
     id: args.id,
-    symbol: args.symbol,
+    symbol,
     coingeckoId: args.coingeckoId,
     colorHex: args.colorHex,
     type: 'received',
     label: args.from ? `From ${args.from.slice(0, 6)}…` : 'Received',
-    amountText: `+${fmt(args.amount, Math.min(args.decimals, 6))} ${args.symbol}`,
+    amountText: `+${fmt(args.amount, Math.min(args.decimals, 6))} ${symbol}`,
     usd: Math.abs(args.usd),
     usdText: usd(args.usd, '+'),
     timestamp: Math.floor(Date.now() / 1000),
@@ -432,7 +439,8 @@ export function stealthReceiveItem(
   const chainMeta = CHAIN_META[chain];
   // ERC-20 receive: show the token's symbol/decimals; native: the chain asset.
   const isToken = !!p.tokenContract && p.tokenSymbol != null;
-  const symbol = isToken ? (p.tokenSymbol as string) : chainMeta.symbol;
+  // The token's own symbol field for an ERC-20; our own constant otherwise.
+  const symbol = isToken ? tokenSymbol(p.tokenSymbol as string) : chainMeta.symbol;
   const decimals = isToken ? (p.tokenDecimals ?? 0) : chainMeta.decimals;
   const amt = p.amount ? Number(p.amount) / 10 ** decimals : 0;
   const ephHex = Array.from(new Uint8Array(p.ephemeralPub)).slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -483,7 +491,9 @@ export function privateSendItem(args: {
   asset?: { symbol: string; coingeckoId: string; colorHex: string };
 }): ActivityItem {
   const meta = CHAIN_META[args.chain];
-  const symbol = args.asset?.symbol ?? meta.symbol;
+  // Reaches here already cleaned (the portfolio scrubs on ingest), but a
+  // send row is not the place to depend on a caller having done it.
+  const symbol = tokenSymbol(args.asset?.symbol ?? meta.symbol);
   return {
     id: args.id,
     symbol,

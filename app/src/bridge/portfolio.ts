@@ -15,6 +15,7 @@ import { colorForSymbol } from "../lib/asset-color";
 import { chainById, tokensForChain as registryTokens } from "../lib/chains";
 import { evmChainHasNativeAsset } from "../lib/tempo";
 import { formatUnits } from "../lib/format";
+import { tokenName, tokenSymbol } from "../lib/tokenText";
 import { fetchSolBalance, fetchSolTokenBalances } from "./solTokens";
 
 // ---------------------------------------------------------------------------
@@ -486,7 +487,36 @@ export function loadPortfolioChains(
   // Fire all three families in parallel and hand back their promises unawaited —
   // the store applies each chunk the moment it resolves, so a slow/hung chain
   // never blocks the others (or the loading state) behind it.
-  return { btc: loadBtc(), sol: loadSol(), evm: loadEvm() };
+  //
+  // Every chunk goes through `scrubChunk` on the way out. This is THE choke
+  // point for token text: `name` and `symbol` on a discovered token come from a
+  // contract a stranger deployed, and there are half a dozen places above that
+  // build a row. Cleaning them here means a new one cannot forget to — see
+  // lib/tokenText for what is stripped and why.
+  return {
+    btc: loadBtc().then(scrubChunk),
+    sol: loadSol().then(scrubChunk),
+    evm: loadEvm().then(scrubChunk),
+  };
+}
+
+/** Every display string on an asset, safe to draw. */
+function scrubAsset(a: PortfolioAsset): PortfolioAsset {
+  const name = tokenName(a.name);
+  const symbol = tokenSymbol(a.symbol);
+  const feeSymbol = a.feeSymbol ? tokenSymbol(a.feeSymbol) : a.feeSymbol;
+  const networkName = a.networkName ? tokenName(a.networkName) : a.networkName;
+  // Identity fields (`id`, `coingeckoId`, `tokenContract`, `tokenMint`) are
+  // deliberately untouched: they are keys, not text, and rewriting them would
+  // break the market lookup and the send path that resolve against them.
+  if (name === a.name && symbol === a.symbol && feeSymbol === a.feeSymbol && networkName === a.networkName) {
+    return a;
+  }
+  return { ...a, name, symbol, feeSymbol, networkName };
+}
+
+function scrubChunk(c: PortfolioChunk): PortfolioChunk {
+  return { ...c, assets: c.assets.map(scrubAsset) };
 }
 
 /** Await all three chain loaders and combine into one result. Kept for callers
