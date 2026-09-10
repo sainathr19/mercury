@@ -31,6 +31,9 @@ yarn-error.*
 *.pem
 
 # local env files
+# `.env` itself is listed: it is where the Flashnet key lives, and the pattern
+# below only covers `.env.local` / `.env.development.local` and friends.
+.env
 .env*.local
 
 # typescript
