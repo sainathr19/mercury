@@ -39,6 +39,16 @@ const TIMEOUT_MS = 20_000;
 
 const KEY = process.env.EXPO_PUBLIC_FLASHNET_API_KEY ?? '';
 
+/**
+ * Sent as `Origin` when set.
+ *
+ * Some client keys are origin-gated: without the header they answer 403
+ * `origin_required`. A React Native `fetch` is not a browser and sends no
+ * Origin of its own, so such a key rejects every quote until this is set. Keys
+ * without that restriction need nothing here.
+ */
+const ORIGIN = process.env.EXPO_PUBLIC_FLASHNET_ORIGIN ?? '';
+
 export type KeyKind = 'client' | 'server' | 'missing' | 'unrecognised';
 
 /** Which kind of key is configured — see the note above on why this is checked. */
@@ -83,6 +93,7 @@ async function call<T>(
   const headers: Record<string, string> = {};
   if (body) headers['Content-Type'] = 'application/json';
   if (auth) headers.Authorization = `Bearer ${KEY}`;
+  if (auth && ORIGIN) headers.Origin = ORIGIN;
   // Required on every authenticated mutating call. Reusing a key with a
   // DIFFERENT body is a 409, so each is derived from the request it belongs to.
   if (idempotencyKey) headers['X-Idempotency-Key'] = idempotencyKey;
@@ -255,6 +266,15 @@ export interface Quote {
   feeAsset: string;
   route?: string[];
   expiresAt: string;
+  /**
+   * Per-order read token, and the ONLY way a client key may read status.
+   *
+   * `/status` answers 403 `read_token_required` for a client key without it —
+   * so this has to be persisted with the swap, not just used once. Losing it
+   * means the order can never be polled again, which is why it lives on the
+   * stored record rather than in a screen's state.
+   */
+  readToken?: string;
 }
 
 /**
@@ -362,15 +382,23 @@ export const SETTLED: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
   'refunded',
 ]);
 
-export function orderStatus(p: { orderId?: string; quoteId?: string }): Promise<{
-  order: Order;
-  stages?: OrderStage[];
-}> {
+export function orderStatus(p: {
+  orderId?: string;
+  quoteId?: string;
+  /** From the quote. Required for a client key — see `Quote.readToken`. */
+  readToken?: string;
+}): Promise<{ order: Order; stages?: OrderStage[] }> {
   const q = new URLSearchParams();
   // Exactly one selector is allowed.
   if (p.orderId) q.set('id', p.orderId);
   else if (p.quoteId) q.set('quoteId', p.quoteId);
-  return call<{ order: Order; stages?: OrderStage[] }>(`/v1/orchestration/status?${q.toString()}`);
+  // A query parameter specifically: `X-Read-Token` and `Authorization: Bearer
+  // <readToken>` are both rejected, and it is sent ALONGSIDE the api key, not
+  // instead of it.
+  if (p.readToken) q.set('readToken', p.readToken);
+  return call<{ order: Order; stages?: OrderStage[] }>(`/v1/orchestration/status?${q.toString()}`, {
+    auth: true,
+  });
 }
 
 /** Human wording for a status. The raw enum values leak into nothing. */

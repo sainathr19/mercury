@@ -44,6 +44,9 @@ export interface SwapRecord {
   /** Our deposit transfer. The proof handed to `submit`. */
   txHash?: string;
   depositAddress: string;
+  /** Per-order read token from the quote. A client key cannot read `/status`
+   *  without it, so it is stored — not held in a screen's state. */
+  readToken?: string;
   recipientAddress: string;
   /** The address the deposit was sent FROM — `submit` needs it, including on a
    *  retry, and it is also where a refund lands. */
@@ -112,7 +115,7 @@ export const useSwaps = create<SwapState>((set, get) => ({
     // a handful of in-flight swaps would otherwise burst the whole window.
     for (const s of pending) {
       try {
-        const { order } = await orderStatus({ orderId: s.orderId });
+        const { order } = await orderStatus({ orderId: s.orderId, readToken: s.readToken });
         get().patch(s.quoteId, {
           status: order.status,
           amountOut: order.amountOut ?? undefined,

@@ -95,6 +95,9 @@ export async function createSwap(req: SwapRequest): Promise<SwapRecord> {
     feeAmount: q.totalFeeAmount ?? q.feeAmount,
     feeAsset: q.feeAsset,
     depositAddress: q.depositAddress,
+    // Captured HERE or never: the quote is the only response that carries it,
+    // and without it this order can never be polled again.
+    readToken: q.readToken,
     recipientAddress,
     sourceAddress: refundAddress,
     createdAt: now,

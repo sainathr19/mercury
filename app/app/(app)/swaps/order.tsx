@@ -44,12 +44,12 @@ export default function SwapOrder() {
   const pullStages = useCallback(async () => {
     if (!swap?.orderId) return;
     try {
-      const r = await orderStatus({ orderId: swap.orderId });
+      const r = await orderStatus({ orderId: swap.orderId, readToken: swap.readToken });
       setStages(r.stages ?? []);
     } catch {
       // The header still shows the last known status; a failed poll adds nothing.
     }
-  }, [swap?.orderId]);
+  }, [swap?.orderId, swap?.readToken]);
 
   useEffect(() => {
     void refresh();
