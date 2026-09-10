@@ -182,7 +182,25 @@ app.post('/gateway/relay', async (c) => {
   return c.json(result, result.ok ? 200 : 502);
 });
 
-serve({ fetch: app.fetch, port: PORT });
-console.log(`mercury hub on :${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
+// Bind explicitly. A container that listens on loopback is reachable from
+// nowhere but itself, and the symptom is a health check that times out against
+// a process whose logs say it started fine.
+const HOST = process.env.HOST ?? '0.0.0.0';
+
+const server = serve({ fetch: app.fetch, port: PORT, hostname: HOST });
+
+// Orchestrators stop containers with SIGTERM. With no handler the process is
+// killed outright, so anything mid-flight — a relay waiting on a receipt, a
+// registration waiting to settle its budget reservation — dies unbooked.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    console.log(`${signal} received, draining`);
+    server.close(() => process.exit(0));
+    // A wedged connection must not hold the deploy open forever.
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}
+
+console.log(`mercury hub on ${HOST}:${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
 console.log(`  names: ${sponsorConfig() ? `sponsoring ${ENS_PARENT} via ${REGISTRY}` : 'NOT sponsoring (set ENS_REGISTRY)'}`);
 console.log(`  index: ${indexProxyConfigured() ? 'proxying The Graph' : 'NOT configured (set TOKEN_API_JWT / ARC_SUBGRAPH_URL)'}`);

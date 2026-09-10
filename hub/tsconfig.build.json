@@ -1,0 +1,15 @@
+// Emit configuration, kept separate from tsconfig.json so `npm run typecheck`
+// stays a no-emit check over everything — tests included — while the build
+// produces only the files the container actually runs.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

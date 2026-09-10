@@ -1,0 +1,24 @@
+# Build context hygiene. Two entries here are not about size:
+#
+#   .env      — holds RELAYER_PRIVATE_KEY. A COPY of the working directory
+#               would bake it into a layer, where it survives every later
+#               deletion and is readable by anyone who can pull the image.
+#   data/     — the budget ledgers. Baking a snapshot in means every fresh
+#               container starts from the spending of whoever built it.
+#
+.env
+.env.*
+!.env.example
+data/
+
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+
+# One-off operator scripts: they need solc, which is a devDependency, and none
+# of them are part of serving traffic.
+scripts/
+
+.DS_Store
+.git/
