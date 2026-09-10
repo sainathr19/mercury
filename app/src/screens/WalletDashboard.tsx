@@ -81,6 +81,7 @@ export function WalletDashboard() {
   const hydrateActivity = useActivity((s) => s.hydrate);
   const refreshActivity = useActivity((s) => s.refresh);
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
+  const allowedTokens = useTokenPrefs((s) => s.allowed);
   const router = useRouter();
   const [hidden, setHidden] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -105,7 +106,9 @@ export function WalletDashboard() {
 
   // Only needed to tell an empty wallet from a funded one now that the per-token
   // list lives behind the Assets tile.
-  const shown = calcGrouped(assets, hiddenTokens);
+  // Spam-filtered: a discovered token worth nothing is not something the
+  // owner asked for. `allowed` carries anything they pulled back out.
+  const shown = calcGrouped(assets, hiddenTokens, { market, allowed: allowedTokens });
   // Gateway holdings are USDC, so they are Cash — and they must be added to the
   // headline too. `pending` counts: a deposit that has not finalised is still
   // the user's money, and leaving it out would make the total dip every time

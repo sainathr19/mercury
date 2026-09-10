@@ -14,6 +14,7 @@ import { useRegistry } from './registryStore';
 import { activeScopeKey } from '../bridge/wallet';
 import { usePendingBalance } from './pendingBalanceStore';
 import { applyDeltas, type PendingDelta } from '../lib/pendingBalance';
+import { isLikelySpam } from '../lib/tokenSpam';
 
 // Cash is 'money', not 'dollars' — EURC is as spendable as USDC here, and the
 // wallet settles and pays in both.
@@ -336,11 +337,46 @@ export function investmentsValue(
  *  coins with a $0.00 balance (e.g. BTC/SOL with no funds) are NOT listed — an
  *  empty wallet shows the "nothing here yet" state instead of a row of zeros.
  *  `hidden` is a set of asset ids the user disabled in Manage Tokens (per chain). */
-export function displayAssets(assets: PortfolioAsset[], hidden: string[] = []): PortfolioAsset[] {
+/** Spam filtering needs prices, and the caller's rescued-token list. Omit the
+ *  whole option to skip it — Manage Tokens has to show what it is managing. */
+export interface SpamFilter {
+  market: Record<string, MarketSnapshot>;
+  /** Ids the user pulled back out of the filter. Never hidden. */
+  allowed?: string[];
+}
+
+export function displayAssets(
+  assets: PortfolioAsset[],
+  hidden: string[] = [],
+  spam?: SpamFilter,
+): PortfolioAsset[] {
   const hideSet = new Set(hidden);
-  // An asset shows only when actually held (amount > 0), so a zero balance
-  // isn't listed as a $0.00 row.
-  return assets.filter((a) => a.amount > 0 && !hideSet.has(a.id));
+  const allowSet = new Set(spam?.allowed ?? []);
+  return assets.filter((a) => {
+    // An asset shows only when actually held (amount > 0), so a zero balance
+    // isn't listed as a $0.00 row.
+    if (!(a.amount > 0) || hideSet.has(a.id)) return false;
+    if (spam && !allowSet.has(a.id) && isLikelySpam(a, liveValue(a, spam.market))) return false;
+    return true;
+  });
+}
+
+/**
+ * The rows `displayAssets` drops as spam.
+ *
+ * Exists so the filter is never silent: the count is surfaced, and Manage
+ * Tokens lists them so a false positive can be brought back. A filter with no
+ * way out would turn "we think this is junk" into "your token is gone".
+ */
+export function spamAssets(
+  assets: PortfolioAsset[],
+  market: Record<string, MarketSnapshot>,
+  allowed: string[] = [],
+): PortfolioAsset[] {
+  const allowSet = new Set(allowed);
+  return assets.filter(
+    (a) => a.amount > 0 && !allowSet.has(a.id) && isLikelySpam(a, liveValue(a, market)),
+  );
 }
 
 /** Display list with the same token held across multiple chains merged into a
@@ -351,9 +387,13 @@ export function displayAssets(assets: PortfolioAsset[], hidden: string[] = []): 
  *  is intentionally preserved elsewhere (Send, Manage Tokens) where the specific
  *  chain matters. Value/cash/investment totals use the raw per-chain assets, so
  *  grouping here doesn't change any totals. */
-export function groupedAssets(assets: PortfolioAsset[], hidden: string[] = []): PortfolioAsset[] {
+export function groupedAssets(
+  assets: PortfolioAsset[],
+  hidden: string[] = [],
+  spam?: SpamFilter,
+): PortfolioAsset[] {
   const byCoin = new Map<string, PortfolioAsset>();
-  for (const a of displayAssets(assets, hidden)) {
+  for (const a of displayAssets(assets, hidden, spam)) {
     const key = a.coingeckoId;
     const g = byCoin.get(key);
     if (!g) {

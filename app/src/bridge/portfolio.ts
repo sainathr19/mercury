@@ -47,6 +47,15 @@ export interface PortfolioAsset {
   evmChainId?: bigint;
   /** Human network name for display (e.g. "Arbitrum Sepolia", "Bitcoin"). */
   networkName?: string;
+  /**
+   * This row came from asking the indexer "what do you hold", rather than from
+   * our registry or from the user adding it by hand.
+   *
+   * Which makes it the one provenance a STRANGER controls: anyone can push an
+   * ERC-20 into any address, and spam airdrops arrive here and nowhere else.
+   * `lib/tokenSpam` uses this, with a value floor, to decide what to hide.
+   */
+  discovered?: boolean;
   /** Symbol of the coin network fees are paid in on this asset's chain
    *  (gas is paid in the native coin, not the token). */
   feeSymbol?: string;
@@ -465,6 +474,8 @@ export function loadPortfolioChains(
               chain: "ethereum",
               colorHex: colorForSymbol(b.symbol),
               imageUrl: "",
+              // Nobody asked for this row — see the field's note.
+              discovered: true,
               tokenContract: b.contract,
               evmChainId: chainId,
               networkName,

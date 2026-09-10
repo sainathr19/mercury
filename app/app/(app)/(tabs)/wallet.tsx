@@ -20,10 +20,11 @@ export default function Wallet() {
   const assets = usePortfolio((s) => s.assets);
   const market = usePortfolio((s) => s.market);
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
+  const allowedTokens = useTokenPrefs((s) => s.allowed);
   const hasFunds = useMemo(() => {
-    const a = calcDisplay(assets, hiddenTokens);
+    const a = calcDisplay(assets, hiddenTokens, { market, allowed: allowedTokens });
     return a.length > 0 && a.some((x) => liveValue(x, market) > 0 || x.amount > 0);
-  }, [assets, market, hiddenTokens]);
+  }, [assets, market, hiddenTokens, allowedTokens]);
 
   return (
     <View style={styles.root}>

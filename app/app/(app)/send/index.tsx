@@ -66,6 +66,7 @@ export default function SendFlow() {
 
   const { assets, market } = usePortfolio();
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
+  const allowedTokens = useTokenPrefs((s) => s.allowed);
   const patch = useSendDraft((s) => s.patch);
   const reset = useSendDraft((s) => s.reset);
   const shield = useSendDraft((s) => s.shield);
@@ -207,7 +208,8 @@ export default function SendFlow() {
   // "pay" mode allow native BTC/ETH/SOL and EVM ERC-20 (sent via transfer to the
   // stealth address); SPL tokens aren't supported privately yet.
   const tokens = useMemo(() => {
-    const list = displayAssets(assets, hiddenTokens);
+    // Nobody sends spam, so it does not belong in a list of things to send.
+    const list = displayAssets(assets, hiddenTokens, { market, allowed: allowedTokens });
     const q = pickQuery.trim().toLowerCase();
     const matches = list.filter((a) => {
       if (privateFlow === 'pay' && a.tokenMint) return false;
@@ -222,7 +224,7 @@ export default function SendFlow() {
       if (rx !== ry) return rx - ry;
       return usd(y) - usd(x);
     });
-  }, [assets, pickQuery, pickChain, market, hiddenTokens, privateFlow]);
+  }, [assets, pickQuery, pickChain, market, hiddenTokens, allowedTokens, privateFlow]);
 
   // Received private funds with a positive balance (source list for "Spend
   // received"). SOL is aggregated into one per-asset row (auto-combines across
