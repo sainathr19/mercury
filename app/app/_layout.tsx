@@ -127,15 +127,13 @@ export default function RootLayout() {
     if (status === 'ready') useNetworks.getState().apply();
   }, [status]);
 
-  // If the wallet session can't be opened (Wallet.open failed → status 'locked'),
-  // don't dead-end on a retry lock screen — LOG OUT and return to onboarding /
-  // sign-in. A fresh sign-in + restore/create is a clean recovery instead of an
-  // endless "Unlock with Face ID" loop.
-  useEffect(() => {
-    if (status !== 'locked') return;
-    void useAuth.getState().signOut().catch(() => {});
-    useSession.setState({ status: 'onboarding', wallet: null, addresses: null, error: null });
-  }, [status]);
+  // A failed wallet open (status 'locked') is handled by `LockScreen`, which
+  // offers a retry and a signposted way out. It used to be handled HERE, by
+  // signing the user out and setting status to 'onboarding' the moment the
+  // status appeared — so a single cancelled Face ID prompt replaced their
+  // wallet with "create or import a wallet". The keystore was never touched,
+  // but that is not what the screen said. Escaping a retry loop is worth doing;
+  // it is not worth telling someone their money is gone to do it.
 
   // App-lock: arm ONLY on a real 'background' (not 'inactive'), evaluate on
   // foreground. iOS fires 'inactive' for transient interruptions — most importantly
