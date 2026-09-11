@@ -33,9 +33,23 @@ import { fontFamily } from '../../../src/theme/fonts';
 /** Under a cent renders as "$0.00", and "$0.00 arriving" is noise, not news. */
 const VISIBLE = 0.005;
 
-/** The hero's ground. Kept next to the style that paints it so the chain-badge
- *  rings drawn on top cannot drift from it. */
-const HERO = '#123E7C';
+/**
+ * The hero's colours: the app's own mint, straight from `ui/ActionStrip`.
+ *
+ * That file establishes the idiom — a very light tint with deep, same-hue ink
+ * on top (mint `#C7F0D2` / `#0B2A14`, lilac `#D9DCFB` / `#1B1F4A`). Anything
+ * saturated ignores the construction and reads as a foreign element dropped
+ * onto the page, which is what a solid navy did here.
+ *
+ * Reusing the exact mint rather than inventing a fourth green: a tone that is
+ * ALMOST one of the app's is worse than either using it or clearly not. It also
+ * happens to suit the meaning — money that is ready to spend.
+ *
+ * Kept as constants next to the style that paints them so the chain-badge rings
+ * drawn on top cannot drift from the ground they sit on.
+ */
+const HERO_BG = '#C7F0D2';
+const HERO_FG = '#0B2A14';
 
 export default function Gateway() {
   const theme = UnistylesRuntime.getTheme();
@@ -117,7 +131,7 @@ export default function Gateway() {
           {/* ── The headline: what can be spent, right now ───────────────── */}
           <View style={styles.hero}>
             <View style={styles.heroTop}>
-              <Icon name="bolt" size={13} color={theme.colors.appBackground} />
+              <Icon name="bolt" size={13} color={HERO_FG} />
               <Text style={styles.heroLabel}>SPENDABLE NOW</Text>
             </View>
             <Text style={styles.heroFigure}>
@@ -126,7 +140,7 @@ export default function Gateway() {
 
             {pending >= VISIBLE && (
               <View style={styles.heroPending}>
-                <Icon name="clock" size={12} color={theme.colors.appBackground} />
+                <Icon name="clock" size={12} color={HERO_FG} />
                 <Text style={styles.heroPendingText}>
                   {formatUsd(pending)} arriving
                 </Text>
@@ -139,7 +153,7 @@ export default function Gateway() {
               <View style={styles.marks}>
                 {networks.map((c) => (
                   <View key={c.chainId.toString()} style={styles.mark}>
-                    <ChainBadge chainId={Number(c.chainId)} size={20} ringColor={HERO} />
+                    <ChainBadge chainId={Number(c.chainId)} size={20} ringColor={HERO_BG} />
                   </View>
                 ))}
               </View>
@@ -348,11 +362,7 @@ const styles = StyleSheet.create((theme) => ({
   hero: {
     padding: 18,
     borderRadius: 26,
-    // USDC's own blue, deepened. The token value (#2980D9) is calibrated for a
-    // 20pt asset chip and is far too loud across a whole card; this keeps the
-    // identity while staying a surface rather than an alert. Fixed rather than
-    // themed: white text has to stay legible on it in light AND stealth dark.
-    backgroundColor: HERO,
+    backgroundColor: HERO_BG,
     gap: 6,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -360,22 +370,22 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fontFamily.semibold,
     fontSize: 11,
     letterSpacing: 0.6,
-    color: theme.colors.appBackground,
-    opacity: 0.75,
+    color: HERO_FG,
+    opacity: 0.65,
   },
   heroFigure: {
     fontFamily: fontFamily.bold,
     fontSize: 44,
     letterSpacing: -1.4,
-    color: theme.colors.appBackground,
+    color: HERO_FG,
   },
   heroPending: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   heroPendingText: {
     fontFamily: fontFamily.medium,
     fontSize: 13,
     letterSpacing: -0.2,
-    color: theme.colors.appBackground,
-    opacity: 0.75,
+    color: HERO_FG,
+    opacity: 0.7,
   },
   heroNetworks: {
     flexDirection: 'row',
@@ -384,7 +394,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 10,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.14)',
+    borderTopColor: 'rgba(11,42,20,0.14)',
   },
   // Overlapped marks: one balance across many chains, drawn as one object.
   marks: { flexDirection: 'row' },
@@ -394,8 +404,8 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: fontFamily.medium,
     fontSize: 12.5,
     letterSpacing: -0.14,
-    color: theme.colors.appBackground,
-    opacity: 0.7,
+    color: HERO_FG,
+    opacity: 0.6,
     textAlign: 'right',
   },
 
