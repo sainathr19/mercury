@@ -75,8 +75,11 @@ export function WalletDashboard() {
   // here or the wallet's own headline understates what the user owns.
   const gwSpendable = useGateway((g) => g.spendable);
   const gwPending = useGateway((g) => g.pending);
+  // USDC sitting in the user's own address across the Gateway networks. NOT
+  // `cash`, which counts every stablecoin — the Gateway screen shows this exact
+  // figure, and two surfaces disagreeing about one number is worse than either.
+  const gwInWallet = useGateway((g) => g.inWallet);
   const gwStuck = useGateway((g) => g.stuck);
-  const gwNetworks = useGateway((g) => g.perDomain.length);
   const refreshGateway = useGateway((g) => g.refresh);
   const activityItems = useActivity((s) => s.items);
   const hydrateActivity = useActivity((s) => s.hydrate);
@@ -260,6 +263,19 @@ export function WalletDashboard() {
           />
 
           <AssetRail assets={railAssets} market={market} masked={hidden} />
+
+          {/* The two pots, on the surface the user actually looks at.
+              This lived at the FOOT of the transaction list — below eight rows
+              and under the tab bar — which made the whole Gateway feature
+              effectively undiscoverable. It is the wallet's second balance, so
+              it belongs beside the first. */}
+          <GatewayPots
+            gateway={gwSpendable + gwPending}
+            wallet={gwInWallet}
+            arriving={gwPending}
+            masked={hidden}
+            onPress={() => router.push('/(app)/gateway')}
+          />
         </View>
 
         {/* ── The band: the dark ground between the two cards ─────────────── */}
@@ -311,12 +327,7 @@ export function WalletDashboard() {
             ))
           )}
 
-          {/* The way in to the Gateway page, deposit flow included. */}
-          <SettlementStrip
-            spendable={gwSpendable}
-            networks={gwNetworks}
-            onPress={() => router.push('/(app)/gateway')}
-          />
+
         </View>
       </ScrollView>
     </View>
@@ -435,34 +446,62 @@ function IconButton({ icon, onPress }: { icon: IconName; onPress: () => void }) 
 }
 
 /**
- * The way in to Gateway, and the one line that describes it.
+ * The wallet's two USDC balances, side by side.
  *
- * Always rendered, which is the change: it used to hide itself whenever nothing
- * was deposited. That was fine while the wallet swept funds in automatically —
- * the balance appeared on its own — but now that depositing is something the
- * user does, hiding the entry point at exactly zero would leave no way to reach
- * it from here. So an empty Gateway gets an invitation instead of nothing.
+ * Both are the user's money; the only difference is where it can go next.
+ * Gateway spends on any supported network in seconds, Wallet sits on one chain
+ * — and that distinction is the entire feature, so it is drawn rather than
+ * explained. The Gateway tile carries the app's ink because it is the one this
+ * row exists to introduce.
+ *
+ * Always rendered, including at zero, where it becomes the invitation: a strip
+ * that hides itself when there is nothing deposited is a strip nobody can use
+ * to deposit the first time.
  */
-function SettlementStrip({
-  spendable,
-  networks,
+function GatewayPots({
+  gateway,
+  wallet,
+  arriving,
+  masked,
   onPress,
 }: {
-  spendable: number;
-  networks: number;
+  gateway: number;
+  wallet: number;
+  arriving: number;
+  masked: boolean;
   onPress: () => void;
 }) {
   const theme = UnistylesRuntime.getTheme();
-  const funded = spendable > 0 && networks > 0;
+  const money = (v: number) => (masked ? '••••' : formatUsd(Math.max(0, v)));
   return (
-    <PressableScale style={styles.settleStrip} onPress={onPress}>
-      <Icon name={funded ? 'bolt' : 'plus'} size={13} color={theme.colors.muted} />
-      <RNText style={styles.settleText}>
-        {funded
-          ? `${formatUsd(spendable)} in Gateway — spendable on ${networks} networks`
-          : 'Deposit to Gateway — spend USDC on any network'}
-      </RNText>
-      <Icon name="chevronRight" size={12} color={theme.colors.muted} />
+    <PressableScale style={styles.pots} onPress={onPress}>
+      <View style={[styles.pot, styles.potLead]}>
+        <View style={styles.potHead}>
+          <Icon name="bolt" size={12} color={theme.colors.appBackground} />
+          <RNText style={[styles.potLabel, styles.potLabelLead]}>GATEWAY</RNText>
+        </View>
+        <RNText style={[styles.potFigure, styles.potFigureLead]}>{money(gateway)}</RNText>
+        <RNText style={[styles.potNote, styles.potNoteLead]} numberOfLines={1}>
+          {arriving > 0
+            ? `${formatUsd(arriving)} arriving`
+            : gateway > 0
+              ? 'spendable anywhere'
+              : 'tap to deposit'}
+        </RNText>
+      </View>
+      <View style={styles.pot}>
+        <View style={styles.potHead}>
+          <Icon name="cash" size={12} color={theme.colors.muted} />
+          <RNText style={styles.potLabel}>WALLET</RNText>
+        </View>
+        <RNText style={styles.potFigure}>{money(wallet)}</RNText>
+        <RNText style={styles.potNote} numberOfLines={1}>
+          {/* "no USDC held" would be a lie when the wallet holds USDC on a chain
+              Gateway does not cover — Solana, say. This pot counts only the
+              Gateway networks, so it has to say which. */}
+          {wallet > 0 ? 'on its own network' : 'none on a Gateway network'}
+        </RNText>
+      </View>
     </PressableScale>
   );
 }
@@ -621,16 +660,36 @@ const styles = StyleSheet.create((theme) => ({
   emptyTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, color: theme.colors.text },
   emptyDesc: { fontFamily: fontFamily.medium, fontSize: 15, letterSpacing: -0.3, color: theme.colors.muted },
 
-  settleStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: theme.spacing.screen,
-    marginTop: theme.spacing.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: theme.radius.lg,
-    backgroundColor: '#ECEEE9',
+  // The two pots, sat under the asset rail inside the light card.
+  pots: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  pot: {
+    flex: 1,
+    padding: 12,
+    gap: 4,
+    borderRadius: 18,
+    backgroundColor: theme.colors.tile,
   },
-  settleText: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.26, color: theme.colors.muted },
+  potLead: { backgroundColor: theme.colors.text },
+  potHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  potLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: theme.colors.muted,
+  },
+  potLabelLead: { color: theme.colors.appBackground, opacity: 0.7 },
+  potFigure: {
+    fontFamily: fontFamily.bold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: theme.colors.text,
+  },
+  potFigureLead: { color: theme.colors.appBackground },
+  potNote: {
+    fontFamily: fontFamily.medium,
+    fontSize: 11,
+    letterSpacing: -0.1,
+    color: theme.colors.muted,
+  },
+  potNoteLead: { color: theme.colors.appBackground, opacity: 0.65 },
 }));

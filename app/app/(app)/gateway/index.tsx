@@ -158,7 +158,7 @@ export default function Gateway() {
               </View>
               <Text style={styles.potFigure}>{formatUsd(inWallet)}</Text>
               <Text style={styles.potNote}>
-                {inWallet >= VISIBLE ? 'on one network each' : 'no USDC held'}
+                {inWallet >= VISIBLE ? 'on one network each' : 'none on a Gateway network'}
               </Text>
             </View>
           </View>
