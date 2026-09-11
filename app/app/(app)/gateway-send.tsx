@@ -17,6 +17,7 @@ import { gatewaySend, type SendResult } from '../../src/bridge/gateway';
 import { getActiveEnvironment } from '../../src/bridge/activeEnv';
 import { getActiveAccount } from '../../src/bridge/account';
 import { circleChainsForEnvironment, type ChainDef } from '../../src/lib/chains';
+import { isEnsName, resolveEns } from '../../src/bridge/ens';
 
 /**
  * Send from the Circle Gateway unified balance.
@@ -53,18 +54,74 @@ export default function GatewaySend() {
 
   const value = Number(amount);
   const valid = Number.isFinite(value) && value > 0 && value <= spendable;
-  const validAddress = /^0x[0-9a-fA-F]{40}$/.test(to.trim());
+  const trimmedTo = to.trim();
+  const validAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedTo);
   const ready = valid && !!dest && !!wallet && validAddress;
+
+  // ── ENS ──────────────────────────────────────────────────────────────────
+  // The wallet issues `name.mercurywallet.eth` and tells people to get paid at
+  // it, so the send that leads with "in seconds" has to accept one. Every
+  // destination here is EVM and coinType 60 is valid on all of them at once, so
+  // unlike the wallet send there is no asset to disqualify a name.
+  //
+  // The resolved ADDRESS replaces the typed name, matching send/address.tsx:
+  // ENS proves who owns the name, never that the address inside is really
+  // theirs, so the payer sees where the money is actually going before it moves.
+  const isEns = isEnsName(trimmedTo);
+  const [ensHandle, setEnsHandle] = useState<string | null>(null);
+  const [ensResolving, setEnsResolving] = useState(false);
+  const [ensErr, setEnsErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEns) {
+      setEnsResolving(false);
+      setEnsErr(null);
+      return;
+    }
+    let cancelled = false;
+    setEnsResolving(true);
+    setEnsErr(null);
+    // Debounced: this fires on every keystroke, and the answer for a prefix of
+    // what they are typing is worth nothing.
+    const t = setTimeout(async () => {
+      const r = await resolveEns(trimmedTo);
+      if (cancelled) return;
+      setEnsResolving(false);
+      if (r.status === 'ok' && r.records.evm) {
+        setEnsHandle(trimmedTo.toLowerCase());
+        setTo(r.records.evm);
+      } else if (r.status === 'unavailable') {
+        // Could not CHECK is not the same as bad, and the difference matters
+        // when someone is staring at their own name.
+        setEnsErr(`Couldn't look up ${trimmedTo} just now. Check your connection.`);
+      } else {
+        setEnsErr(`${trimmedTo} has no address we can pay.`);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [isEns, trimmedTo]);
+
   // Said only once there is something to be wrong ABOUT — an empty field is not
-  // an error.
+  // an error, and neither is a name we have not finished resolving.
   const tooMuch = Number.isFinite(value) && value > spendable;
-  const badAddress = to.trim().length > 0 && !validAddress;
+  const badAddress = trimmedTo.length > 0 && !validAddress && !isEns;
+
+  /** Typing by hand detaches whatever name last filled this field. */
+  const editTo = (next: string) => {
+    setEnsHandle(null);
+    setEnsErr(null);
+    setTo(next);
+  };
 
   /** A scan lands back here through the shared scan store, the same way the
    *  ordinary send flow picks one up. */
   const scanResult = useScan((s) => s.result);
   useEffect(() => {
     if (!scanResult) return;
+    setEnsHandle(null);
     setTo(parseScanned(scanResult));
     useScan.getState().consume();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -77,6 +134,7 @@ export default function GatewaySend() {
       show('Nothing on the clipboard', 'error');
       return;
     }
+    setEnsHandle(null);
     setTo(parseScanned(t));
   }
 
@@ -217,8 +275,8 @@ export default function GatewaySend() {
           </View>
           <TextInput
             value={to}
-            onChangeText={setTo}
-            placeholder="0x…"
+            onChangeText={editTo}
+            placeholder="0x… or a name"
             placeholderTextColor={theme.colors.faint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -228,7 +286,13 @@ export default function GatewaySend() {
             style={styles.addrInput}
           />
           {badAddress ? (
-            <Text style={styles.fieldError}>That is not a valid EVM address.</Text>
+            <Text style={styles.fieldError}>That is not a valid EVM address or name.</Text>
+          ) : ensErr ? (
+            <Text style={styles.fieldError}>{ensErr}</Text>
+          ) : ensResolving ? (
+            <Text style={styles.fieldHint}>Looking up {trimmedTo}…</Text>
+          ) : ensHandle ? (
+            <Text style={styles.fieldHint}>{ensHandle} resolves to this address.</Text>
           ) : (
             <Text style={styles.fieldHint}>
               The recipient receives spendable USDC — no bridge claim, no gas token needed.
