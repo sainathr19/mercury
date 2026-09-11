@@ -84,3 +84,27 @@ export const hubDomain = (env: ChainEnvironment): number => HUB_DOMAIN[env];
  * holding only USDC cannot make one.
  */
 export const gasIsUsdc = (chain: ChainDef): boolean => chain.nativeSymbol === 'USDC';
+
+/**
+ * The largest amount a "Max" can offer, given what the last transfer was
+ * charged.
+ *
+ * Gateway charges its fee PER burn intent and requires each source to cover its
+ * own leg PLUS that fee, so an amount equal to the whole spendable balance can
+ * never be allocated — the allocator returns nothing and the send fails with
+ * "Not enough spendable balance", which names the symptom rather than the
+ * reason. Max therefore has to come off the top.
+ *
+ * `feeUsdc` is the previous charge, not a quote: Circle prices a transfer only
+ * in answer to a signed burn intent, so nothing better exists before the user
+ * commits. Zero (no send yet) reproduces the old behaviour rather than
+ * inventing a reserve.
+ *
+ * Floored to cents because the contract works in 6dp but a figure that cannot
+ * be typed back into the field is not a usable Max.
+ */
+export function maxSendable(spendable: number, feeUsdc: number): number {
+  const room = spendable - (Number.isFinite(feeUsdc) && feeUsdc > 0 ? feeUsdc : 0);
+  if (!Number.isFinite(room) || room <= 0) return 0;
+  return Math.floor(room * 100) / 100;
+}

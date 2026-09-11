@@ -1,11 +1,5 @@
 import { chainForDomain } from './chains';
-import {
-  depositReadySeconds,
-  gasIsUsdc,
-  hubChain,
-  hubDomain,
-  readyLabel,
-} from './gatewayHub';
+import { depositReadySeconds, gasIsUsdc, hubChain, hubDomain, readyLabel, maxSendable } from './gatewayHub';
 
 describe('deposit finality', () => {
   it('knows the Ethereum-finality chains are slow', () => {
@@ -73,5 +67,35 @@ describe('gasIsUsdc', () => {
     // This is what lets a testnet deposit work from a USDC-only wallet.
     expect(gasIsUsdc(hubChain('testnet')!)).toBe(true);
     expect(gasIsUsdc(hubChain('mainnet')!)).toBe(false);
+  });
+});
+
+describe('maxSendable leaves room for the fee', () => {
+  // The case that was broken: Max offered the whole balance, the allocator
+  // subtracted the per-intent fee from it, came up short, and the send died
+  // with "Not enough spendable balance".
+  test('reserves the last fee off the top', () => {
+    expect(maxSendable(5, 1)).toBe(4);
+    expect(maxSendable(2.5, 0.0035)).toBe(2.49);
+  });
+
+  test('with no previous send it reserves nothing', () => {
+    expect(maxSendable(5, 0)).toBe(5);
+  });
+
+  test('never offers a negative amount when the fee exceeds the balance', () => {
+    expect(maxSendable(0.5, 1)).toBe(0);
+    expect(maxSendable(0, 1)).toBe(0);
+  });
+
+  test('floors to cents so the figure can be typed back in', () => {
+    // 6dp on the contract, 2dp in the field.
+    expect(maxSendable(3.999999, 0)).toBe(3.99);
+    expect(maxSendable(10, 0.005)).toBe(9.99);
+  });
+
+  test('a nonsense fee is ignored rather than propagated', () => {
+    expect(maxSendable(5, NaN)).toBe(5);
+    expect(maxSendable(5, -1)).toBe(5);
   });
 });

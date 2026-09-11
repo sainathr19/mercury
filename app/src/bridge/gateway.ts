@@ -480,6 +480,16 @@ export interface TransferResult {
   signature?: string;
   /** Set when Circle rejects — surfaced verbatim, its messages are specific. */
   error?: string;
+  /**
+   * What Circle actually charged, in human USDC — `maxFee` multiplied by the
+   * number of burn intents, because the fee is per intent.
+   *
+   * Returned because it CANNOT be known in advance: Circle quotes a minimum
+   * only in response to a signed intent (see the re-pricing loop below). While
+   * this went unreported the send screen showed "you send 2.00" for a transfer
+   * that debited 3.00, and nothing in the app ever said where the rest went.
+   */
+  feeUsdc?: number;
   /** Round-trip milliseconds, for the "is it actually instant" question. */
   ms: number;
 }
@@ -504,6 +514,8 @@ export interface SendResult {
    */
   attestation?: string;
   signature?: string;
+  /** Circle's fee in human USDC, as actually charged. See TransferResult. */
+  feeUsdc?: number;
   attestMs: number;
   relayMs: number;
 }
@@ -673,6 +685,10 @@ export async function gatewayTransfer(opts: {
       transferId: json.transferId,
       attestation: json.attestation,
       signature: json.signature,
+      // Per intent, so the total is the quote multiplied by the legs it was
+      // charged on — the same multiplication that makes the quote rise when an
+      // amount has to be drawn from more than one domain.
+      feeUsdc: Number(fee * BigInt(legs.length)) / 1e6,
       ms: Date.now() - t0,
     };
   } catch (e) {
@@ -747,6 +763,9 @@ export async function gatewaySend(opts: Parameters<typeof gatewayTransfer>[0]): 
     // is the only way the money is ever claimed.
     attestation: transfer.attestation,
     signature: transfer.signature,
+    // Carried through on both outcomes: the fee is charged at the BURN, so it
+    // has been paid whether or not the relay went on to deliver.
+    feeUsdc: transfer.feeUsdc,
     attestMs: transfer.ms,
     relayMs: relay.ms,
   };

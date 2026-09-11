@@ -33,6 +33,7 @@ export interface SettlementEvent {
 const MAX_EVENTS = 8;
 
 const IN_FLIGHT_FILE = 'gateway-inflight.v1.json';
+const LAST_FEE_FILE = 'gateway-lastfee.v1.json';
 const WITHDRAWALS_FILE = 'gateway-withdrawals.v1.json';
 
 /**
@@ -80,6 +81,39 @@ function loadStarted(): Record<string, number> {
     return out;
   } catch {
     return {};
+  }
+}
+
+/**
+ * The last fee Circle actually charged.
+ *
+ * Kept because the fee is not knowable in advance — Circle quotes a minimum
+ * only in answer to a SIGNED burn intent, so asking costs a signature and there
+ * is nothing to show a user deciding whether to send. The previous charge is
+ * the only honest estimate available, which is enough for the two things that
+ * need one: telling the user a fee exists before they commit, and leaving room
+ * for it when they tap Max.
+ *
+ * Always an estimate, never a quote. The exact figure is reported afterwards
+ * from what the transfer actually paid.
+ */
+function persistLastFee(v: number): void {
+  try {
+    new File(Paths.document, LAST_FEE_FILE).write(JSON.stringify({ lastFeeUsdc: v }));
+  } catch {
+    // Costs an unestimated Max next launch, nothing more.
+  }
+}
+
+function loadLastFee(): number {
+  try {
+    const f = new File(Paths.document, LAST_FEE_FILE);
+    if (!f.exists) return 0;
+    const v = JSON.parse(f.textSync()) as { lastFeeUsdc?: number };
+    const n = Number(v.lastFeeUsdc);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -135,6 +169,13 @@ interface GatewayState extends UsdcHoldings {
   noteEvent(e: Omit<SettlementEvent, 'at'>): void;
   /** Record a completed send so the balance stops counting it immediately. */
   noteSent(amount: number): void;
+  /**
+   * Circle's fee on the most recent send, in human USDC. 0 until one has been
+   * made. An ESTIMATE for the next send — see persistLastFee.
+   */
+  lastFeeUsdc: number;
+  /** Remember what a completed transfer was actually charged. */
+  noteFee(feeUsdc: number): void;
   refresh(address: string): Promise<void>;
   /** Sweep wallet-held USDC into Gateway, then re-read. Best-effort. */
   settle(wallet: WalletInterface, account: number, address: string): Promise<void>;
@@ -155,6 +196,7 @@ const EMPTY = {
   loadedAt: null,
   stuck: [],
   ...loadInFlight(),
+  lastFeeUsdc: loadLastFee(),
   events: [],
   withdrawals: [],
   withdrawalsAt: null,
@@ -176,6 +218,15 @@ export const useGateway = create<GatewayState>((set, get) => ({
     const next = { inFlightSent: get().inFlightSent + amount, inFlightAt: Date.now() };
     set(next);
     persistInFlight(next);
+  },
+
+  noteFee(feeUsdc) {
+    // A zero is not evidence of a free rail, it is a transfer that never got as
+    // far as being priced. Keeping the previous figure beats replacing a real
+    // estimate with a misleading one.
+    if (!Number.isFinite(feeUsdc) || feeUsdc <= 0) return;
+    set({ lastFeeUsdc: feeUsdc });
+    persistLastFee(feeUsdc);
   },
 
   async refresh(address) {

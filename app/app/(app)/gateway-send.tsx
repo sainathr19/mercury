@@ -17,6 +17,7 @@ import { gatewaySend, type SendResult } from '../../src/bridge/gateway';
 import { getActiveEnvironment } from '../../src/bridge/activeEnv';
 import { getActiveAccount } from '../../src/bridge/account';
 import { circleChainsForEnvironment, type ChainDef } from '../../src/lib/chains';
+import { maxSendable } from '../../src/lib/gatewayHub';
 import { isEnsName, resolveEns } from '../../src/bridge/ens';
 
 /**
@@ -38,7 +39,7 @@ export default function GatewaySend() {
   const wallet = useSession((s) => s.wallet);
   // `spendable` — NOT the wallet's total USDC. Only money already settled into
   // Gateway can be sent cross-chain; the rest has to be deposited first.
-  const { spendable, perDomain, refresh, noteSent, noteEvent } = useGateway();
+  const { spendable, perDomain, refresh, noteSent, noteEvent, lastFeeUsdc, noteFee } = useGateway();
 
   const env = getActiveEnvironment();
   const destinations = circleChainsForEnvironment(env);
@@ -162,6 +163,8 @@ export default function GatewaySend() {
         sources: perDomain,
       });
       setResult(r);
+      // Charged at the burn, so it is owed whether or not the relay delivered.
+      if (r.feeUsdc) noteFee(r.feeUsdc);
       if (r.ok) {
         show(`Sent $${value.toFixed(2)} in ${((r.attestMs + r.relayMs) / 1000).toFixed(1)}s`, 'success');
         // The contract keeps reporting this money for a few minutes; tell the
@@ -239,15 +242,33 @@ export default function GatewaySend() {
                 tap();
                 // Floor to cents: the contract works in 6dp but a fiat figure
                 // that cannot be typed back in is not a usable "Max".
-                setAmount((Math.floor(spendable * 100) / 100).toFixed(2));
+                //
+                // The fee comes OFF the top. Gateway charges it per burn intent
+                // and requires each source to cover its own leg plus the fee, so
+                // a Max of the whole spendable balance can never be allocated —
+                // it failed every time with "Not enough spendable balance",
+                // which named the symptom and not the reason. Without a prior
+                // send there is nothing to reserve, and this behaves as before.
+                setAmount(maxSendable(spendable, lastFeeUsdc).toFixed(2));
               }}
             >
               <Text style={styles.maxLabel}>Max</Text>
             </Pressable>
           </View>
-          {tooMuch && (
+          {tooMuch ? (
             <Text style={styles.fieldError}>
               That is more than your settled balance. Only USDC already in Gateway can go instantly.
+            </Text>
+          ) : (
+            /* Said BEFORE the hold, because it is charged on top of the amount
+               and the total leaving the balance is therefore larger than the
+               figure above it. Circle prices a transfer only in answer to a
+               signed burn intent, so there is no quote to show here — the last
+               charge is the honest stand-in, and it is labelled as one. */
+            <Text style={styles.fieldHint}>
+              {lastFeeUsdc > 0
+                ? `Circle charges a network fee on top — about ${formatUsd(lastFeeUsdc)} last time. The exact amount is quoted when you send.`
+                : 'Circle charges a network fee on top, quoted when you send.'}
             </Text>
           )}
         </View>
@@ -328,7 +349,10 @@ export default function GatewaySend() {
             <View style={styles.outcomeMid}>
               <Text style={[styles.outcomeTitle, { color: theme.colors.success }]}>Delivered</Text>
               <Text style={styles.outcomeBody}>
-                {`Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`}
+                {result.feeUsdc
+                  ? `${formatUsd(result.feeUsdc)} Circle fee — ${formatUsd(value + result.feeUsdc)} left your balance. ` +
+                    `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`
+                  : `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`}
               </Text>
             </View>
           </View>
@@ -339,8 +363,12 @@ export default function GatewaySend() {
             <View style={styles.outcomeMid}>
               <Text style={[styles.outcomeTitle, { color: theme.colors.warning }]}>Delivery pending</Text>
               <Text style={styles.outcomeBody}>
-                The transfer was signed and the funds left your balance. They are held in a valid
-                claim and will arrive once delivery retries.
+                {/* The fee is charged at the BURN, so a failed relay does not
+                    refund it. Saying so here keeps the two outcomes honest in
+                    the same way. */}
+                {result.feeUsdc
+                  ? `The transfer was signed and ${formatUsd(value + result.feeUsdc)} left your balance, including a ${formatUsd(result.feeUsdc)} Circle fee. It is held in a valid claim and will arrive once delivery retries.`
+                  : 'The transfer was signed and the funds left your balance. They are held in a valid claim and will arrive once delivery retries.'}
               </Text>
             </View>
           </View>
