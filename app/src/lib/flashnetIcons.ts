@@ -119,3 +119,32 @@ export function resolveIcon(a: SwapAsset, registry: Registry): ResolvedIcon {
     colorHex: tintFor(a.symbol),
   };
 }
+
+/**
+ * A Flashnet asset as the icon component wants it.
+ *
+ * Exists so `SwapAssetIcon` never imports `flashnetScope` — the wallet has a
+ * second swap provider whose assets it draws with the same component, and a
+ * view that knew about one provider's types could not serve the other.
+ */
+export function flashnetIconAsset(
+  a: SwapAsset,
+  registry: Registry,
+): {
+  symbol: string;
+  coingeckoId: string;
+  colorHex: string;
+  imageUrl?: string;
+  chainId?: number;
+  network?: string;
+} {
+  const icon = resolveIcon(a, registry);
+  return {
+    symbol: a.symbol,
+    coingeckoId: icon.coingeckoId,
+    colorHex: icon.colorHex,
+    imageUrl: icon.imageUrl,
+    chainId: chainIdFor(a.chain),
+    network: chainNetworkName(a.chain) ?? a.chainName,
+  };
+}

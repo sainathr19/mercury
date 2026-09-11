@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon } from '../ui/Icon';
 import { Text } from '../ui/Text';
-import { SwapAssetIcon } from './SwapAssetIcon';
+import { FlashnetAssetIcon } from './FlashnetAssetIcon';
 import { assetKey, type SwapAsset } from '../lib/flashnetScope';
 import { formatCrypto } from '../lib/format';
 import { fontFamily } from '../theme/fonts';
@@ -119,7 +119,7 @@ export function SwapAssetSheet({
                     onClose();
                   }}
                 >
-                  <SwapAssetIcon asset={a} size={36} ringColor={theme.colors.appBackground} />
+                  <FlashnetAssetIcon asset={a} size={36} ringColor={theme.colors.appBackground} />
                   <View style={styles.mid}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {a.symbol}

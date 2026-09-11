@@ -20,6 +20,14 @@ export const LOCAL_TOKEN_ICONS: Record<string, number> = {
   'usd-coin': require('../../assets/crypto/usdc.svg'),
   usdc: require('../../assets/crypto/usdc.svg'),
   pathusd: require('../../assets/crypto/pathusd.png'),
+  // The wrapped-BTC family, bundled because Garden reports `coingecko: bitcoin`
+  // for ALL of them — WBTC, cbBTC and iBTC alike — so resolving by that id drew
+  // three different tokens as the same plain Bitcoin glyph. These are keyed by
+  // symbol rather than a CoinGecko id for exactly that reason: the id does not
+  // distinguish them and the symbol does.
+  cbbtc: require('../../assets/crypto/cbbtc.svg'),
+  ibtc: require('../../assets/crypto/ibtc.svg'),
+  seed: require('../../assets/crypto/seed.svg'),
 };
 
 /** Dark-theme overrides (used when the app is in stealth/private "dark" mode).

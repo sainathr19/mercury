@@ -1,9 +1,12 @@
 // Cross-chain swaps, through Flashnet Orchestra.
 //
-// A pushed PAGE with two sections rather than a sheet. An Orchestra order can
-// take minutes and outlives the screen that started it, so the history is not a
-// footnote under a composer — it is the other half of the feature, and a sheet
-// is the wrong container for something you come back to. `ScreenScaffold` owns
+// A pushed PAGE rather than a sheet. An Orchestra order can take minutes and
+// outlives the screen that started it, so this is something you come back to and
+// a sheet is the wrong container for that.
+//
+// No history section: a swap is a transaction the wallet made, so it shows in
+// Activity with everything else rather than behind a tab here (see
+// lib/swapActivity). `ScreenScaffold` owns
 // the nav row and the clearance above the title, which is why this file sets no
 // top offsets of its own.
 //
@@ -22,20 +25,19 @@ import { useRouter } from 'expo-router';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { HoldToConfirm, Icon, ScreenScaffold, Text, useToast } from '../../../src/ui';
-import { SwapAssetIcon } from '../../../src/components/SwapAssetIcon';
+import { FlashnetAssetIcon } from '../../../src/components/FlashnetAssetIcon';
 import { SwapAssetSheet } from '../../../src/components/SwapAssetSheet';
+import { GardenSwapPane } from '../../../src/screens/GardenSwapPane';
 import { useSession } from '../../../src/stores/session';
 import { useNetworks } from '../../../src/stores/networkStore';
 import { usePortfolio } from '../../../src/stores/portfolioStore';
 import { useSwapRoutes } from '../../../src/stores/swapRoutesStore';
-import { useSwaps, isPending, type SwapRecord } from '../../../src/stores/swapStore';
+import { useSwaps, isPending } from '../../../src/stores/swapStore';
 import {
   estimate,
   limits as fetchLimits,
-  statusLabel,
   swapsConfigured,
   type Estimate,
-  type OrderStatus,
   type RouteLimits,
 } from '../../../src/bridge/flashnet';
 import { createSwap, DEFAULT_SLIPPAGE_BPS } from '../../../src/bridge/flashnetSwap';
@@ -47,14 +49,12 @@ import {
   sourceAssets,
   type SwapAsset,
 } from '../../../src/lib/flashnetScope';
-import { formatCrypto, formatUnits, relativeTime, toBaseUnits } from '../../../src/lib/format';
+import { formatCrypto, formatUnits, toBaseUnits } from '../../../src/lib/format';
 import { mapError } from '../../../src/lib/errors';
 import { fontFamily } from '../../../src/theme/fonts';
 
 /** Long enough that typing does not fire a request per keystroke. */
 const ESTIMATE_DEBOUNCE_MS = 450;
-
-type Section = 'swap' | 'history';
 
 export default function Swaps() {
   const router = useRouter();
@@ -70,7 +70,6 @@ export default function Swaps() {
   const hydrateSwaps = useSwaps((s) => s.hydrate);
   const refreshSwaps = useSwaps((s) => s.refresh);
 
-  const [section, setSection] = useState<Section>('swap');
   const [source, setSource] = useState<SwapAsset | null>(null);
   const [destination, setDestination] = useState<SwapAsset | null>(null);
   const [amount, setAmount] = useState('');
@@ -217,169 +216,136 @@ export default function Swaps() {
   }
 
   // ── testnet ───────────────────────────────────────────────────────────────
+  //
+  // A different provider, not a disabled screen. Orchestra has no test network —
+  // its route table carries 23 chains and not one of them is a testnet — so this
+  // used to be a dead end that told the user to switch to mainnet. Garden does
+  // have a testnet catalog, so testnet gets the same screen with the other
+  // provider behind it.
+  //
+  // Rendered as a separate pane rather than by making this component
+  // provider-agnostic: the mainnet path is working, shipped code, and threading
+  // two asset shapes, two stores and two quote APIs through one component would
+  // put that at risk for no gain the user can see.
   if (!mainnet) {
     return (
       <ScreenScaffold title="Swap" subtitle="Move one asset into another, across chains.">
-        <Empty
-          icon="globe"
-          title="Mainnet only"
-          body="Swaps route real liquidity across real chains, so there is no test version. Switch to mainnet in Networks to use them."
-        />
+        <GardenSwapPane />
       </ScreenScaffold>
     );
   }
 
   return (
     <ScreenScaffold title="Swap" subtitle="Move one asset into another, across chains.">
-      {/* Two sections, one page — the same control as the Networks environment
-          switch, so a segmented choice looks like one everywhere in the app. */}
-      <View style={styles.segment}>
-        {(['swap', 'history'] as Section[]).map((s) => {
-          const on = section === s;
-          return (
-            <Pressable
-              key={s}
-              style={[styles.segmentItem, on && styles.segmentItemOn]}
-              onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
-                setSection(s);
-              }}
-            >
-              <Text style={[styles.segmentLabel, on && styles.segmentLabelOn]} numberOfLines={1}>
-                {s === 'swap' ? 'Swap' : swaps.length > 0 ? `History · ${swaps.length}` : 'History'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {section === 'swap' ? (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
-          {/* ── Pay ─────────────────────────────────────────────────────── */}
-          <View style={styles.leg}>
-            <View style={styles.legHead}>
-              <Text style={styles.legLabel}>You pay</Text>
-              {!!source && held > 0 && (
-                <Pressable hitSlop={8} onPress={setMax}>
-                  <Text style={styles.maxLabel}>
-                    {formatCrypto(held)} {source.symbol} · <Text style={styles.maxWord}>Max</Text>
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-            <AssetRow asset={source} onPress={() => setPicking('source')} placeholder="Choose an asset" />
-            <TextInput
-              value={amount}
-              onChangeText={(v) => {
-                if (/^\d*\.?\d*$/.test(v)) setAmount(v);
-              }}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              placeholderTextColor={theme.colors.faint}
-              style={styles.amountInput}
-            />
-            {overBalance ? (
-              <Text style={styles.legError}>
-                More than the {formatCrypto(held)} {source?.symbol} you hold
-              </Text>
-            ) : bounds?.minUsdCents ? (
-              <Text style={styles.legHint}>Minimum ${(bounds.minUsdCents / 100).toFixed(2)}</Text>
-            ) : null}
+      <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
+        {/* ── Pay ─────────────────────────────────────────────────────── */}
+        <View style={styles.leg}>
+          <View style={styles.legHead}>
+            <Text style={styles.legLabel}>You pay</Text>
+            {!!source && held > 0 && (
+              <Pressable hitSlop={8} onPress={setMax}>
+                <Text style={styles.maxLabel}>
+                  {formatCrypto(held)} {source.symbol} · <Text style={styles.maxWord}>Max</Text>
+                </Text>
+              </Pressable>
+            )}
           </View>
-
-          <View style={styles.link}>
-            <View style={styles.linkLine} />
-            <View style={styles.linkTile}>
-              <Icon name="arrowDown" size={14} color={theme.colors.text} />
-            </View>
-            <View style={styles.linkLine} />
-          </View>
-
-          {/* ── Receive ─────────────────────────────────────────────────── */}
-          <View style={styles.leg}>
-            <View style={styles.legHead}>
-              <Text style={styles.legLabel}>You receive</Text>
-              {estimating && <ActivityIndicator size="small" color={theme.colors.faint} />}
-            </View>
-            <AssetRow
-              asset={destination}
-              onPress={() => setPicking('destination')}
-              placeholder={source ? 'Choose an asset' : 'Choose what you pay first'}
-              disabled={!source}
-            />
-            <Text style={[styles.amountOut, !outHuman && styles.amountOutEmpty]} numberOfLines={1}>
-              {outHuman || '0'}
+          <AssetRow asset={source} onPress={() => setPicking('source')} placeholder="Choose an asset" />
+          <TextInput
+            value={amount}
+            onChangeText={(v) => {
+              if (/^\d*\.?\d*$/.test(v)) setAmount(v);
+            }}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={theme.colors.faint}
+            style={styles.amountInput}
+          />
+          {overBalance ? (
+            <Text style={styles.legError}>
+              More than the {formatCrypto(held)} {source?.symbol} you hold
             </Text>
-            <Text style={styles.legHint}>
-              Estimated · exact-in route, {DEFAULT_SLIPPAGE_BPS / 100}% slippage
-            </Text>
+          ) : bounds?.minUsdCents ? (
+            <Text style={styles.legHint}>Minimum ${(bounds.minUsdCents / 100).toFixed(2)}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.link}>
+          <View style={styles.linkLine} />
+          <View style={styles.linkTile}>
+            <Icon name="arrowDown" size={14} color={theme.colors.text} />
           </View>
+          <View style={styles.linkLine} />
+        </View>
 
-          {!!estError && <Text style={[styles.legError, styles.spacedError]}>{estError}</Text>}
+        {/* ── Receive ─────────────────────────────────────────────────── */}
+        <View style={styles.leg}>
+          <View style={styles.legHead}>
+            <Text style={styles.legLabel}>You receive</Text>
+            {estimating && <ActivityIndicator size="small" color={theme.colors.faint} />}
+          </View>
+          <AssetRow
+            asset={destination}
+            onPress={() => setPicking('destination')}
+            placeholder={source ? 'Choose an asset' : 'Choose what you pay first'}
+            disabled={!source}
+          />
+          <Text style={[styles.amountOut, !outHuman && styles.amountOutEmpty]} numberOfLines={1}>
+            {outHuman || '0'}
+          </Text>
+          <Text style={styles.legHint}>
+            Estimated · exact-in route, {DEFAULT_SLIPPAGE_BPS / 100}% slippage
+          </Text>
+        </View>
 
-          {!!est && (
-            <View style={styles.facts}>
+        {!!estError && <Text style={[styles.legError, styles.spacedError]}>{estError}</Text>}
+
+        {!!est && (
+          <View style={styles.facts}>
+            <Fact
+              label="Fee"
+              value={`${formatUnits(est.totalFeeAmount ?? est.feeAmount, feeDecimals)} ${est.feeAsset}`}
+              sub={est.totalFeeAmountUsd ? `$${Number(est.totalFeeAmountUsd).toFixed(2)}` : undefined}
+            />
+            {est.networkCostRequired && !!est.networkCostAmount && (
               <Fact
-                label="Fee"
-                value={`${formatUnits(est.totalFeeAmount ?? est.feeAmount, feeDecimals)} ${est.feeAsset}`}
-                sub={est.totalFeeAmountUsd ? `$${Number(est.totalFeeAmountUsd).toFixed(2)}` : undefined}
+                label="Delivery"
+                value={`${formatUnits(est.networkCostAmount, feeDecimals)} ${est.networkCostAsset ?? ''}`}
+                sub="account setup"
               />
-              {est.networkCostRequired && !!est.networkCostAmount && (
-                <Fact
-                  label="Delivery"
-                  value={`${formatUnits(est.networkCostAmount, feeDecimals)} ${est.networkCostAsset ?? ''}`}
-                  sub="account setup"
-                />
-              )}
-            </View>
-          )}
-
-          {routesLoading && routes.length === 0 && (
-            <View style={styles.loading}>
-              <ActivityIndicator size="small" color={theme.colors.faint} />
-              <Text style={styles.loadingText}>Loading routes…</Text>
-            </View>
-          )}
-          {!!routesError && <Text style={[styles.legError, styles.spacedError]}>{routesError}</Text>}
-
-          <View style={styles.cta}>
-            <HoldToConfirm
-              label={ready ? `Hold to swap ${amount} ${source?.symbol}` : 'Hold to swap'}
-              busy={working}
-              busyLabel="Creating swap"
-              disabled={!ready}
-              disabledLabel={
-                !swapsConfigured()
-                  ? 'Swaps not configured'
-                  : overBalance
-                    ? 'Not enough balance'
-                    : !source || !destination
-                      ? 'Choose both assets'
-                      : entered <= 0
-                        ? 'Enter an amount'
-                        : 'Hold to swap'
-              }
-              onConfirm={swap}
-            />
+            )}
           </View>
-        </Animated.View>
-      ) : (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
-          {swaps.length === 0 ? (
-            <Empty icon="swap" title="No swaps yet" body="Anything you swap shows here, with its progress." />
-          ) : (
-            swaps.map((s) => (
-              <HistoryRow
-                key={s.quoteId}
-                swap={s}
-                onPress={() =>
-                  router.push({ pathname: '/(app)/swaps/order', params: { quoteId: s.quoteId } })
-                }
-              />
-            ))
-          )}
-        </Animated.View>
-      )}
+        )}
+
+        {routesLoading && routes.length === 0 && (
+          <View style={styles.loading}>
+            <ActivityIndicator size="small" color={theme.colors.faint} />
+            <Text style={styles.loadingText}>Loading routes…</Text>
+          </View>
+        )}
+        {!!routesError && <Text style={[styles.legError, styles.spacedError]}>{routesError}</Text>}
+
+        <View style={styles.cta}>
+          <HoldToConfirm
+            label={ready ? `Hold to swap ${amount} ${source?.symbol}` : 'Hold to swap'}
+            busy={working}
+            busyLabel="Creating swap"
+            disabled={!ready}
+            disabledLabel={
+              !swapsConfigured()
+                ? 'Swaps not configured'
+                : overBalance
+                  ? 'Not enough balance'
+                  : !source || !destination
+                    ? 'Choose both assets'
+                    : entered <= 0
+                      ? 'Enter an amount'
+                      : 'Hold to swap'
+            }
+            onConfirm={swap}
+          />
+        </View>
+      </Animated.View>
 
       <SwapAssetSheet
         visible={picking === 'source'}
@@ -419,7 +385,7 @@ function AssetRow({
     <Pressable style={[styles.assetRow, disabled && styles.assetRowOff]} onPress={onPress} disabled={disabled}>
       {asset ? (
         <>
-          <SwapAssetIcon asset={asset} size={32} ringColor={theme.colors.tile} />
+          <FlashnetAssetIcon asset={asset} size={32} ringColor={theme.colors.tile} />
           <View style={styles.assetMid}>
             <Text style={styles.assetSymbol} numberOfLines={1}>
               {asset.symbol}
@@ -458,74 +424,7 @@ function Fact({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function HistoryRow({ swap, onPress }: { swap: SwapRecord; onPress: () => void }) {
-  const theme = UnistylesRuntime.getTheme();
-  const pending = isPending(swap);
-  const bad =
-    swap.status === 'failed' ||
-    swap.status === 'expired' ||
-    swap.status === 'unfulfilled' ||
-    swap.status === 'submit_failed';
-  const label =
-    swap.status === 'signing'
-      ? 'Signing deposit'
-      : swap.status === 'submitting'
-        ? 'Confirming deposit'
-        : swap.status === 'submit_failed'
-          ? 'Needs attention'
-          : statusLabel(swap.status as OrderStatus);
-  return (
-    <Pressable style={styles.histRow} onPress={onPress}>
-      <View style={styles.histMid}>
-        <Text style={styles.histPair} numberOfLines={1}>
-          {formatUnits(swap.amountIn, swap.source.decimals)} {swap.source.symbol}
-          <Text style={styles.histArrow}>{'  →  '}</Text>
-          {swap.destination.symbol}
-        </Text>
-        <Text style={styles.histSub} numberOfLines={1}>
-          {swap.source.chainName} → {swap.destination.chainName} · {relativeTime(swap.createdAt)}
-        </Text>
-      </View>
-      <View style={styles.histStatus}>
-        {pending && <ActivityIndicator size="small" color={theme.colors.faint} />}
-        <Text
-          style={[
-            styles.histStatusText,
-            bad && { color: theme.colors.danger },
-            swap.status === 'completed' && { color: theme.colors.success },
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      </View>
-      <Icon name="chevronRight" size={15} color={theme.colors.faint} />
-    </Pressable>
-  );
-}
-
-function Empty({ icon, title, body }: { icon: 'globe' | 'swap'; title: string; body: string }) {
-  const theme = UnistylesRuntime.getTheme();
-  return (
-    <View style={styles.empty}>
-      <View style={styles.emptyTile}>
-        <Icon name={icon} size={18} color={theme.colors.muted} />
-      </View>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      <Text style={styles.emptyBody}>{body}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create((theme) => ({
-  // Lifted from the Networks environment switch. Tokens rather than that
-  // screen's hard-coded hex, which resolve to the same values in light theme
-  // and stay correct when stealth mode flips to dark.
-  segment: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14, backgroundColor: theme.colors.tile },
-  segmentItem: { flex: 1, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  segmentItemOn: { backgroundColor: theme.colors.text },
-  segmentLabel: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.muted },
-  segmentLabelOn: { color: theme.colors.appBackground },
 
   pane: { marginTop: 18 },
 
@@ -618,35 +517,6 @@ const styles = StyleSheet.create((theme) => ({
 
   cta: { marginTop: 24 },
 
-  histRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
-  histMid: { flex: 1, gap: 3 },
-  histPair: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.24, color: theme.colors.text },
-  histArrow: { color: theme.colors.faint },
-  histSub: { fontFamily: fontFamily.medium, fontSize: 11.5, letterSpacing: -0.14, color: theme.colors.muted },
-  histStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  histStatusText: { fontFamily: fontFamily.medium, fontSize: 11.5, letterSpacing: -0.14, color: theme.colors.muted },
-
-  empty: { alignItems: 'center', gap: 8, paddingTop: 44, paddingHorizontal: 20 },
   // `tile` IS the app ground — a recess for nesting inside a white card. There
   // is no card here, so it rendered invisible and left the glyph floating.
-  emptyTile: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  emptyTitle: { fontFamily: fontFamily.semibold, fontSize: 17, letterSpacing: -0.3, color: theme.colors.text },
-  emptyBody: {
-    fontFamily: fontFamily.medium,
-    fontSize: 13.5,
-    lineHeight: 19,
-    letterSpacing: -0.18,
-    textAlign: 'center',
-    color: theme.colors.muted,
-  },
 }));

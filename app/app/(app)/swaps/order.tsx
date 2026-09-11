@@ -19,7 +19,7 @@ import { useSwaps, isPending, type SwapRecord } from '../../../src/stores/swapSt
 import { orderStatus, statusLabel, type OrderStage, type OrderStatus } from '../../../src/bridge/flashnet';
 import { retrySubmit } from '../../../src/bridge/flashnetSwap';
 import { SOURCE_CHAINS, type SwapAsset } from '../../../src/lib/flashnetScope';
-import { SwapAssetIcon } from '../../../src/components/SwapAssetIcon';
+import { FlashnetAssetIcon } from '../../../src/components/FlashnetAssetIcon';
 import { chainExplorer } from '../../../src/lib/chains';
 import { formatUnits, shortenAddress } from '../../../src/lib/format';
 import { mapError } from '../../../src/lib/errors';
@@ -120,14 +120,14 @@ export default function SwapOrder() {
             the content, and the icons say which chains they are on. */}
         <View style={styles.hero}>
           <View style={styles.heroLeg}>
-            <SwapAssetIcon asset={legOf(swap.source)} size={30} ringColor={theme.colors.appBackground} />
+            <FlashnetAssetIcon asset={legOf(swap.source)} size={30} ringColor={theme.colors.appBackground} />
             <Text style={styles.heroFrom} numberOfLines={1}>
               {formatUnits(swap.amountIn, swap.source.decimals)} {swap.source.symbol}
             </Text>
           </View>
           <Icon name="arrowDown" size={15} color={theme.colors.faint} />
           <View style={styles.heroLeg}>
-            <SwapAssetIcon asset={legOf(swap.destination)} size={38} ringColor={theme.colors.appBackground} />
+            <FlashnetAssetIcon asset={legOf(swap.destination)} size={38} ringColor={theme.colors.appBackground} />
             <Text style={styles.heroTo} numberOfLines={1}>
               {outAmount} {swap.destination.symbol}
             </Text>
