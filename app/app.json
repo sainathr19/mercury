@@ -29,7 +29,19 @@
     "plugins": [
       "expo-router",
       "expo-status-bar",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-mark-dark.png",
+          "imageWidth": 104,
+          "resizeMode": "contain",
+          "backgroundColor": "#ECEEE9",
+          "dark": {
+            "image": "./assets/splash-mark-light.png",
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
       "expo-font",
       "expo-image",
       "expo-local-authentication",
