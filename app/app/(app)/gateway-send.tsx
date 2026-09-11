@@ -305,6 +305,60 @@ export default function GatewaySend() {
         />
       </View>
 
+      {/* The sheet the "Deliver on" row opens.
+          This was missing outright: `Modal` was imported and `picking` was set
+          to true by the row, but nothing rendered on that state and nothing
+          reset it — so tapping the network row did nothing at all, and the
+          destination was stuck on whatever `destinations[0]` happened to be. */}
+      <Modal
+        visible={picking}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPicking(false)}
+      >
+        <SafeAreaView style={styles.safe} edges={['bottom']}>
+          <View style={styles.pickGrabber} />
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text style={styles.pageTitle}>Deliver on</Text>
+              <Text style={styles.pageSub}>
+                The recipient needs no gas on the network you choose.
+              </Text>
+            </View>
+            <PressableScale haptic={false} onPress={() => setPicking(false)} style={styles.closeTile}>
+              <Icon name="close" size={15} color={theme.colors.muted} />
+            </PressableScale>
+          </View>
+          <ScrollView contentContainerStyle={styles.pickBody} showsVerticalScrollIndicator={false}>
+            {destinations.map((c, i) => {
+              const on = dest?.chainId === c.chainId;
+              return (
+                <Pressable
+                  key={c.chainId.toString()}
+                  style={({ pressed }) => [
+                    styles.pickRow,
+                    i > 0 && styles.divider,
+                    pressed && styles.pickPressed,
+                  ]}
+                  onPress={() => {
+                    tap();
+                    setDest(c);
+                    setPicking(false);
+                  }}
+                >
+                  <ChainBadge chainId={Number(c.chainId)} size={26} />
+                  <View style={styles.selectMid}>
+                    <Text style={styles.selectValue}>{c.name}</Text>
+                    <Text style={styles.selectSub}>Chain {c.chainId.toString()}</Text>
+                  </View>
+                  {on && <Icon name="check" size={16} color={theme.colors.text} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -465,6 +519,7 @@ const styles = StyleSheet.create((theme) => ({
   selectValue: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28, color: theme.colors.text },
   selectSub: { fontFamily: fontFamily.medium, fontSize: 11.5, letterSpacing: -0.1, color: theme.colors.muted },
   selectPlaceholder: { flex: 1, fontFamily: fontFamily.medium, fontSize: 15, color: theme.colors.faint },
+
 
   // ── Outcome ───────────────────────────────────────────────────────────────
   outcome: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 13, borderRadius: theme.radius.lg },

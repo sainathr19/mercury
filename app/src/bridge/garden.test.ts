@@ -3,7 +3,7 @@
  * this file exists is that two of them look the same to a user and mean
  * opposite things to us.
  */
-import { classifyGardenError, gardenErrorMessage, GardenError, symbolOf } from './garden';
+import { bestQuote, classifyGardenError, gardenErrorMessage, GardenError, symbolOf } from './garden';
 
 describe('classifying what Garden actually returns', () => {
   it('separates a missing route from a sleeping solver', () => {
@@ -86,5 +86,61 @@ describe('symbolOf', () => {
     for (const [id, name, want] of cases) {
       expect(symbolOf({ id, name })).toBe(want);
     }
+  });
+});
+
+describe('bestQuote — /v2/quote answers with an ARRAY', () => {
+  /** The real payload, captured live from the testnet API. */
+  const LIVE = [
+    {
+      source: { asset: 'solana_testnet:sol', amount: '100000000', display: '0.10000000', value: '9.9796' },
+      destination: { asset: 'ethereum_sepolia:wbtc', amount: '12880', display: '0.00012880', value: '9.9496' },
+      solver_id: 'garden-testnet-solver',
+      estimated_time: 20,
+      slippage: 0,
+      fee: 30,
+      fixed_fee: '0',
+    },
+  ];
+
+  it('reads the array the API actually returns', () => {
+    // Read as a single object, `destination.amount` is undefined and the screen
+    // showed a perfectly good quote as a zero payout — with the confirm button
+    // ENABLED, because "0" is not null.
+    const q = bestQuote(LIVE as never);
+    expect(q?.destination.amount).toBe('12880');
+    expect(q?.destination.display).toBe('0.00012880');
+    expect(q?.estimated_time).toBe(20);
+  });
+
+  it('still accepts a bare object, in case the shape ever changes back', () => {
+    expect(bestQuote(LIVE[0] as never)?.destination.amount).toBe('12880');
+  });
+
+  it('picks the solver paying out most', () => {
+    const many = [
+      { source: LIVE[0].source, destination: { asset: 'x', amount: '900' } },
+      { source: LIVE[0].source, destination: { asset: 'x', amount: '12880' } },
+      { source: LIVE[0].source, destination: { asset: 'x', amount: '1000' } },
+    ];
+    expect(bestQuote(many as never)?.destination.amount).toBe('12880');
+  });
+
+  it('treats a zero payout as NO quote', () => {
+    // A solver quoting zero is not a quote, and letting it through is what
+    // enabled a confirm button on a swap that would pay out nothing.
+    const zero = [{ source: LIVE[0].source, destination: { asset: 'x', amount: '0' } }];
+    expect(bestQuote(zero as never)).toBeUndefined();
+  });
+
+  it('survives an empty array and junk entries', () => {
+    expect(bestQuote([] as never)).toBeUndefined();
+    const junk = [
+      {},
+      { destination: {} },
+      { destination: { amount: 'not-a-number' } },
+      { source: LIVE[0].source, destination: { asset: 'x', amount: '5' } },
+    ];
+    expect(bestQuote(junk as never)?.destination.amount).toBe('5');
   });
 });

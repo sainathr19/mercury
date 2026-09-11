@@ -88,6 +88,8 @@ export function GardenSwapPane() {
   const [amount, setAmount] = useState('');
   const [picking, setPicking] = useState<'source' | 'destination' | null>(null);
   const [out, setOut] = useState<string | null>(null);
+  /** Garden's own USD figure and ETA for the winning quote. */
+  const [quoteInfo, setQuoteInfo] = useState<{ usd?: string; seconds?: number } | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -200,6 +202,7 @@ export function GardenSwapPane() {
   // to be outside the catalog's bounds — Garden would reject it anyway.
   useEffect(() => {
     setOut(null);
+    setQuoteInfo(null);
     setQuoteError(null);
     if (!source || !destination || !amount.trim() || amountProblem) return;
     let live = true;
@@ -213,7 +216,11 @@ export function GardenSwapPane() {
           fromAmount: toBaseUnits(amount, source.decimals).toString(),
         });
         if (!live) return;
-        setOut(formatUnits(q.destination?.amount ?? '0', destination.decimals));
+        // Garden's own `display` is the solver's rendering of the figure it
+        // committed to, so it cannot disagree with `amount`. Fall back to our
+        // own formatting only if a response ever omits it.
+        setOut(q.destination.display ?? formatUnits(q.destination.amount, destination.decimals));
+        setQuoteInfo({ usd: q.destination.value, seconds: q.estimated_time });
       } catch (e) {
         if (!live) return;
         setQuoteError(e instanceof GardenError ? gardenErrorMessage(e) : 'Could not price this swap.');
@@ -244,6 +251,7 @@ export function GardenSwapPane() {
       show('Swap submitted', 'success');
       setAmount('');
       setOut(null);
+      setQuoteInfo(null);
       // Nothing to switch to: swaps appear in Activity, not here. Still refresh,
       // so the row the user is about to look for is already up to date.
       void refreshSwaps();
@@ -355,6 +363,13 @@ export function GardenSwapPane() {
             <Text style={styles.outFigure}>
               {quoting ? 'Pricing…' : (out ?? '0')}
             </Text>
+            {!!out && !!quoteInfo && (
+              <Text style={styles.outNote}>
+                {quoteInfo.usd ? `≈ $${Number(quoteInfo.usd).toFixed(2)}` : ''}
+                {quoteInfo.usd && quoteInfo.seconds ? ' · ' : ''}
+                {quoteInfo.seconds ? `about ${quoteInfo.seconds}s` : ''}
+              </Text>
+            )}
             {!!quoteError && <Text style={styles.warn}>{quoteError}</Text>}
           </View>
 
@@ -446,6 +461,12 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
 
+  outNote: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    letterSpacing: -0.14,
+    color: theme.colors.muted,
+  },
   warn: { fontFamily: fontFamily.medium, fontSize: 12, lineHeight: 17, letterSpacing: -0.14, color: theme.colors.warning },
   confirm: { marginTop: 10 },
   footnote: { fontFamily: fontFamily.medium, fontSize: 12, lineHeight: 18, letterSpacing: -0.14, color: theme.colors.muted },

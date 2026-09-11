@@ -224,12 +224,28 @@ export function displayNameOf(asset: Pick<GardenAsset, 'id' | 'name'>): string {
 
 // ── Quote ────────────────────────────────────────────────────────────────────
 
+/** One side of a quote, as the live API returns it. */
+export interface GardenQuoteLeg {
+  asset: string;
+  /** Smallest units, as a decimal string. */
+  amount: string;
+  /** Already formatted by Garden ("0.00012880"). Preferred for display: it is
+   *  the solver's own rendering and cannot disagree with `amount`. */
+  display?: string;
+  /** USD value, as a STRING ("9.9496") — not a number, despite looking like one. */
+  value?: string;
+}
+
 export interface GardenQuote {
-  source: { asset: string; amount: string; value?: number };
-  destination: { asset: string; amount: string; value?: number };
-  slippage?: number;
-  fee?: unknown;
+  source: GardenQuoteLeg;
+  destination: GardenQuoteLeg;
   solver_id?: string;
+  /** Seconds the solver expects to take. Worth showing — it is the answer to
+   *  "how long will this take", which a swap screen otherwise cannot give. */
+  estimated_time?: number;
+  slippage?: number;
+  fee?: number;
+  fixed_fee?: string;
   [k: string]: unknown;
 }
 
@@ -239,7 +255,43 @@ export interface GardenQuote {
  * Throws a classified `GardenError`, because "this pair does not exist" and "no
  * solver is quoting" need different words on screen.
  */
-export function quote(opts: {
+/**
+ * Pick the quote that pays out most.
+ *
+ * `/v2/quote` returns an ARRAY — one entry per solver — which is not what the
+ * docs' prose suggests and is exactly the sort of thing that fails quietly: read
+ * as a single object, `destination.amount` is `undefined`, falls back to "0",
+ * and the screen shows a valid quote as a zero payout. Accepts a bare object
+ * too, so a future single-quote response would not break this.
+ */
+export function bestQuote(raw: GardenQuote | GardenQuote[]): GardenQuote | undefined {
+  const list = Array.isArray(raw) ? raw : [raw];
+  let best: GardenQuote | undefined;
+  for (const q of list) {
+    const out = q?.destination?.amount;
+    if (out === undefined) continue;
+    let v: bigint;
+    try {
+      v = BigInt(out);
+    } catch {
+      continue;
+    }
+    // A solver quoting zero is not a quote; treating it as one enabled the
+    // confirm button on a swap that would pay out nothing.
+    if (v <= 0n) continue;
+    if (!best || v > BigInt(best.destination.amount)) best = q;
+  }
+  return best;
+}
+
+/**
+ * Price `fromAmount` (smallest units of `from`) into `to`.
+ *
+ * Throws a classified `GardenError`, because "this pair does not exist" and "no
+ * solver is quoting" need different words on screen — and now also when the API
+ * answers OK with nothing usable in it.
+ */
+export async function quote(opts: {
   env: ChainEnvironment;
   from: string;
   to: string;
@@ -251,7 +303,10 @@ export function quote(opts: {
     to: opts.to,
     from_amount: opts.fromAmount,
   });
-  return call<GardenQuote>(opts.env, `/v2/quote?${q}`);
+  const raw = await call<GardenQuote | GardenQuote[]>(opts.env, `/v2/quote?${q}`);
+  const best = bestQuote(raw);
+  if (!best) throw new GardenError('no quotes available', 200, 'no_quote');
+  return best;
 }
 
 // ── Order ────────────────────────────────────────────────────────────────────
