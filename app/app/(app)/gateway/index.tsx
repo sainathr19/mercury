@@ -34,22 +34,26 @@ import { fontFamily } from '../../../src/theme/fonts';
 const VISIBLE = 0.005;
 
 /**
- * The hero's colours: the app's own mint, straight from `ui/ActionStrip`.
+ * The hero's colours: a deep forest green, drawn from the ground it sits on.
  *
- * That file establishes the idiom — a very light tint with deep, same-hue ink
- * on top (mint `#C7F0D2` / `#0B2A14`, lilac `#D9DCFB` / `#1B1F4A`). Anything
- * saturated ignores the construction and reads as a foreign element dropped
- * onto the page, which is what a solid navy did here.
+ * The app's ground (`#ECEEE9`) is not a neutral grey — it is sage-tinted, and
+ * the whole interface is built on that warmth. So the one colour this page can
+ * carry at card size without looking dropped-in is the SAME hue taken far
+ * darker. Three alternatives were tried and all read as foreign for the same
+ * reason: a navy imports a hue the app does not have, the ActionStrip mint is
+ * calibrated for a 48pt circle and reads as a button when blown up to a card,
+ * and near-black is already spoken for by the action band and the dashboard's
+ * Gateway tile.
  *
- * Reusing the exact mint rather than inventing a fourth green: a tone that is
- * ALMOST one of the app's is worse than either using it or clearly not. It also
- * happens to suit the meaning — money that is ready to spend.
+ * Text is an off-white with a green cast rather than pure white, for the same
+ * reason the ground is not pure grey: a cold white on a warm surface is the
+ * detail that makes a palette look assembled rather than chosen.
  *
  * Kept as constants next to the style that paints them so the chain-badge rings
  * drawn on top cannot drift from the ground they sit on.
  */
-const HERO_BG = '#C7F0D2';
-const HERO_FG = '#0B2A14';
+const HERO_BG = '#1E3A2B';
+const HERO_FG = '#E9F4ED';
 
 export default function Gateway() {
   const theme = UnistylesRuntime.getTheme();
@@ -394,7 +398,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 10,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(11,42,20,0.14)',
+    borderTopColor: 'rgba(233,244,237,0.16)',
   },
   // Overlapped marks: one balance across many chains, drawn as one object.
   marks: { flexDirection: 'row' },
