@@ -105,7 +105,8 @@ export function SettingsScreen() {
         <Row
           icon="name"
           title="Username"
-          value={name ? `${name}.mercurywallet.eth` : 'Not set'}
+          // Already fully qualified — mercuryNameStore stores `label.parent`.
+          value={name ?? 'Not set'}
           onPress={() => router.push('/(app)/username')}
         />
         {/* HIDDEN: multi-wallet. `walletsStore` and the /(app)/wallets screen
@@ -258,7 +259,9 @@ function Row({
         <Icon name={icon} size={16} color={fg} />
       </View>
       <View style={styles.rowMid}>
-        <Text style={[styles.rowTitle, { color: fg }]}>{title}</Text>
+        <Text style={[styles.rowTitle, { color: fg }]} numberOfLines={1}>
+          {title}
+        </Text>
         {/* One line, always: a wrapping description changes the row's height and
             breaks the rhythm of the list. Clamped as well as shortened, so a
             longer string added later truncates instead of reflowing. */}
@@ -268,7 +271,14 @@ function Row({
           </Text>
         )}
       </View>
-      {!!value && <Text style={styles.rowValue}>{value}</Text>}
+      {/* Truncated in the MIDDLE: the ends of a name or address are the
+          identifying parts, and a tail-clipped `sainathr-e2e-09…` hides the
+          very suffix that says which parent it lives under. */}
+      {!!value && (
+        <Text style={styles.rowValue} numberOfLines={1} ellipsizeMode="middle">
+          {value}
+        </Text>
+      )}
       {toggle ? (
         <Switch
           value={toggle.value}
@@ -370,7 +380,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
   },
   tileDanger: { backgroundColor: 'rgba(255,59,48,0.10)' },
-  rowMid: { flex: 1, gap: 2 },
+  rowMid: { flex: 1, gap: 2, minWidth: 84 },
   rowTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.28 },
   rowSub: {
     fontFamily: fontFamily.medium,
@@ -379,5 +389,13 @@ const styles = StyleSheet.create((theme) => ({
     letterSpacing: -0.14,
     color: theme.colors.muted,
   },
-  rowValue: { fontFamily: fontFamily.medium, fontSize: 14, letterSpacing: -0.2, color: theme.colors.muted },
+  // flexShrink: RN defaults it to 0, which lets a long value starve the title.
+  rowValue: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    letterSpacing: -0.2,
+    color: theme.colors.muted,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
 }));
