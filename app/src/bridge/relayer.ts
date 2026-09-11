@@ -22,6 +22,9 @@ const RELAYER_URL = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
 
 export const relayerConfigured = (): boolean => !!RELAYER_URL;
 
+/** How long to wait for the mint before reporting it undelivered. */
+const RELAY_TIMEOUT_MS = 90_000;
+
 export interface RelayResult {
   ok: boolean;
   txHash?: string;
@@ -128,15 +131,39 @@ export async function relayMint(
 ): Promise<RelayResult> {
   const t0 = Date.now();
   if (!RELAYER_URL) return { ok: false, error: 'Relayer is not configured', ms: 0 };
+  // Bounded, because this call is made AFTER the burn. Without a deadline a
+  // stalled connection leaves the promise pending for as long as the OS will
+  // hold it, and the send screen sits on "Sending" forever — for money that has
+  // already left the balance. Giving up is not losing it: the claim was
+  // recorded before this ran, so failing here produces the `unclaimed` outcome,
+  // which tells the truth and lets delivery retry.
+  //
+  // Generous on purpose. The relayer mints on the destination chain and waits
+  // for the receipt, which is ~5s on Arc but a couple of blocks on Ethereum, so
+  // this has to outlast a slow chain rather than a slow request.
+  const abort = new AbortController();
+  const deadline = setTimeout(() => abort.abort(), RELAY_TIMEOUT_MS);
   try {
     const res = await fetch(`${RELAYER_URL}/gateway/relay`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ attestation, signature, destinationDomain, environment: env }),
+      signal: abort.signal,
     });
     const json = (await res.json()) as RelayResult;
     return { ...json, ms: Date.now() - t0 };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Relay failed', ms: Date.now() - t0 };
+    const timedOut = e instanceof Error && e.name === 'AbortError';
+    return {
+      ok: false,
+      error: timedOut
+        ? 'The delivery service did not answer in time.'
+        : e instanceof Error
+          ? e.message
+          : 'Relay failed',
+      ms: Date.now() - t0,
+    };
+  } finally {
+    clearTimeout(deadline);
   }
 }
