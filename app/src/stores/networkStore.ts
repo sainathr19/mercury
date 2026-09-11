@@ -23,6 +23,20 @@ const DEFAULT_ENV: Environment = APP_ENVIRONMENT;
 
 interface Persisted {
   environment: Environment;
+  /**
+   * True only when the user flipped the switch themselves.
+   *
+   * The distinction matters. `environment` has always been written on every
+   * save, including saves that merely recorded the build's own default — so its
+   * presence proves nothing about intent, and honouring it would let a default
+   * from an older build outlive the build that set it. That is exactly the
+   * hazard the previous code avoided by ignoring the file entirely, at the cost
+   * of making the in-app toggle reset on every launch.
+   *
+   * Absent (every file written before this field existed) means "not chosen",
+   * which falls back to APP_ENVIRONMENT — the old behaviour, preserved.
+   */
+  chosen?: boolean;
   relayUrl: string | null;
   // Legacy fields from older installs (per-family choices) — read for migration.
   evm?: string;
@@ -44,6 +58,8 @@ interface NetworkState {
    *  hardwareWallet; recomputed whenever the environment changes. */
   choices: NetworkChoices;
   relayUrl: string | null;
+  /** Whether `environment` came from the user rather than from the build. */
+  chosen: boolean;
   hydrated: boolean;
   /** Load the saved environment + apply the active EVM chain id (at launch). */
   hydrate: () => Promise<void>;
@@ -55,28 +71,42 @@ interface NetworkState {
 }
 
 function save(get: () => NetworkState): void {
-  persist({ environment: get().environment, relayUrl: get().relayUrl });
+  persist({
+    environment: get().environment,
+    chosen: get().chosen,
+    relayUrl: get().relayUrl,
+  });
 }
 
 export const useNetworks = create<NetworkState>((set, get) => ({
   environment: DEFAULT_ENV,
   choices: choicesForEnv(DEFAULT_ENV),
   relayUrl: null,
+  chosen: false,
   hydrated: false,
 
   hydrate: async () => {
     if (get().hydrated) return;
-    // MAINNET-ONLY: the app ships mainnet only, so ALWAYS use APP_ENVIRONMENT and
-    // ignore any persisted environment (a stale 'testnet' from an earlier build /
-    // dev toggle would otherwise make the app read testnet balances + caches). We
-    // still read the saved relay URL.
-    const env: Environment = APP_ENVIRONMENT;
+    // A DELIBERATE choice survives a relaunch; anything else follows the build.
+    //
+    // This used to discard the persisted environment unconditionally, which was
+    // the right call while the app shipped mainnet-only — but it also meant the
+    // Networks toggle silently reset on every launch, so testnet was reachable
+    // only by rebuilding. Keying on `chosen` keeps the original protection (a
+    // default written by an older build never wins) while letting the switch
+    // actually switch.
+    let env: Environment = APP_ENVIRONMENT;
+    let chosen = false;
     let relayUrl: string | null = null;
     try {
       const f = cacheFile();
       if (f.exists) {
         const data = JSON.parse(await f.text()) as Partial<Persisted>;
         relayUrl = data.relayUrl ?? null;
+        if (data.chosen === true && (data.environment === 'mainnet' || data.environment === 'testnet')) {
+          env = data.environment;
+          chosen = true;
+        }
       }
     } catch {}
     const choices = choicesForEnv(env);
@@ -84,7 +114,7 @@ export const useNetworks = create<NetworkState>((set, get) => ({
     // right environment before the wallet is applied.
     setActiveEnvironment(env);
     setActiveEvmChainId(EVM_NETWORKS[choices.evm].chainId);
-    set({ environment: env, choices, relayUrl, hydrated: true });
+    set({ environment: env, choices, relayUrl, chosen, hydrated: true });
   },
 
   apply: async () => {
@@ -107,7 +137,8 @@ export const useNetworks = create<NetworkState>((set, get) => ({
   setEnvironment: async (environment) => {
     const choices = choicesForEnv(environment);
     setActiveEnvironment(environment);
-    set({ environment, choices });
+    // `chosen` is the point: this is the user asking, so it outlives the launch.
+    set({ environment, choices, chosen: true });
     save(get);
     const wallet = useSession.getState().wallet;
     if (wallet) {

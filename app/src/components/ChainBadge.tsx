@@ -26,6 +26,10 @@ import { fontFamily } from '../theme/fonts';
  */
 const LOCAL_ART: Record<string, string> = {
   '5042002': 'arc',
+  // Tempo, for the same reason: the registry lists neither Arc nor Tempo, so
+  // both fell through to a coloured letter. Garden's testnet catalog puts real
+  // assets on both, which is how this surfaced.
+  '42431': 'tempo',
 };
 
 export interface ChainBadgeProps {
@@ -90,16 +94,22 @@ export function ChainBadge({ chainId, network, size = 15, ringColor }: ChainBadg
 
   const local = chainId !== undefined ? localTokenIcon(LOCAL_ART[String(chainId)] ?? '') : undefined;
 
-  const ring = ringColor ? { borderWidth: 1.5, borderColor: ringColor } : null;
+  // The ring is a BORDER, and a border shrinks the content box while leaving the
+  // child at its own width — so with `overflow: hidden` the mark was cropped at
+  // the bottom-right, which read as a chopped-off badge. Size the child to what
+  // is actually left inside the ring instead.
+  const RING = 1.5;
+  const ring = ringColor ? { borderWidth: RING, borderColor: ringColor } : null;
+  const inner = ringColor ? Math.max(1, size - RING * 2) : size;
   return (
     <View style={[styles.wrap(size), ring]}>
       {local !== undefined ? (
-        <ExpoImage source={local} style={{ width: size, height: size }} contentFit="contain" />
+        <ExpoImage source={local} style={{ width: inner, height: inner }} contentFit="contain" />
       ) : hit?.imageUrl ? (
-        <RemoteTokenIcon uri={hit.imageUrl} size={size} fallbackColor={def?.nativeColorHex ?? '#70707A'} symbol={label} />
+        <RemoteTokenIcon uri={hit.imageUrl} size={inner} fallbackColor={def?.nativeColorHex ?? '#70707A'} symbol={label} />
       ) : (
-        <View style={[styles.mono(size), { backgroundColor: def?.nativeColorHex ?? '#70707A' }]}>
-          <Text style={styles.monoText(size)}>{label.slice(0, 1).toUpperCase()}</Text>
+        <View style={[styles.mono(inner), { backgroundColor: def?.nativeColorHex ?? '#70707A' }]}>
+          <Text style={styles.monoText(inner)}>{label.slice(0, 1).toUpperCase()}</Text>
         </View>
       )}
     </View>

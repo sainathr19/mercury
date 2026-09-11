@@ -11,21 +11,38 @@ import { byRecency } from '../../src/lib/activity-merge';
 import { dayLabel } from '../../src/lib/format';
 import { fontFamily } from '../../src/theme/fonts';
 import { useActivity } from '../../src/stores/activityStore';
+import { useSwaps } from '../../src/stores/swapStore';
+import { useGardenSwaps } from '../../src/stores/gardenSwapStore';
+import { withSwaps } from '../../src/lib/swapActivity';
 import type { ActivityItem } from '../../src/bridge/activity';
 
 export default function Activity() {
   const router = useRouter();
   const theme = UnistylesRuntime.getTheme();
   const { items, status, hydrate, refresh } = useActivity();
+  // Swaps live in their own stores and are folded in here rather than written
+  // into the activity cache — see lib/swapActivity. This is the only feed that
+  // shows them now that the swap screen has no history tab of its own.
+  const flashnetSwaps = useSwaps((s) => s.swaps);
+  const gardenSwaps = useGardenSwaps((s) => s.swaps);
+  const hydrateFlashnet = useSwaps((s) => s.hydrate);
+  const hydrateGarden = useGardenSwaps((s) => s.hydrate);
+  const refreshFlashnet = useSwaps((s) => s.refresh);
+  const refreshGarden = useGardenSwaps((s) => s.refresh);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     hydrate().then(refresh);
-  }, [hydrate, refresh]);
+    void hydrateFlashnet().then(refreshFlashnet);
+    void hydrateGarden().then(refreshGarden);
+  }, [hydrate, refresh, hydrateFlashnet, refreshFlashnet, hydrateGarden, refreshGarden]);
 
   async function onRefresh() {
     setRefreshing(true);
-    await refresh();
+    // Swap statuses come from their providers, so a pull refreshes those too —
+    // otherwise a completed swap keeps reading "In progress" until the screen
+    // is remounted.
+    await Promise.all([refresh(), refreshFlashnet(), refreshGarden()]);
     setRefreshing(false);
   }
 
@@ -35,7 +52,8 @@ export default function Activity() {
   const sections = useMemo(() => {
     // Normal Activity excludes private items — those live in the private-activity
     // screen. (Keeps the two feeds separate.)
-    const sorted = [...items].filter((i) => !i.private).sort(byRecency);
+    const merged = withSwaps(items, { flashnet: flashnetSwaps, garden: gardenSwaps });
+    const sorted = merged.filter((i) => !i.private).sort(byRecency);
     const out: { title: string; data: ActivityItem[] }[] = [];
     let cur: { title: string; data: ActivityItem[] } | null = null;
     for (const item of sorted) {
@@ -49,7 +67,7 @@ export default function Activity() {
       cur.data.push(item);
     }
     return out;
-  }, [items]);
+  }, [items, flashnetSwaps, gardenSwaps]);
 
   return (
     // The stack's native header owns the back chevron (see PUSHED_ROUTES) —

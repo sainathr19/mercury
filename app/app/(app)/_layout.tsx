@@ -6,6 +6,22 @@ import { useUnistyles } from 'react-native-unistyles';
 const PUSHED_ROUTES = [
   'recovery',
   'tokens',
+  // Cross-chain swaps (Flashnet Orchestra). Pushed PAGES, not a sheet: an order
+  // takes minutes and outlives the screen that started it, so the history is a
+  // section of a page you navigate back to.
+  //
+  // Registered as two SIBLINGS, with no `swaps/_layout.tsx` between them. A
+  // nested stack gave the composer TWO headers — the parent's, carrying the
+  // back chevron, plus the nested one, empty but still occupying its full
+  // height — which is where the dead band above the title came from. Flat,
+  // each screen has exactly one.
+  'swaps/index',
+  'swaps/order',
+  // Circle Gateway: the unified USDC balance and the deposit flow. Siblings for
+  // the same reason as `swaps/*` above — a `gateway/_layout.tsx` would stack a
+  // second header under the parent's and reintroduce the dead band.
+  'gateway/index',
+  'gateway/deposit',
   'networks',
   'wc-sessions',
   'username',
@@ -73,7 +89,6 @@ export default function AppLayout() {
       {/* Swap slides up from the bottom as a full-screen sheet (mirrors iOS). */}
       {/* Gateway: send from the unified balance, delivered by the relayer. */}
       <Stack.Screen name="gateway-send" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="settlement" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="request" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="swap" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       {/* Send is a native iOS form sheet — large detent only (the multi-step

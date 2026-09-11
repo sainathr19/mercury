@@ -22,17 +22,30 @@ import {
 import {
   chainById,
   chainCircleDomain,
+  chainForDomain,
   chainUsdc,
   circleChainsForEnvironment,
-  GATEWAY_MINTER,
-  GATEWAY_WALLET,
+  gatewayMinter,
+  gatewayWallet,
   type ChainEnvironment,
 } from '../lib/chains';
+import { deliveryStatus, relayMint } from './relayer';
+import { usePendingClaims } from '../stores/pendingClaimStore';
 
 const API_TESTNET = 'https://gateway-api-testnet.circle.com';
 const API_MAINNET = 'https://gateway-api.circle.com';
 
-export { GATEWAY_WALLET, GATEWAY_MINTER } from '../lib/chains';
+export { gatewayWallet, gatewayMinter } from '../lib/chains';
+
+// Re-exported so callers that already treat this module as "the Gateway client"
+// do not have to learn where the relayer moved to.
+export {
+  deliveryStatus,
+  relayMint,
+  relayerConfigured,
+  type DeliveryStatus,
+  type RelayResult,
+} from './relayer';
 
 export const gatewayApi = (env: ChainEnvironment): string =>
   env === 'testnet' ? API_TESTNET : API_MAINNET;
@@ -208,7 +221,7 @@ async function gatewayOnchain(
       const read = async () => {
         const hex = await ethCall(
           c.rpcUrl,
-          GATEWAY_WALLET,
+          gatewayWallet(env),
           SEL_TOTAL_BALANCE + word(c.usdc!) + word(address),
         );
         return hex && hex !== '0x' ? Number(BigInt(hex)) / 1e6 : 0;
@@ -339,16 +352,21 @@ export async function gatewayDeposit(opts: {
   const value = BigInt(Math.round(amount * 1e6)); // USDC is 6dp
   if (value <= 0n) return { ok: false, error: 'Nothing to settle', ms: Date.now() - t0 };
 
+  // The environment comes from the CHAIN, not from a caller-supplied flag: the
+  // contract pair differs between mainnet and testnet, and a chain belongs to
+  // exactly one of them, so this cannot disagree with the chain being used.
+  const spender = gatewayWallet(chain.environment);
+
   try {
     const from = await wallet.evmAddress(account);
 
     const approved = await ensureAllowance({
-      wallet, account, chainId, url, from, token, spender: GATEWAY_WALLET, amount: value,
+      wallet, account, chainId, url, from, token, spender, amount: value,
     });
     if (!approved) return { ok: false, error: 'Approval did not confirm', ms: Date.now() - t0 };
 
     const depositTx = await sendCall(
-      wallet, account, chainId, url, from, GATEWAY_WALLET,
+      wallet, account, chainId, url, from, spender,
       SEL_DEPOSIT + word(token) + uint(value),
     );
     const mined = await waitForReceipt(url, depositTx);
@@ -466,14 +484,6 @@ export interface TransferResult {
   ms: number;
 }
 
-export interface RelayResult {
-  ok: boolean;
-  txHash?: string;
-  explorerUrl?: string;
-  error?: string;
-  ms: number;
-}
-
 /** Combined result of the two halves: Circle attests, the relayer delivers. */
 export interface SendResult {
   ok: boolean;
@@ -483,6 +493,17 @@ export interface SendResult {
   error?: string;
   /** Attested but not yet claimed — the money is burnt and recoverable, not lost. */
   unclaimed?: boolean;
+  /**
+   * Circle's signed payload, kept on the result whenever the burn succeeded.
+   *
+   * This used to be dropped. On a relay failure the funds were already burnt and
+   * the only thing that could ever deliver them — this payload — went out of
+   * scope, while the UI said "funds are safe". It is worthless to an attacker
+   * (the recipient is named inside the signature) and the sole means of
+   * recovery, so it is always returned and always persisted.
+   */
+  attestation?: string;
+  signature?: string;
   attestMs: number;
   relayMs: number;
 }
@@ -582,8 +603,8 @@ export async function gatewayTransfer(opts: {
           version: 1,
           sourceDomain: leg.domain,
           destinationDomain,
-          sourceContract: b32(GATEWAY_WALLET),
-          destinationContract: b32(GATEWAY_MINTER),
+          sourceContract: b32(gatewayWallet(env)),
+          destinationContract: b32(gatewayMinter(env)),
           sourceToken: b32(src.usdc),
           destinationToken: b32(destinationToken),
           sourceDepositor: b32(address),
@@ -660,62 +681,61 @@ export async function gatewayTransfer(opts: {
 }
 
 
-// ── Relay + send ─────────────────────────────────────────────────────────────
-
-// The relayer is its OWN service, not the identity/registry hub — they have
-// different lifetimes, different keys and different failure modes, so they get
-// different URLs rather than sharing one.
-const RELAYER_URL = process.env.EXPO_PUBLIC_RELAYER_URL ?? '';
-
-/**
- * Ask the hub to submit an attestation on the destination chain.
- *
- * Without this the recipient needs gas on the destination to claim their own
- * money, which breaks the wallet's "no gas token" promise at the worst possible
- * moment. The relayer cannot redirect or skim the funds — the recipient is named
- * inside Circle's signed payload — so handing it over is safe.
- */
-export async function relayMint(
-  attestation: string,
-  signature: string,
-  destinationDomain: number,
-): Promise<RelayResult> {
-  const t0 = Date.now();
-  if (!RELAYER_URL) return { ok: false, error: 'Relayer is not configured', ms: 0 };
-  try {
-    const res = await fetch(`${RELAYER_URL}/gateway/relay`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ attestation, signature, destinationDomain }),
-    });
-    const json = (await res.json()) as RelayResult;
-    return { ...json, ms: Date.now() - t0 };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Relay failed', ms: Date.now() - t0 };
-  }
-}
-
 /**
  * One tap: move USDC out of the unified balance and have it delivered.
  *
- * Two steps that fail differently. If the attestation fails, nothing moved. If
- * the RELAY fails, the money has already been burnt on the source and is sitting
- * in a valid unclaimed attestation — recoverable by resubmitting, but the user
- * must be told that plainly rather than shown a generic error, which is why
- * `unclaimed` exists.
+ * Three steps that fail differently, and the ORDER is the safety property:
+ *
+ *  1. Preflight. Nothing has moved, so a refusal here costs nothing.
+ *  2. Burn. Circle debits the balance and returns an attestation. From this
+ *     point the money is gone from the source whatever happens next.
+ *  3. Relay. If this fails the funds are NOT lost — they sit in a valid
+ *     unclaimed attestation — but only if someone kept it, which is why the
+ *     payload is returned on every outcome rather than only on success.
  */
 export async function gatewaySend(opts: Parameters<typeof gatewayTransfer>[0]): Promise<SendResult> {
+  const destinationDomain = chainCircleDomain(opts.toChainId);
+  if (destinationDomain === undefined) {
+    return { ok: false, error: 'Circle does not support that destination', attestMs: 0, relayMs: 0 };
+  }
+
+  // Before the burn, never after. This is the whole point.
+  const ready = await deliveryStatus(destinationDomain, opts.env);
+  if (!ready.ok) {
+    return { ok: false, error: ready.reason ?? 'Delivery is unavailable', attestMs: 0, relayMs: 0 };
+  }
+
   const transfer = await gatewayTransfer(opts);
   if (!transfer.ok || !transfer.attestation || !transfer.signature) {
     return { ok: false, error: transfer.error ?? 'Transfer failed', attestMs: transfer.ms, relayMs: 0 };
   }
 
-  const destinationDomain = chainCircleDomain(opts.toChainId);
-  if (destinationDomain === undefined) {
-    return { ok: false, error: 'Unsupported destination', unclaimed: true, attestMs: transfer.ms, relayMs: 0 };
-  }
+  // The burn has happened. Persist the claim BEFORE attempting delivery, so the
+  // recoverable state is identical whether the relay fails, the process is
+  // killed, or the phone dies mid-request. Recording it here rather than in the
+  // callers is deliberate: `swap.tsx` and `gateway-send.tsx` both burn through
+  // this function, and a caller that forgot would lose someone's money.
+  const claimId = transfer.transferId ?? `local:${Date.now().toString(36)}`;
+  usePendingClaims.getState().record({
+    id: claimId,
+    attestation: transfer.attestation,
+    signature: transfer.signature,
+    destinationDomain,
+    environment: opts.env,
+    amount: opts.amount,
+    chainId: opts.toChainId.toString(),
+    chainName: chainById(opts.toChainId)?.name ?? 'that network',
+    recipient: opts.recipient,
+  });
 
-  const relay = await relayMint(transfer.attestation, transfer.signature, destinationDomain);
+  const relay = await relayMint(
+    transfer.attestation,
+    transfer.signature,
+    destinationDomain,
+    opts.env,
+  );
+  // Delivered — the ticket has been redeemed and is no longer owed to anyone.
+  if (relay.ok) usePendingClaims.getState().settle(claimId);
   return {
     ok: relay.ok,
     transferId: transfer.transferId,
@@ -723,6 +743,10 @@ export async function gatewaySend(opts: Parameters<typeof gatewayTransfer>[0]): 
     explorerUrl: relay.explorerUrl,
     error: relay.error,
     unclaimed: !relay.ok,
+    // Carried on BOTH outcomes. On success it is merely redundant; on failure it
+    // is the only way the money is ever claimed.
+    attestation: transfer.attestation,
+    signature: transfer.signature,
     attestMs: transfer.ms,
     relayMs: relay.ms,
   };

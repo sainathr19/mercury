@@ -38,7 +38,9 @@ import {
 } from '../stores/portfolioStore';
 import { useActivity } from '../stores/activityStore';
 import { useGateway } from '../stores/gatewayStore';
-import { getActiveAccount } from '../bridge/account';
+import { useSwaps } from '../stores/swapStore';
+import { useGardenSwaps } from '../stores/gardenSwapStore';
+import { withSwaps } from '../lib/swapActivity';
 import { useTokenPrefs } from '../stores/tokenPrefsStore';
 import { ActivityRow } from '../components/ActivityRow';
 import { CryptoIcon } from '../components/CryptoIcon';
@@ -46,6 +48,7 @@ import { ChainBadge, needsChainBadge } from '../components/ChainBadge';
 import type { MarketSnapshot, PortfolioAsset } from '../bridge/portfolio';
 import { formatUsd, formatPercent, formatCrypto } from '../lib/format';
 import { pushOnce } from '../lib/nav';
+import { byRecency } from '../lib/activity-merge';
 import { fontFamily } from '../theme/fonts';
 
 /** Light selection haptic for plain Pressables (PressableScale fires its own). */
@@ -67,7 +70,6 @@ export function WalletDashboard() {
   useSettings((s) => s.fxTick); // re-render when the display-currency rate/symbol changes
   const { assets, market, status, refresh } = usePortfolio();
   const addresses = useSession((st) => st.addresses);
-  const wallet = useSession((st) => st.wallet);
   // USDC settled into Circle Gateway. It lives in Gateway's contract rather than
   // the user's address, so the portfolio scan cannot see it — it has to be added
   // here or the wallet's own headline understates what the user owns.
@@ -76,11 +78,25 @@ export function WalletDashboard() {
   const gwStuck = useGateway((g) => g.stuck);
   const gwNetworks = useGateway((g) => g.perDomain.length);
   const refreshGateway = useGateway((g) => g.refresh);
-  const settleGateway = useGateway((g) => g.settle);
-  const recentActivity = useActivity((s) => s.items);
+  const activityItems = useActivity((s) => s.items);
   const hydrateActivity = useActivity((s) => s.hydrate);
   const refreshActivity = useActivity((s) => s.refresh);
+  // The same fold as the Activity screen: a swap is a transaction this wallet
+  // made, and the two feeds disagreeing about that would be worse than either
+  // choice on its own.
+  const flashnetSwaps = useSwaps((s) => s.swaps);
+  const gardenSwaps = useGardenSwaps((s) => s.swaps);
+  const hydrateFlashnet = useSwaps((s) => s.hydrate);
+  const hydrateGarden = useGardenSwaps((s) => s.hydrate);
+  // Sorted here: `withSwaps` prepends, and the swaps are not necessarily newer
+  // than the scanned rows — an old swap would otherwise sit above this morning's
+  // transactions. The Activity screen does its own sort for the same reason.
+  const recentActivity = withSwaps(activityItems, {
+    flashnet: flashnetSwaps,
+    garden: gardenSwaps,
+  }).sort(byRecency);
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
+  const allowedTokens = useTokenPrefs((s) => s.allowed);
   const router = useRouter();
   const [hidden, setHidden] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -90,22 +106,37 @@ export function WalletDashboard() {
   useEffect(() => {
     refresh();
     hydrateActivity().then(refreshActivity);
-  }, [refresh, hydrateActivity, refreshActivity]);
+    void hydrateFlashnet();
+    void hydrateGarden();
+  }, [refresh, hydrateActivity, refreshActivity, hydrateFlashnet, hydrateGarden]);
 
-  // Keep USDC settled into Gateway so it is always spendable on any chain. Read
-  // first, then sweep — the read is what the balance needs, and the sweep is
-  // best-effort on top of it.
+  // READ the Gateway balance. Do not move money.
+  //
+  // This used to sweep every USDC the wallet held into Gateway on each mount,
+  // silently. Three reasons that is gone:
+  //
+  //  • It decided for the user. Depositing puts funds in Circle's contract and
+  //    takes a withdrawal to get back, which is a choice to offer, not to make.
+  //  • It cost gas on every visit. A deposit to a contract that isn't there
+  //    still costs a transaction, and on mainnet the address was wrong, so the
+  //    sweep re-fired on every mount and reported success each time.
+  //  • Deposits aren't instant — 13-19 minutes on the Ethereum-finality chains
+  //    — so a silent sweep produced a balance that was briefly unspendable for
+  //    no reason the user could see.
+  //
+  // Depositing now lives on the Gateway screen, where it can say what it costs
+  // and how long it takes.
   useEffect(() => {
     const addr = addresses?.eth;
     if (!addr) return;
-    void refreshGateway(addr).then(() => {
-      if (wallet) void settleGateway(wallet, getActiveAccount(), addr);
-    });
-  }, [addresses?.eth, wallet, refreshGateway, settleGateway]);
+    void refreshGateway(addr);
+  }, [addresses?.eth, refreshGateway]);
 
   // Only needed to tell an empty wallet from a funded one now that the per-token
   // list lives behind the Assets tile.
-  const shown = calcGrouped(assets, hiddenTokens);
+  // Spam-filtered: a discovered token worth nothing is not something the
+  // owner asked for. `allowed` carries anything they pulled back out.
+  const shown = calcGrouped(assets, hiddenTokens, { market, allowed: allowedTokens });
   // Gateway holdings are USDC, so they are Cash — and they must be added to the
   // headline too. `pending` counts: a deposit that has not finalised is still
   // the user's money, and leaving it out would make the total dip every time
@@ -155,7 +186,7 @@ export function WalletDashboard() {
   const actions: Action[] = [
     { key: 'send', label: 'Send', icon: 'arrowUpRight', onPress: () => router.push('/(app)/send') },
     { key: 'receive', label: 'Receive', icon: 'arrowDownLeft', onPress: () => router.push('/(app)/receive') },
-    { key: 'swap', label: 'Swap', icon: 'swap', accent: 'mint', onPress: () => router.push('/(app)/swap') },
+    { key: 'swap', label: 'Swap', icon: 'swap', accent: 'mint', onPress: () => router.push('/(app)/swaps') },
     { key: 'scan', label: 'Scan a code', icon: 'scan', accent: 'lilac', onPress: () => pushOnce('/(app)/scan') },
   ];
 
@@ -280,11 +311,11 @@ export function WalletDashboard() {
             ))
           )}
 
-          {/* The settlement rail runs silently — this is the only place it shows. */}
+          {/* The way in to the Gateway page, deposit flow included. */}
           <SettlementStrip
             spendable={gwSpendable}
             networks={gwNetworks}
-            onPress={() => router.push('/(app)/settlement')}
+            onPress={() => router.push('/(app)/gateway')}
           />
         </View>
       </ScrollView>
@@ -404,9 +435,13 @@ function IconButton({ icon, onPress }: { icon: IconName; onPress: () => void }) 
 }
 
 /**
- * One line saying the balance above is already settled and spendable anywhere.
+ * The way in to Gateway, and the one line that describes it.
  *
- * Renders nothing until there is something settled to describe.
+ * Always rendered, which is the change: it used to hide itself whenever nothing
+ * was deposited. That was fine while the wallet swept funds in automatically —
+ * the balance appeared on its own — but now that depositing is something the
+ * user does, hiding the entry point at exactly zero would leave no way to reach
+ * it from here. So an empty Gateway gets an invitation instead of nothing.
  */
 function SettlementStrip({
   spendable,
@@ -418,12 +453,14 @@ function SettlementStrip({
   onPress: () => void;
 }) {
   const theme = UnistylesRuntime.getTheme();
-  if (spendable <= 0 || networks <= 0) return null;
+  const funded = spendable > 0 && networks > 0;
   return (
     <PressableScale style={styles.settleStrip} onPress={onPress}>
-      <Icon name="swap" size={13} color={theme.colors.muted} />
+      <Icon name={funded ? 'bolt' : 'plus'} size={13} color={theme.colors.muted} />
       <RNText style={styles.settleText}>
-        {`${formatUsd(spendable)} settled — spendable on ${networks} networks`}
+        {funded
+          ? `${formatUsd(spendable)} in Gateway — spendable on ${networks} networks`
+          : 'Deposit to Gateway — spend USDC on any network'}
       </RNText>
       <Icon name="chevronRight" size={12} color={theme.colors.muted} />
     </PressableScale>

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useDerivedValue, withTiming } from 'react-native-reanimated';
 import { Icon, PressableScale, SheetNav, Text } from '../../../src/ui';
+import { ReceivePanel } from '../../../src/components/ReceivePanel';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { RECEIVE_NETWORKS, type ReceiveNetwork } from '../../../src/lib/receiveNetworks';
 import { fontFamily } from '../../../src/theme/fonts';
@@ -31,6 +32,8 @@ export default function AddFunds() {
   const screenH = UnistylesRuntime.screen.height;
 
   const [step, setStep] = useState<'choose' | 'network'>('choose');
+  /** Which network's address is expanded. Null = the bare list. */
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   // The 'receive' form-sheet + its detents live on the parent (app) stack.
   const grow = () => navigation.getParent()?.setOptions({ sheetAllowedDetents: [1.0] });
@@ -48,9 +51,11 @@ export default function AddFunds() {
     shrink();
   }
 
+  /** Accordion, not navigation: one open at a time, and tapping the open one
+   *  closes it. Picking a network and reading its address are one task. */
   function selectNetwork(n: ReceiveNetwork) {
     tap();
-    router.push({ pathname: '/(app)/receive/address', params: { key: n.key } });
+    setOpenKey((k) => (k === n.key ? null : n.key));
   }
 
   // ----- Step: Add Funds (medium detent) -----
@@ -112,27 +117,65 @@ export default function AddFunds() {
           onLeading={back}
         />
 
-        <View style={styles.listCard}>
-          {RECEIVE_NETWORKS.map((n, i) => (
-            <Pressable
-              key={n.key}
-              style={({ pressed }) => [styles.netRow, i > 0 && styles.divider, pressed && styles.rowPressed]}
-              onPress={() => selectNetwork(n)}
-            >
-              {n.kind === 'username' ? (
-                <Icon name="mercury" size={34} />
-              ) : (
-                <CryptoIcon coingeckoId={n.iconKey ?? n.coingeckoId} symbol={n.symbol} colorHex={n.colorHex} size={34} />
-              )}
-              <Text style={styles.netName} numberOfLines={1}>
-                {n.name}
-              </Text>
-              <Icon name="chevronRight" size={15} color={theme.colors.muted} />
-            </Pressable>
-          ))}
-        </View>
+        {/* `layout` is what makes the open/close smooth: the rows below the
+            expanded one slide rather than jump, and the panel fades in over the
+            same beat. */}
+        <Animated.View style={styles.listCard} layout={LinearTransition.duration(260)}>
+          {RECEIVE_NETWORKS.map((n, i) => {
+            const open = openKey === n.key;
+            return (
+              <Animated.View key={n.key} layout={LinearTransition.duration(260)}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.netRow,
+                    i > 0 && styles.divider,
+                    (pressed || open) && styles.rowPressed,
+                  ]}
+                  onPress={() => selectNetwork(n)}
+                >
+                  {n.kind === 'username' ? (
+                    <Icon name="mercury" size={34} />
+                  ) : (
+                    <CryptoIcon
+                      coingeckoId={n.iconKey ?? n.coingeckoId}
+                      symbol={n.symbol}
+                      colorHex={n.colorHex}
+                      size={34}
+                    />
+                  )}
+                  <Text style={styles.netName} numberOfLines={1}>
+                    {n.name}
+                  </Text>
+                  <Chevron open={open} />
+                </Pressable>
+
+                {open && (
+                  <Animated.View
+                    entering={FadeIn.duration(200).delay(60)}
+                    exiting={FadeOut.duration(120)}
+                  >
+                    <ReceivePanel network={n} />
+                  </Animated.View>
+                )}
+              </Animated.View>
+            );
+          })}
+        </Animated.View>
       </ScrollView>
     </View>
+  );
+}
+
+/** Points right when closed, down when open — the one thing that says a row
+ *  expands rather than navigates. */
+function Chevron({ open }: { open: boolean }) {
+  const theme = UnistylesRuntime.getTheme();
+  const t = useDerivedValue(() => withTiming(open ? 1 : 0, { duration: 220 }));
+  const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${t.value * 90}deg` }] }));
+  return (
+    <Animated.View style={style}>
+      <Icon name="chevronRight" size={15} color={theme.colors.muted} />
+    </Animated.View>
   );
 }
 

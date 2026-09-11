@@ -13,6 +13,7 @@ import type { ActivityItem } from './activity';
 import { evmExplorerTxUrl } from './evmChain';
 import { evmNetworkName } from '../lib/evm-activity';
 import { chainHasOwnSubgraph, chainTokenApiNetwork, chainName, isGatewayContract } from '../lib/chains';
+import { tokenSymbol } from '../lib/tokenText';
 
 /**
  * Both index sources go through the hub.
@@ -140,16 +141,20 @@ function toActivityItem(
   if (from === addr && to === addr) return null; // self-send
   const sent = from === addr;
   const sign = sent ? '-' : '+';
+  // `coingeckoId` keeps the RAW symbol — it is a lookup key, and cleaning it
+  // would stop a legitimate token resolving its price. Only what gets DRAWN is
+  // cleaned.
   const coingeckoId = (r.symbol ?? '').toLowerCase();
   const price = priceOf(coingeckoId);
+  const symbol = tokenSymbol(r.symbol);
   return {
     id: r.transaction_id,
-    symbol: r.symbol ?? '?',
+    symbol,
     coingeckoId,
     colorHex: '#70707A',
     type: sent ? 'sent' : 'received',
     label: sent ? 'Sent' : 'Received',
-    amountText: `${sign}${r.value} ${r.symbol ?? ''}`.trim(),
+    amountText: `${sign}${r.value} ${symbol}`.trim(),
     ...(price > 0 ? { usd: sent ? -(r.value * price) : r.value * price } : {}),
     usdText: price > 0 ? `${sign}$${(r.value * price).toFixed(2)}` : '',
     timestamp: r.timestamp,
@@ -240,15 +245,18 @@ function transferRow(
   const sent = t.from.toLowerCase() === addr;
   const sign = sent ? '-' : '+';
   const amount = amt(t);
+  // Cleaned once, then used for everything that gets DRAWN. `cgFor`/`colorFor`
+  // keep the raw value: they are lookups, not text.
+  const symbol = tokenSymbol(t.symbol);
   return {
     id,
-    symbol: t.symbol,
+    symbol,
     coingeckoId: cgFor(t.symbol),
     colorHex: colorFor(t.symbol),
     type: sent ? 'sent' : 'received',
     ...gatewayTitle(sent, sent ? t.to : t.from),
     label: sent ? 'Sent' : 'Received',
-    amountText: `${sign}${amount.toFixed(2)} ${t.symbol}`,
+    amountText: `${sign}${amount.toFixed(2)} ${symbol}`,
     // USDC is a dollar; EURC is NOT, so it has to be priced rather than assumed.
     // Falls back to 1:1 only when the price feed has nothing for the symbol.
     usd: (sent ? -amount : amount) * (priceOf(cgFor(t.symbol)) || 1),
@@ -268,16 +276,19 @@ function swapRow(
   chainId: bigint,
   priceOf: (coingeckoId: string) => number,
 ): ActivityItem {
+  // A swap row draws BOTH legs, so both need cleaning.
+  const gotSymbol = tokenSymbol(got.symbol);
+  const paidSymbol = tokenSymbol(paid.symbol);
   return {
     id: txHash,
-    symbol: got.symbol,
+    symbol: gotSymbol,
     coingeckoId: cgFor(got.symbol),
     colorHex: colorFor(got.symbol),
     type: 'swapped',
     label: 'Swapped',
-    amountText: `+${amt(got).toFixed(2)} ${got.symbol}`,
-    secondaryAmountText: `-${amt(paid).toFixed(2)} ${paid.symbol}`,
-    fromSymbol: paid.symbol,
+    amountText: `+${amt(got).toFixed(2)} ${gotSymbol}`,
+    secondaryAmountText: `-${amt(paid).toFixed(2)} ${paidSymbol}`,
+    fromSymbol: paidSymbol,
     fromCoingeckoId: cgFor(paid.symbol),
     fromColorHex: colorFor(paid.symbol),
     // The swap row shows both token legs; a dollar figure would have to pick a

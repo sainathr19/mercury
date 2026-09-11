@@ -7,8 +7,9 @@ import { Button, Card, Field, Icon, Text, useToast, ScreenScaffold } from '../..
 import { CryptoIcon } from '../../src/components/CryptoIcon';
 import { useTokens } from '../../src/stores/tokensStore';
 import { fontFamily } from '../../src/theme/fonts';
+import { formatCrypto } from '../../src/lib/format';
 import { useTokenPrefs } from '../../src/stores/tokenPrefsStore';
-import { usePortfolio } from '../../src/stores/portfolioStore';
+import { usePortfolio, spamAssets } from '../../src/stores/portfolioStore';
 import { useRegistry } from '../../src/stores/registryStore';
 import { useNetworks } from '../../src/stores/networkStore';
 import {
@@ -47,7 +48,16 @@ export default function ManageTokens() {
   const removeCustom = useTokens((s) => s.remove);
   const hidden = useTokenPrefs((s) => s.hidden);
   const toggle = useTokenPrefs((s) => s.toggle);
+  const allowed = useTokenPrefs((s) => s.allowed);
+  const allow = useTokenPrefs((s) => s.allow);
   const hydratePrefs = useTokenPrefs((s) => s.hydrate);
+  const heldAssets = usePortfolio((s) => s.assets);
+  const market = usePortfolio((s) => s.market);
+
+  // Every spam-classified holding, INCLUDING the ones already rescued — passing
+  // no allow-list means the switch below can show state rather than making a
+  // rescued token vanish from the only screen that could un-rescue it.
+  const spam = useMemo(() => spamAssets(heldAssets, market, []), [heldAssets, market]);
 
   const [query, setQuery] = useState('');
   const [netFilter, setNetFilter] = useState<string>(ALL);
@@ -197,6 +207,54 @@ export default function ManageTokens() {
           })
         )}
       </View>
+
+      {/* The spam filter is never silent. It hides holdings by provenance and
+          value (see lib/tokenSpam), and a filter with no way out would turn
+          "we think this is junk" into "your token is gone" — so everything it
+          hid is listed here, with the count, and can be switched back on. */}
+      {spam.length > 0 && (
+        <>
+          <View style={styles.spamHead}>
+            <Text style={styles.spamTitle}>Hidden as spam</Text>
+            <View style={styles.spamPill}>
+              <Text style={styles.spamPillText}>{spam.length}</Text>
+            </View>
+          </View>
+          <Text style={styles.spamNote}>
+            These arrived unrequested and are worth nothing. Their names are often links to
+            sites that drain wallets — don’t visit them, and don’t try to sell them. Switch one
+            on if it is genuinely yours.
+          </Text>
+          <View style={styles.card}>
+            {spam.map((a, i) => (
+              <View key={a.id} style={[styles.row, i > 0 && styles.divider]}>
+                <CryptoIcon
+                  coingeckoId={a.coingeckoId}
+                  symbol={a.symbol}
+                  colorHex={a.colorHex}
+                  imageUrl={a.imageUrl}
+                  size={34}
+                />
+                <View style={styles.mid}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {a.name}
+                  </Text>
+                  <Text style={styles.rowSub} numberOfLines={1}>
+                    {formatCrypto(a.amount)} {a.symbol} · {a.networkName}
+                  </Text>
+                </View>
+                <Switch
+                  value={allowed.includes(a.id)}
+                  onValueChange={(v) => allow(a.id, v)}
+                  trackColor={{ false: 'rgba(11,13,16,0.14)', true: '#0B0D10' }}
+                  thumbColor="#FFFFFF"
+                  ios_backgroundColor="rgba(11,13,16,0.14)"
+                />
+              </View>
+            ))}
+          </View>
+        </>
+      )}
 
       {showNetPicker && (
         <NetworkPicker
@@ -404,6 +462,26 @@ const styles = StyleSheet.create((theme) => ({
   rowSub: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
   remove: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: theme.radius.pill, backgroundColor: 'rgba(255,59,48,0.10)' },
   removeLabel: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: theme.colors.danger },
+  spamHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, marginBottom: 6 },
+  spamTitle: { fontFamily: fontFamily.semibold, fontSize: 16, letterSpacing: -0.3, color: theme.colors.text },
+  spamPill: {
+    minWidth: 22,
+    paddingHorizontal: 7,
+    height: 20,
+    borderRadius: theme.radius.pill,
+    backgroundColor: 'rgba(255,149,0,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spamPillText: { fontFamily: fontFamily.semibold, fontSize: 11.5, color: theme.colors.warning },
+  spamNote: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    lineHeight: 17.5,
+    letterSpacing: -0.16,
+    color: theme.colors.muted,
+    marginBottom: 10,
+  },
   emptyRow: { paddingHorizontal: 14, paddingVertical: 22, alignItems: 'center' },
   emptyText: { fontFamily: fontFamily.medium, fontSize: 13.5, color: theme.colors.muted },
   root: { flex: 1, backgroundColor: theme.colors.appBackground },

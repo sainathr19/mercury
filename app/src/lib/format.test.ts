@@ -3,6 +3,7 @@ import {
   toBaseUnits,
   shortenAddress,
   formatUsd,
+  formatTotal,
   formatCrypto,
   formatFee,
   formatPercent,
@@ -62,4 +63,24 @@ test('formatFee keeps tiny L2 gas visible', () => {
 test('formatPercent', () => {
   expect(formatPercent(2.41)).toBe('+2.41%');
   expect(formatPercent(-1.12)).toBe('-1.12%');
+});
+
+describe('formatTotal', () => {
+  it('shows the fee that formatCrypto rounds away', () => {
+    // The bug this exists for: 4dp renders amount + fee as the amount.
+    expect(formatCrypto(0.000145)).toBe('0.0001');
+    expect(formatTotal(0.000145, 0.0001)).toBe('0.000145');
+  });
+
+  it('keeps the readable format when 4dp already shows the difference', () => {
+    expect(formatTotal(1.5023, 1.5)).toBe('1.5023');
+  });
+
+  it('groups large totals like formatCrypto does', () => {
+    expect(formatTotal(1234.5678, 1234.5)).toBe('1,234.57');
+  });
+
+  it('reads the same as the part when the difference is below 8dp', () => {
+    expect(formatTotal(2.0000000001, 2)).toBe('2');
+  });
 });

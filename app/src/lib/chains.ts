@@ -173,19 +173,53 @@ export const CHAINS: ChainDef[] = [
 ];
 
 /**
- * Circle Gateway contracts. The SAME address on every domain, so they are chain
- * facts rather than per-chain config. Kept here (not in the Gateway client) so
- * the activity mapper can recognise a deposit without importing the bridge.
+ * Circle Gateway contracts, per environment.
+ *
+ * The same address on every domain WITHIN an environment — but mainnet and
+ * testnet are different deployments, which is not obvious and was wrong here
+ * for a while: this file asserted one global pair (the testnet one) as a "chain
+ * fact". Nothing failed loudly, because a call to an address with no code
+ * succeeds as a no-op and `waitForReceipt` only checks `status === '0x1'`. So on
+ * mainnet the wallet approved USDC to a dead address, sent a deposit that moved
+ * nothing, and reported it settled.
+ *
+ * Read from GET /v1/info on each Gateway API and verified with `eth_getCode`:
+ * the mainnet pair has code on all 11 EVM domains, the testnet pair on all 12.
+ * Kept here (not in the Gateway client) so the activity mapper can recognise a
+ * deposit without importing the bridge.
  */
-export const GATEWAY_WALLET = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9';
-export const GATEWAY_MINTER = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B';
-
-/** True when `addr` is a Gateway contract — i.e. a transfer to/from it is the
- *  user moving their OWN money in or out of the unified balance, not a payment. */
-export const isGatewayContract = (addr: string): boolean => {
-  const a = addr.toLowerCase();
-  return a === GATEWAY_WALLET.toLowerCase() || a === GATEWAY_MINTER.toLowerCase();
+const GATEWAY_CONTRACTS: Record<ChainEnvironment, { wallet: `0x${string}`; minter: `0x${string}` }> = {
+  mainnet: {
+    wallet: '0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE',
+    minter: '0x2222222d7164433c4C09B0b0D809a9b52C04C205',
+  },
+  testnet: {
+    wallet: '0x0077777d7EBA4688BDeF3E311b846F25870A19B9',
+    minter: '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B',
+  },
 };
+
+/** GatewayWallet — where a deposit goes, and what holds the unified balance. */
+export const gatewayWallet = (env: ChainEnvironment): `0x${string}` => GATEWAY_CONTRACTS[env].wallet;
+
+/** GatewayMinter — where an attestation is claimed on the destination. */
+export const gatewayMinter = (env: ChainEnvironment): `0x${string}` => GATEWAY_CONTRACTS[env].minter;
+
+/** Every Gateway address, both environments, lowercased. */
+const GATEWAY_ADDRESSES = new Set(
+  Object.values(GATEWAY_CONTRACTS).flatMap((c) => [c.wallet.toLowerCase(), c.minter.toLowerCase()]),
+);
+
+/**
+ * True when `addr` is a Gateway contract — i.e. a transfer to/from it is the
+ * user moving their OWN money in or out of the unified balance, not a payment.
+ *
+ * Checks both environments deliberately. This classifies history, which can
+ * outlive an environment switch, and the four addresses are distinct enough that
+ * matching all of them cannot produce a false positive.
+ */
+export const isGatewayContract = (addr: string): boolean =>
+  GATEWAY_ADDRESSES.has(addr.toLowerCase());
 
 // ── Derived lookups. Nothing below is hand-maintained. ───────────────────────
 

@@ -10,7 +10,20 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
 import { fontAssets } from '../src/theme/fonts';
+
+// Incoming-payment banners come from a BACKGROUND task, so the app is normally
+// closed when one fires. If one lands while the app is open, the in-app notice
+// has already said it — showing a banner over the top would say it twice.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: false,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 import { useSession } from '../src/stores/session';
 import { useSettings } from '../src/stores/settingsStore';
 import { useNetworks } from '../src/stores/networkStore';
@@ -18,6 +31,9 @@ import { usePortfolio } from '../src/stores/portfolioStore';
 import { useActivity } from '../src/stores/activityStore';
 import { useStealth } from '../src/stores/stealthStore';
 import { useWallets } from '../src/stores/walletsStore';
+import { armIncomingWatch } from '../src/lib/incomingWatch';
+import { getActiveEvmChainId } from '../src/bridge/evmChain';
+import { pushOnce } from '../src/lib/nav';
 import { useRegistry } from '../src/stores/registryStore';
 import { useTokenPrefs } from '../src/stores/tokenPrefsStore';
 import { useMercuryName } from '../src/stores/mercuryNameStore';
@@ -111,15 +127,13 @@ export default function RootLayout() {
     if (status === 'ready') useNetworks.getState().apply();
   }, [status]);
 
-  // If the wallet session can't be opened (Wallet.open failed → status 'locked'),
-  // don't dead-end on a retry lock screen — LOG OUT and return to onboarding /
-  // sign-in. A fresh sign-in + restore/create is a clean recovery instead of an
-  // endless "Unlock with Face ID" loop.
-  useEffect(() => {
-    if (status !== 'locked') return;
-    void useAuth.getState().signOut().catch(() => {});
-    useSession.setState({ status: 'onboarding', wallet: null, addresses: null, error: null });
-  }, [status]);
+  // A failed wallet open (status 'locked') is handled by `LockScreen`, which
+  // offers a retry and a signposted way out. It used to be handled HERE, by
+  // signing the user out and setting status to 'onboarding' the moment the
+  // status appeared — so a single cancelled Face ID prompt replaced their
+  // wallet with "create or import a wallet". The keystore was never touched,
+  // but that is not what the screen said. Escaping a retry loop is worth doing;
+  // it is not worth telling someone their money is gone to do it.
 
   // App-lock: arm ONLY on a real 'background' (not 'inactive'), evaluate on
   // foreground. iOS fires 'inactive' for transient interruptions — most importantly
@@ -131,7 +145,14 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (next) => {
       const settings = useSettings.getState();
       if (next === 'background') settings.onBackground();
-      else if (next === 'active') settings.onForeground();
+      else if (next === 'active') {
+        settings.onForeground();
+        // Re-point the watch: the active chain can have changed since launch,
+        // and re-arming the same address+chain keeps the watermark, so this is
+        // free when nothing moved.
+        const addr = useSession.getState().addresses?.eth;
+        if (addr) void armIncomingWatch(addr, getActiveEvmChainId());
+      }
     });
     return () => sub.remove();
   }, []);
@@ -201,6 +222,30 @@ export default function RootLayout() {
       sub.remove();
       clearInterval(timer);
     };
+  }, [status]);
+
+  // Watch for incoming payments while the app is closed, and open the one the
+  // user tapped. Arming is idempotent — re-arming the same address keeps the
+  // watermark, so a payment that arrived while the app was shut still counts as
+  // news on the next background wake-up.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const addr = useSession.getState().addresses?.eth;
+    if (addr) void armIncomingWatch(addr, getActiveEvmChainId());
+
+    const open = (res: Notifications.NotificationResponse | null) => {
+      const txId = res?.notification.request.content.data?.txId;
+      if (typeof txId === 'string' && txId) {
+        pushOnce({ pathname: '/(app)/transaction', params: { id: txId } });
+      }
+    };
+    // A tap that LAUNCHED the app is not delivered to the listener, so the
+    // cold-start case is read separately — otherwise tapping a banner from a
+    // closed app just opens the wallet and appears to do nothing.
+    void Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
   // WalletConnect: initialize once the wallet is ready, and pair on `wc:` deep links.

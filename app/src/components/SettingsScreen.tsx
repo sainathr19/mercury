@@ -37,11 +37,17 @@ export function SettingsScreen() {
   const appearance = useSettings((s) => s.appearance);
   const biometricSend = useSettings((s) => s.biometricSend);
   const setBiometricSend = useSettings((s) => s.setBiometricSend);
+  const notificationsEnabled = useSettings((s) => s.notificationsEnabled);
+  const toggleNotifications = useSettings((s) => s.toggleNotifications);
+  const refreshNotifications = useSettings((s) => s.refreshNotifications);
 
   const [hardware, setHardware] = useState<boolean | null>(null);
   useEffect(() => {
     isHardwareBacked(getActiveAlias()).then(setHardware).catch(() => setHardware(false));
-  }, []);
+    // Permission can be revoked in the OS Settings app without the wallet
+    // hearing about it, so the switch is re-read rather than remembered.
+    void refreshNotifications();
+  }, [refreshNotifications]);
 
   const pick = (kind: 'currency' | 'autolock' | 'appearance') => () =>
     router.push({ pathname: '/(app)/settings-picker', params: { kind } });
@@ -144,6 +150,15 @@ export function SettingsScreen() {
       </Group>
 
       <Group label="Wallet">
+        {/* A real setting now: it asks for permission AND arms the background
+            watch that fires the notification. The row it replaced only toasted
+            "coming soon". */}
+        <Row
+          icon="bell"
+          title="Payment alerts"
+          subtitle="Get told when money arrives"
+          toggle={{ value: notificationsEnabled, onChange: () => void toggleNotifications() }}
+        />
         <Row
           icon="dollarSign"
           title="Display currency"

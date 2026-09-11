@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Image as ExpoImage } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon, PressableScale, SheetNav, SheetNavButton, Text } from '../../../src/ui';
@@ -9,6 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useScan, parseScanned } from '../../../src/stores/scanStore';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { ChainBadge, needsChainBadge } from '../../../src/components/ChainBadge';
+import { WalletIdenticon } from '../../../src/components/WalletIdenticon';
 import { useRecentAddresses } from '../../../src/stores/recentAddressStore';
 import { useSendDraft } from '../../../src/stores/sendDraftStore';
 import { authClient } from '../../../src/bridge/auth';
@@ -338,6 +338,16 @@ export default function SendAddress() {
           <Text style={styles.recentTitle}>Sent here before</Text>
           {validRecents.slice(0, 5).map((r) => (
             <Pressable key={r.address} style={styles.recentRow} onPress={() => { tap(); patch({ address: r.address }); }}>
+              {/* The identicon is deterministic on the string, so a person you
+                  pay often looks the same every time — six characters of hex
+                  and a timestamp were not something anyone could recognise. */}
+              <View style={styles.recentFace}>
+                {r.address.startsWith('@') ? (
+                  <Icon name="name" size={14} color={theme.colors.text} />
+                ) : (
+                  <WalletIdenticon seed={r.address} size={28} />
+                )}
+              </View>
               <Text style={styles.recentAddr} numberOfLines={1}>
                 {r.address.startsWith('@') ? r.address : shortenAddress(r.address, 6, 6)}
               </Text>
@@ -400,7 +410,7 @@ export default function SendAddress() {
 const styles = StyleSheet.create((theme) => ({
   // No top padding: `SheetNav` owns the clearance above the grabber, and
   // stacking both left the nav row floating in the middle of nowhere.
-  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.md },
+  body: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingBottom: 30 },
   assetStrip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,11 +489,20 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 13,
     paddingBottom: 3,
   },
-  recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: 14, paddingVertical: 11 },
+  recentRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 9 },
+  recentFace: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: theme.colors.tile,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   recentAddr: { flex: 1, fontFamily: fontFamily.monoRegular, fontSize: 13, color: theme.colors.text },
   recentTime: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
   spacer: { flex: 1 },
-  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.sm },
+  primaryBtn: { height: 54, borderRadius: theme.radius.pill, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
   // Disabled keeps the shape and drops the ink. A muted-grey fill read as a
   // different, live button.
   primaryBtnDisabled: { opacity: 0.35 },
