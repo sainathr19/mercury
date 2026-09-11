@@ -7,8 +7,15 @@ import { APP_ENVIRONMENT, chainInEnvironment, type Environment } from '../lib/en
 export const SEPOLIA_CHAIN_ID = 11155111n;
 
 /** USDC contract per environment (used for card-native ERC-20 transfers on the
- *  Ethereum chain). Sepolia test-USDC vs Ethereum-mainnet USDC. */
-export const USDC_SEPOLIA = '0xadDD620EA6D20f4f9c24fff3BC039E497ceBEDc2';
+ *  Ethereum chain). Sepolia test-USDC vs Ethereum-mainnet USDC.
+ *
+ *  MUST stay equal to `usdc` for the same chain in lib/chains.ts. Sepolia has
+ *  several ERC-20s calling themselves USDC; this one is CIRCLE's, the only one
+ *  Gateway will accept a deposit of. The other address that used to sit here
+ *  is a different token entirely, so a wallet funded through Gateway read a
+ *  balance of zero against it. `chains.usdc.test.ts` now pins the two together.
+ */
+export const USDC_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
 export const USDC_MAINNET = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 export function usdcAddressForEnv(env: Environment): string {
   return env === 'mainnet' ? USDC_MAINNET : USDC_SEPOLIA;
