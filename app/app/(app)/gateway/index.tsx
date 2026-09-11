@@ -14,10 +14,9 @@
 // The page leads with the spendable figure because that is the number this
 // feature exists to produce. Everything under it answers one of two questions:
 // where can this go (the networks), and what has happened to it (Activity).
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useCallback, useEffect, useMemo } from 'react';
+import { View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon, PressableScale, ScreenScaffold, Text, useToast } from '../../../src/ui';
@@ -31,16 +30,17 @@ import { hubChain, readyLabel } from '../../../src/lib/gatewayHub';
 import { formatUsd, relativeTime } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
 
-type Section = 'gateway' | 'activity';
-
 /** Under a cent renders as "$0.00", and "$0.00 arriving" is noise, not news. */
 const VISIBLE = 0.005;
+
+/** The hero's ground. Kept next to the style that paints it so the chain-badge
+ *  rings drawn on top cannot drift from it. */
+const HERO = '#123E7C';
 
 export default function Gateway() {
   const theme = UnistylesRuntime.getTheme();
   const router = useRouter();
   const { show } = useToast();
-  const [section, setSection] = useState<Section>('gateway');
 
   const environment = useNetworks((s) => s.environment);
   const address = useSession((s) => s.addresses?.eth);
@@ -113,28 +113,7 @@ export default function Gateway() {
         onPress: () => router.push('/(app)/gateway/deposit'),
       }}
     >
-      <View style={styles.segment}>
-        {(['gateway', 'activity'] as Section[]).map((s) => {
-          const on = section === s;
-          return (
-            <Pressable
-              key={s}
-              style={[styles.segmentItem, on && styles.segmentItemOn]}
-              onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
-                setSection(s);
-              }}
-            >
-              <Text style={[styles.segmentLabel, on && styles.segmentLabelOn]} numberOfLines={1}>
-                {s === 'gateway' ? 'Gateway' : 'Activity'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {section === 'gateway' ? (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
+      <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
           {/* ── The headline: what can be spent, right now ───────────────── */}
           <View style={styles.hero}>
             <View style={styles.heroTop}>
@@ -160,7 +139,7 @@ export default function Gateway() {
               <View style={styles.marks}>
                 {networks.map((c) => (
                   <View key={c.chainId.toString()} style={styles.mark}>
-                    <ChainBadge chainId={Number(c.chainId)} size={20} ringColor={theme.colors.text} />
+                    <ChainBadge chainId={Number(c.chainId)} size={20} ringColor={HERO} />
                   </View>
                 ))}
               </View>
@@ -285,51 +264,52 @@ export default function Gateway() {
             </View>
           )}
 
+          {/* Recent activity, in the page rather than behind a tab.
+              It is the tail of the same story — what has happened to this
+              balance — so it reads better as the end of one scroll than as a
+              second place to go and look. Absent entirely when there is
+              nothing, rather than an empty box taking up the same room. */}
+          {events.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>RECENT</Text>
+              <View style={styles.card}>
+                {events.map((e, i) => (
+                  <View key={`${e.at}-${i}`} style={[styles.netRow, i > 0 && styles.divided]}>
+                    <View style={styles.eventIcon}>
+                      <Icon
+                        name={e.kind === 'settled' ? 'arrowDownLeft' : 'bolt'}
+                        size={15}
+                        color={theme.colors.text}
+                      />
+                    </View>
+                    <View style={styles.netMid}>
+                      <Text style={styles.netName}>
+                        {e.kind === 'settled'
+                          ? 'Deposited to Gateway'
+                          : `Delivered to ${chainName(e.chainId)}`}
+                      </Text>
+                      <Text style={styles.netSub}>
+                        {e.kind === 'settled' ? `on ${chainName(e.chainId)} · ` : ''}
+                        {(e.ms / 1000).toFixed(1)}s · {relativeTime(e.at)}
+                      </Text>
+                    </View>
+                    <Text style={styles.netFigure}>{formatUsd(e.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.footnote}>
+                Durations are measured, not estimated.
+              </Text>
+            </View>
+          )}
+
           {funded && !!hub && (
             <Text style={styles.footnote}>
               Depositing on {hub.name} is the fastest — {readyLabel(hub.circleDomain!)} before it is
               spendable.
             </Text>
           )}
-        </Animated.View>
-      ) : (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
-          {events.length === 0 ? (
-            <View style={styles.card}>
-              <Text style={styles.emptyBody}>
-                Nothing yet this session. Deposits and sends appear here with the
-                time they actually took — measured, not estimated.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              {events.map((e, i) => (
-                <View key={`${e.at}-${i}`} style={[styles.netRow, i > 0 && styles.divided]}>
-                  <View style={styles.eventIcon}>
-                    <Icon
-                      name={e.kind === 'settled' ? 'arrowDownLeft' : 'bolt'}
-                      size={15}
-                      color={theme.colors.text}
-                    />
-                  </View>
-                  <View style={styles.netMid}>
-                    <Text style={styles.netName}>
-                      {e.kind === 'settled'
-                        ? 'Deposited to Gateway'
-                        : `Delivered to ${chainName(e.chainId)}`}
-                    </Text>
-                    <Text style={styles.netSub}>
-                      {e.kind === 'settled' ? `on ${chainName(e.chainId)} · ` : ''}
-                      {(e.ms / 1000).toFixed(1)}s · {relativeTime(e.at)}
-                    </Text>
-                  </View>
-                  <Text style={styles.netFigure}>{formatUsd(e.amount)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </Animated.View>
-      )}
+      </Animated.View>
     </ScreenScaffold>
   );
 }
@@ -361,17 +341,6 @@ function Point({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  segment: {
-    flexDirection: 'row',
-    gap: 4,
-    padding: 4,
-    borderRadius: 14,
-    backgroundColor: theme.colors.tile,
-  },
-  segmentItem: { flex: 1, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  segmentItemOn: { backgroundColor: theme.colors.text },
-  segmentLabel: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.muted },
-  segmentLabelOn: { color: theme.colors.appBackground },
 
   pane: { marginTop: 18, gap: 10 },
 
@@ -379,7 +348,11 @@ const styles = StyleSheet.create((theme) => ({
   hero: {
     padding: 18,
     borderRadius: 26,
-    backgroundColor: theme.colors.text,
+    // USDC's own blue, deepened. The token value (#2980D9) is calibrated for a
+    // 20pt asset chip and is far too loud across a whole card; this keeps the
+    // identity while staying a surface rather than an alert. Fixed rather than
+    // themed: white text has to stay legible on it in light AND stealth dark.
+    backgroundColor: HERO,
     gap: 6,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -538,15 +511,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 13,
     letterSpacing: -0.2,
     color: theme.colors.appBackground,
-  },
-
-  emptyBody: {
-    padding: 16,
-    fontFamily: fontFamily.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    letterSpacing: -0.14,
-    color: theme.colors.muted,
   },
 
   footnote: {
