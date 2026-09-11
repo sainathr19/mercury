@@ -62,6 +62,11 @@ const MARK_SIZE = 20;
 const WORDMARK_TRIM = 0.82;
 const WORDMARK_SIZE = Math.round((MARK_SIZE / 0.68) * WORDMARK_TRIM);
 
+/** The ActionStrip's mint ink. One small mark is enough to say which half is
+ *  the instant one — a whole black tile said it far too loudly, and stacked a
+ *  second dark mass directly above the dark action band. */
+const MINT_INK = '#0B2A14';
+
 /** Cards on the rail before "View all" takes over. */
 const RAIL_MAX = 6;
 
@@ -474,14 +479,16 @@ function GatewayPots({
   const theme = UnistylesRuntime.getTheme();
   const money = (v: number) => (masked ? '••••' : formatUsd(Math.max(0, v)));
   return (
-    <PressableScale style={styles.pots} onPress={onPress}>
-      <View style={[styles.pot, styles.potLead]}>
+    <PressableScale activeScale={0.99} style={styles.pots} onPress={onPress}>
+      <View style={styles.pot}>
         <View style={styles.potHead}>
-          <Icon name="bolt" size={12} color={theme.colors.appBackground} />
-          <RNText style={[styles.potLabel, styles.potLabelLead]}>GATEWAY</RNText>
+          <View style={styles.potDot}>
+            <Icon name="bolt" size={10} color={MINT_INK} />
+          </View>
+          <RNText style={styles.potLabel}>GATEWAY</RNText>
         </View>
-        <RNText style={[styles.potFigure, styles.potFigureLead]}>{money(gateway)}</RNText>
-        <RNText style={[styles.potNote, styles.potNoteLead]} numberOfLines={1}>
+        <RNText style={styles.potFigure}>{money(gateway)}</RNText>
+        <RNText style={styles.potNote} numberOfLines={1}>
           {arriving > 0
             ? `${formatUsd(arriving)} arriving`
             : gateway > 0
@@ -489,19 +496,26 @@ function GatewayPots({
               : 'tap to deposit'}
         </RNText>
       </View>
+
+      {/* A hairline, not a gap. The two figures are halves of one number — the
+          USDC this wallet holds — and two floating tiles read as two unrelated
+          things sitting next to each other. */}
+      <View style={styles.potSplit} />
+
       <View style={styles.pot}>
         <View style={styles.potHead}>
-          <Icon name="cash" size={12} color={theme.colors.muted} />
+          <View style={styles.potDotPlain}>
+            <Icon name="cash" size={10} color={theme.colors.muted} />
+          </View>
           <RNText style={styles.potLabel}>WALLET</RNText>
         </View>
         <RNText style={styles.potFigure}>{money(wallet)}</RNText>
         <RNText style={styles.potNote} numberOfLines={1}>
-          {/* "no USDC held" would be a lie when the wallet holds USDC on a chain
-              Gateway does not cover — Solana, say. This pot counts only the
-              Gateway networks, so it has to say which. */}
           {wallet > 0 ? 'on its own network' : 'none on a Gateway network'}
         </RNText>
       </View>
+
+      <Icon name="chevronRight" size={14} color={theme.colors.faint} />
     </PressableScale>
   );
 }
@@ -660,36 +674,54 @@ const styles = StyleSheet.create((theme) => ({
   emptyTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, color: theme.colors.text },
   emptyDesc: { fontFamily: fontFamily.medium, fontSize: 15, letterSpacing: -0.3, color: theme.colors.muted },
 
-  // The two pots, sat under the asset rail inside the light card.
-  pots: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  pot: {
-    flex: 1,
-    padding: 12,
-    gap: 4,
+  // One card, split by a hairline — the same tile treatment as the asset cards
+  // above, so the row reads as part of that set rather than as a heavier thing
+  // bolted beneath it.
+  pots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 18,
     backgroundColor: theme.colors.tile,
   },
-  potLead: { backgroundColor: theme.colors.text },
-  potHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pot: { flex: 1, gap: 3 },
+  potSplit: { width: 1, alignSelf: 'stretch', backgroundColor: theme.colors.border },
+  potHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  potDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#C7F0D2',
+  },
+  potDotPlain: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.cardBackground,
+  },
   potLabel: {
     fontFamily: fontFamily.semibold,
     fontSize: 10,
     letterSpacing: 0.5,
     color: theme.colors.muted,
   },
-  potLabelLead: { color: theme.colors.appBackground, opacity: 0.7 },
   potFigure: {
     fontFamily: fontFamily.bold,
     fontSize: 20,
     letterSpacing: -0.4,
     color: theme.colors.text,
   },
-  potFigureLead: { color: theme.colors.appBackground },
   potNote: {
     fontFamily: fontFamily.medium,
     fontSize: 11,
     letterSpacing: -0.1,
     color: theme.colors.muted,
   },
-  potNoteLead: { color: theme.colors.appBackground, opacity: 0.65 },
 }));
