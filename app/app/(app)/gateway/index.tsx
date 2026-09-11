@@ -14,7 +14,7 @@
 // The page leads with the spendable figure because that is the number this
 // feature exists to produce. Everything under it answers one of two questions:
 // where can this go (the networks), and what has happened to it (Activity).
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -25,6 +25,8 @@ import { useGateway } from '../../../src/stores/gatewayStore';
 import { usePendingClaims } from '../../../src/stores/pendingClaimStore';
 import { useNetworks } from '../../../src/stores/networkStore';
 import { useSession } from '../../../src/stores/session';
+import { getActiveAccount } from '../../../src/bridge/account';
+import { claimWithdrawal, remainingLabel } from '../../../src/bridge/gatewayWithdraw';
 import { chainName, circleChainsForEnvironment } from '../../../src/lib/chains';
 import { hubChain, readyLabel } from '../../../src/lib/gatewayHub';
 import { formatUsd, relativeTime } from '../../../src/lib/format';
@@ -72,6 +74,11 @@ export default function Gateway() {
   const events = useGateway((g) => g.events);
   const loadedAt = useGateway((g) => g.loadedAt);
   const refresh = useGateway((g) => g.refresh);
+  const withdrawals = useGateway((g) => g.withdrawals);
+  const startedAt = useGateway((g) => g.withdrawalStartedAt);
+  const refreshWithdrawals = useGateway((g) => g.refreshWithdrawals);
+  const walletRef = useSession((s) => s.wallet);
+  const [claiming, setClaiming] = useState<string | null>(null);
 
   const claims = usePendingClaims((s) => s.claims);
   const retrying = usePendingClaims((s) => s.retrying);
@@ -85,6 +92,13 @@ export default function Gateway() {
   useEffect(() => {
     if (address) void refresh(address);
   }, [address, refresh]);
+
+  // Scanned on every mount, because this page is the ONLY place a week-old
+  // withdrawal can be found again — whoever started one left the withdraw
+  // screen long ago.
+  useEffect(() => {
+    if (address) void refreshWithdrawals(address);
+  }, [address, refreshWithdrawals]);
 
   const hub = hubChain(environment);
   const networks = useMemo(() => circleChainsForEnvironment(environment), [environment]);
@@ -120,7 +134,32 @@ export default function Gateway() {
     [retryClaim, show, address, refresh],
   );
 
+  const onClaim = useCallback(
+    async (chainId: bigint) => {
+      if (!walletRef || !address) return;
+      const key = chainId.toString();
+      setClaiming(key);
+      try {
+        const r = await claimWithdrawal({
+          wallet: walletRef,
+          account: getActiveAccount(),
+          chainId,
+        });
+        show(r.ok ? 'Withdrawn to your wallet' : (r.error ?? 'Could not complete it'), r.ok ? 'success' : 'error');
+        if (r.ok) {
+          void refresh(address);
+          void refreshWithdrawals(address);
+        }
+      } finally {
+        setClaiming(null);
+      }
+    },
+    [walletRef, address, show, refresh, refreshWithdrawals],
+  );
+
   const funded = spendable >= VISIBLE || pending >= VISIBLE;
+  /** Offered once there is something to move, or something already moving. */
+  const canWithdraw = spendable >= VISIBLE || withdrawals.length > 0;
 
   return (
     <ScreenScaffold
@@ -187,6 +226,25 @@ export default function Gateway() {
             <Icon name="chevronRight" size={15} color={theme.colors.faint} />
           </PressableScale>
 
+          {/* ── The way out ─────────────────────────────────────────────── */}
+          {canWithdraw && (
+            <PressableScale
+              style={styles.walletRow}
+              onPress={() => router.push('/(app)/gateway/withdraw')}
+            >
+              <View style={styles.walletIcon}>
+                <Icon name="arrowUpRight" size={16} color={theme.colors.muted} />
+              </View>
+              <View style={styles.walletMid}>
+                <Text style={styles.walletTitle}>Withdraw</Text>
+                <Text style={styles.walletSub} numberOfLines={1}>
+                  Back to your own address — instantly, or on-chain in a week
+                </Text>
+              </View>
+              <Icon name="chevronRight" size={15} color={theme.colors.faint} />
+            </PressableScale>
+          )}
+
           {/* ── Money that left but has not landed ───────────────────────── */}
           {claims.length > 0 && (
             <View style={styles.alert}>
@@ -226,6 +284,57 @@ export default function Gateway() {
                   </PressableScale>
                 </View>
               ))}
+            </View>
+          )}
+
+          {/* ── Money on its way out ─────────────────────────────────────
+              A trustless withdrawal takes a week, so this section exists to be
+              found by someone who has forgotten they started one. It is the
+              only route back to the second transaction. */}
+          {withdrawals.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>ON ITS WAY OUT</Text>
+              <View style={styles.card}>
+                {withdrawals.map((w, i) => {
+                  const key = w.chainId.toString();
+                  return (
+                    <View key={key} style={[styles.netRow, i > 0 && styles.divided]}>
+                      <ChainBadge
+                        chainId={Number(w.chainId)}
+                        size={26}
+                        ringColor={theme.colors.cardBackground}
+                      />
+                      <View style={styles.netMid}>
+                        <Text style={styles.netName}>
+                          {formatUsd(w.withdrawing)} leaving {w.name}
+                        </Text>
+                        <Text style={styles.netSub} numberOfLines={1}>
+                          {w.claimable
+                            ? 'Ready to take'
+                            : remainingLabel(startedAt[key], w.delaySeconds)}
+                        </Text>
+                      </View>
+                      {w.claimable ? (
+                        <PressableScale
+                          style={styles.retry}
+                          disabled={claiming === key}
+                          onPress={() => void onClaim(w.chainId)}
+                        >
+                          <Text style={styles.retryLabel}>
+                            {claiming === key ? 'Taking…' : 'Claim'}
+                          </Text>
+                        </PressableScale>
+                      ) : (
+                        <Icon name="clock" size={15} color={theme.colors.faint} />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={styles.footnote}>
+                The chain decides when this is claimable, not the countdown — the
+                button turns on the moment it will actually go through.
+              </Text>
             </View>
           )}
 

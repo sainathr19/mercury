@@ -22,6 +22,7 @@ const PUSHED_ROUTES = [
   // second header under the parent's and reintroduce the dead band.
   'gateway/index',
   'gateway/deposit',
+  'gateway/withdraw',
   'networks',
   'wc-sessions',
   'username',

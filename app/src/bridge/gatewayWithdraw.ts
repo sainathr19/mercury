@@ -27,7 +27,14 @@
 // simulation.
 import type { WalletInterface } from 'mercury-wallet-core';
 import { ethCall, rpc, sendCall, uint, waitForReceipt, word } from './evmTx';
-import { chainById, chainUsdc, gatewayWallet, type ChainDef } from '../lib/chains';
+import {
+  chainById,
+  chainUsdc,
+  circleChainsForEnvironment,
+  gatewayWallet,
+  type ChainDef,
+  type ChainEnvironment,
+} from '../lib/chains';
 
 // Verified present in the deployed implementation bytecode on Base Sepolia.
 const SEL_INITIATE = '0xc8393ba9'; // initiateWithdrawal(address,uint256)
@@ -120,6 +127,26 @@ export function delayLabel(seconds?: number): string {
   return hours >= 2 ? `about ${hours} hours` : 'about an hour';
 }
 
+/**
+ * How much longer the wait has to run — an ESTIMATE, and labelled as one.
+ *
+ * The contract's clock is the authority (`claimable`), and this never overrides
+ * it. Two cases matter and both are handled explicitly rather than rounded away:
+ * with no start time we say nothing about duration at all, and once the estimate
+ * has run out but the chain still refuses, we say "any moment now" instead of a
+ * negative number or a stale "ready".
+ */
+export function remainingLabel(startedAt?: number, delaySeconds?: number, now = Date.now()): string {
+  if (!startedAt || !delaySeconds) return 'Not ready yet';
+  const left = startedAt + delaySeconds * 1000 - now;
+  if (left <= 0) return 'Ready any moment now';
+  const days = Math.ceil(left / 86400_000);
+  if (days > 1) return `About ${days} days left`;
+  const hours = Math.ceil(left / 3600_000);
+  if (hours > 1) return `About ${hours} hours left`;
+  return 'Less than an hour left';
+}
+
 export interface WithdrawResult {
   ok: boolean;
   txHash?: string;
@@ -198,4 +225,83 @@ export async function claimWithdrawal(opts: {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Could not complete the withdrawal' };
   }
+}
+
+// ── Finding the way out, across chains ───────────────────────────────────────
+//
+// A withdrawal is per chain — `availableBalance` and `withdrawingBalance` are
+// keyed by (token, depositor) on each chain's own GatewayWallet — while the
+// balance the user sees is unified. So both screens have to fan out.
+//
+// The cost is why there are two functions rather than one. A full
+// `withdrawalState` is four eth_calls; run over every Circle chain on every
+// Gateway page mount that is 16-24 reads against public RPCs that rate-limit,
+// to answer "no, nothing is withdrawing" almost every time. So the scan reads
+// ONE call per chain and pays for the rest only where there is something to
+// report.
+
+export interface ChainWithdrawal extends WithdrawalState {
+  chainId: bigint;
+  name: string;
+}
+
+/**
+ * Every chain with money on its way out, newest state first.
+ *
+ * Cheap by design: one call per chain, and the full four-call state only for
+ * the chains that have something. The common answer is an empty array for four
+ * reads.
+ */
+export async function withdrawalsInProgress(
+  address: string,
+  env: ChainEnvironment,
+): Promise<ChainWithdrawal[]> {
+  if (!address) return [];
+  const chains = circleChainsForEnvironment(env);
+  const marked = await Promise.all(
+    chains.map(async (c) => {
+      if (!c.rpcUrl || !c.usdc) return null;
+      try {
+        const hex = await ethCall(
+          c.rpcUrl,
+          gatewayWallet(c.environment),
+          SEL_WITHDRAWING + word(c.usdc) + word(address),
+        );
+        return usdc(hex) > 0 ? c : null;
+      } catch {
+        // Unknown, not zero — but a chain we cannot reach cannot be claimed on
+        // either, so it is correct to leave it out of the list rather than show
+        // a row whose buttons would all fail.
+        return null;
+      }
+    }),
+  );
+
+  const live = marked.filter((c): c is ChainDef => c !== null);
+  return Promise.all(
+    live.map(async (c) => ({
+      chainId: c.chainId,
+      name: c.name,
+      ...(await withdrawalState(c.chainId, address)),
+    })),
+  );
+}
+
+/** What could be withdrawn on each chain right now. One call per chain. */
+export async function withdrawableByChain(
+  address: string,
+  env: ChainEnvironment,
+): Promise<{ chain: ChainDef; available: number }[]> {
+  if (!address) return [];
+  return Promise.all(
+    circleChainsForEnvironment(env).map(async (chain) => {
+      if (!chain.rpcUrl || !chain.usdc) return { chain, available: 0 };
+      const available = await ethCall(
+        chain.rpcUrl,
+        gatewayWallet(chain.environment),
+        SEL_AVAILABLE + word(chain.usdc) + word(address),
+      ).then(usdc, () => 0);
+      return { chain, available };
+    }),
+  );
 }

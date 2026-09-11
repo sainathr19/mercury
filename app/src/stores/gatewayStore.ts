@@ -7,6 +7,7 @@ import {
   type SettleOutcome,
   type UsdcHoldings,
 } from '../bridge/gateway';
+import { withdrawalsInProgress, type ChainWithdrawal } from '../bridge/gatewayWithdraw';
 import { getActiveEnvironment } from '../bridge/activeEnv';
 
 /**
@@ -32,6 +33,7 @@ export interface SettlementEvent {
 const MAX_EVENTS = 8;
 
 const IN_FLIGHT_FILE = 'gateway-inflight.v1.json';
+const WITHDRAWALS_FILE = 'gateway-withdrawals.v1.json';
 
 /**
  * Persist the in-flight deduction across launches.
@@ -48,6 +50,36 @@ function persistInFlight(v: { inFlightSent: number; inFlightAt: number }): void 
     new File(Paths.document, IN_FLIGHT_FILE).write(JSON.stringify(v));
   } catch {
     // Worst case we are back to the in-memory behaviour.
+  }
+}
+
+/**
+ * When each chain's trustless withdrawal was started, keyed by chain id.
+ *
+ * Persisted because the whole point is a wait measured in days: the process
+ * this was started in will not be running when it matters. It is only ever an
+ * ESTIMATE — the contract's own clock decides, and `claimable` is what gates the
+ * button — so a missing entry (started on another device, or straight on chain)
+ * degrades to "not ready yet" rather than to a wrong date.
+ */
+function persistStarted(v: Record<string, number>): void {
+  try {
+    new File(Paths.document, WITHDRAWALS_FILE).write(JSON.stringify(v));
+  } catch {
+    // Only the countdown is lost; `claimable` still answers the real question.
+  }
+}
+
+function loadStarted(): Record<string, number> {
+  try {
+    const f = new File(Paths.document, WITHDRAWALS_FILE);
+    if (!f.exists) return {};
+    const v = JSON.parse(f.textSync()) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const [k, n] of Object.entries(v)) if (Number(n) > 0) out[k] = Number(n);
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -84,6 +116,22 @@ interface GatewayState extends UsdcHoldings {
   inFlightAt: number;
   /** Recent settlement operations, newest first. */
   events: SettlementEvent[];
+  /**
+   * Trustless withdrawals with the clock running, per chain.
+   *
+   * Lives here rather than on the withdraw screen because that is not where the
+   * user comes back to it. A trustless withdrawal takes a week; whoever started
+   * one has long since left that screen, and the only place they can be relied
+   * on to look again is the Gateway page. So the page reads it on mount.
+   */
+  withdrawals: ChainWithdrawal[];
+  /** Null until the first scan, so "none" can be told from "not looked yet". */
+  withdrawalsAt: number | null;
+  /** chainId -> epoch ms the withdrawal was started, for the estimate only. */
+  withdrawalStartedAt: Record<string, number>;
+  refreshWithdrawals(address: string): Promise<void>;
+  /** Record that a trustless withdrawal just began on this chain. */
+  noteWithdrawalStarted(chainId: bigint): void;
   noteEvent(e: Omit<SettlementEvent, 'at'>): void;
   /** Record a completed send so the balance stops counting it immediately. */
   noteSent(amount: number): void;
@@ -108,6 +156,9 @@ const EMPTY = {
   stuck: [],
   ...loadInFlight(),
   events: [],
+  withdrawals: [],
+  withdrawalsAt: null,
+  withdrawalStartedAt: loadStarted(),
 };
 
 /** How long to keep discounting a sent amount. Circle settles burns on-chain
@@ -145,6 +196,34 @@ export const useGateway = create<GatewayState>((set, get) => ({
       }
     } finally {
       set({ loading: false });
+    }
+  },
+
+  noteWithdrawalStarted(chainId) {
+    const next = { ...get().withdrawalStartedAt, [chainId.toString()]: Date.now() };
+    set({ withdrawalStartedAt: next });
+    persistStarted(next);
+  },
+
+  async refreshWithdrawals(address) {
+    if (!address) return;
+    try {
+      const withdrawals = await withdrawalsInProgress(address, getActiveEnvironment());
+      set({ withdrawals, withdrawalsAt: Date.now() });
+      // A chain that is no longer withdrawing has been claimed. Keeping its
+      // start time would date the NEXT withdrawal from the last one and show a
+      // countdown that had already expired.
+      const live = new Set(withdrawals.map((w) => w.chainId.toString()));
+      const started = get().withdrawalStartedAt;
+      const kept = Object.fromEntries(Object.entries(started).filter(([k]) => live.has(k)));
+      if (Object.keys(kept).length !== Object.keys(started).length) {
+        set({ withdrawalStartedAt: kept });
+        persistStarted(kept);
+      }
+    } catch {
+      // A failed scan must not blank a list the user is looking at: an RPC that
+      // did not answer is not evidence that a withdrawal went away, and clearing
+      // it would hide a claim that is ready.
     }
   },
 
