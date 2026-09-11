@@ -124,7 +124,7 @@ export default function Networks() {
           <Text style={styles.segmentNote}>
             {environment === 'mainnet'
               ? 'Production chains. Everything you send here moves real money.'
-              : 'Test chains and free faucet coins. Mercury returns to Mainnet the next time it launches.'}
+              : 'Test chains and free faucet coins. This choice sticks until you change it.'}
           </Text>
           {switching && (
             <View style={styles.switchingRow}>
