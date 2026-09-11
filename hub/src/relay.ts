@@ -62,6 +62,21 @@ const MINT_GAS = 400_000n;
  */
 const rpc = (url?: string) => http(url, { timeout: 8_000, retryCount: 1 });
 
+/**
+ * Per-chain RPC override, `RPC_<chainId>`.
+ *
+ * Without this the relayer is stuck on whatever public endpoint viem ships for
+ * a chain, and those are the first thing a provider rate-limits by IP. A
+ * datacenter address is exactly the shape they refuse: this hub could read
+ * Base, Arbitrum and Arc but not Sepolia, so `/gateway/domains` reported Sepolia
+ * as unknown and every mint destined for it was undeliverable — while the same
+ * endpoint answered in a second from a laptop.
+ *
+ * An unset chain keeps viem's default, so this is opt-in per chain and an empty
+ * environment behaves as before.
+ */
+const chainRpc = (chainId: number) => rpc(process.env[`RPC_${chainId}`] || undefined);
+
 export async function relayMint(args: {
   destinationDomain: number;
   environment: RelayEnvironment;
@@ -83,8 +98,8 @@ export async function relayMint(args: {
 
   try {
     const account = privateKeyToAccount(args.relayerKey);
-    const pub = createPublicClient({ chain, transport: rpc() });
-    const wallet = createWalletClient({ account, chain, transport: rpc() });
+    const pub = createPublicClient({ chain, transport: chainRpc(chain.id) });
+    const wallet = createWalletClient({ account, chain, transport: chainRpc(chain.id) });
 
     // Refuse rather than broadcast a transaction we know cannot pay for itself —
     // a clear error beats an opaque RPC failure.
@@ -214,7 +229,7 @@ export async function relayerStatus(
     entries.map(async ([domain, chain]): Promise<DomainStatus> => {
       const base = { domain: Number(domain), chain: chain.name, chainId: chain.id };
       try {
-        const pub = createPublicClient({ chain, transport: rpc() });
+        const pub = createPublicClient({ chain, transport: chainRpc(chain.id) });
         const [gas, gasPrice] = await Promise.all([
           pub.getBalance({ address: account.address }),
           pub.getGasPrice(),
