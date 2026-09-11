@@ -1,14 +1,29 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import type { Hex } from 'viem';
-import { relayMint } from './relay.js';
-import { CHAIN_BY_DOMAIN } from './chains.js';
+import { relayMint, relayerStatus } from './relay.js';
+import { CHAINS_BY_ENV, type RelayEnvironment } from './chains.js';
 import { claimMessage, sponsorRegister, type SponsorConfig } from './sponsor.js';
 import { Budget, policyFromEnv } from './budget.js';
 import { indexProxy, indexProxyConfigured } from './indexProxy.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
 const PORT = Number(process.env.PORT ?? 8787);
+
+/**
+ * Which environment a request means.
+ *
+ * Circle reuses domain ids across environments — domain 6 is Base on mainnet and
+ * Base Sepolia on testnet — so a domain alone is ambiguous and callers are
+ * expected to say. The fallback exists only for callers written before this
+ * parameter did, and defaults to testnet: guessing mainnet would broadcast a
+ * mint onto a real chain, whereas guessing testnet at worst wastes test gas.
+ */
+const DEFAULT_RELAY_ENVIRONMENT: RelayEnvironment =
+  process.env.RELAY_ENVIRONMENT === 'mainnet' ? 'mainnet' : 'testnet';
+
+const relayEnvironment = (v: unknown): RelayEnvironment =>
+  v === 'mainnet' ? 'mainnet' : v === 'testnet' ? 'testnet' : DEFAULT_RELAY_ENVIRONMENT;
 
 // ── Name sponsorship ─────────────────────────────────────────────────────────
 // The same wallet that pays for Gateway mints also pays for ENS registrations.
@@ -134,16 +149,37 @@ app.post('/names/sponsor', async (c) => {
   return result.ok ? c.json(result, 200) : c.json(result, result.status);
 });
 
-app.get('/gateway/domains', (c) =>
-  c.json({
-    domains: Object.entries(CHAIN_BY_DOMAIN).map(([domain, chain]) => ({
-      domain: Number(domain),
-      chain: chain.name,
-      chainId: chain.id,
-    })),
-    relayerConfigured: !!RELAYER_KEY,
-  }),
-);
+/**
+ * Which domains this relayer serves, and whether it can currently pay for them.
+ *
+ * The app calls this BEFORE signing a burn intent. Circle debits the unified
+ * balance at burn time, so discovering an unfunded relayer afterwards means the
+ * money has already moved with no way to deliver it.
+ *
+ * Falls back to the static table when no key is configured, so the shape is the
+ * same either way and a caller never has to special-case an unconfigured hub.
+ */
+app.get('/gateway/domains', async (c) => {
+  const environment = relayEnvironment(c.req.query('environment'));
+
+  if (!RELAYER_KEY) {
+    return c.json({
+      environment,
+      relayer: null,
+      relayerConfigured: false,
+      domains: Object.entries(CHAINS_BY_ENV[environment]).map(([domain, chain]) => ({
+        domain: Number(domain),
+        chain: chain.name,
+        chainId: chain.id,
+        gasWei: null,
+        ready: false,
+      })),
+    });
+  }
+
+  const status = await relayerStatus(environment, RELAYER_KEY);
+  return c.json({ ...status, relayerConfigured: true });
+});
 
 /**
  * Submit a Circle Gateway attestation on the destination chain so the recipient
@@ -157,7 +193,12 @@ app.get('/gateway/domains', (c) =>
 app.post('/gateway/relay', async (c) => {
   if (!RELAYER_KEY) return c.json({ ok: false, error: 'Relayer not configured' }, 503);
 
-  let body: { attestation?: string; signature?: string; destinationDomain?: number };
+  let body: {
+    attestation?: string;
+    signature?: string;
+    destinationDomain?: number;
+    environment?: string;
+  };
   try {
     body = await c.req.json();
   } catch {
@@ -174,6 +215,7 @@ app.post('/gateway/relay', async (c) => {
 
   const result = await relayMint({
     destinationDomain,
+    environment: relayEnvironment(body.environment),
     attestation: attestation as Hex,
     signature: signature as Hex,
     relayerKey: RELAYER_KEY,

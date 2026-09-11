@@ -17,6 +17,11 @@ const PUSHED_ROUTES = [
   // each screen has exactly one.
   'swaps/index',
   'swaps/order',
+  // Circle Gateway: the unified USDC balance and the deposit flow. Siblings for
+  // the same reason as `swaps/*` above — a `gateway/_layout.tsx` would stack a
+  // second header under the parent's and reintroduce the dead band.
+  'gateway/index',
+  'gateway/deposit',
   'networks',
   'wc-sessions',
   'username',
@@ -84,7 +89,6 @@ export default function AppLayout() {
       {/* Swap slides up from the bottom as a full-screen sheet (mirrors iOS). */}
       {/* Gateway: send from the unified balance, delivered by the relayer. */}
       <Stack.Screen name="gateway-send" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="settlement" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="request" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="swap" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       {/* Send is a native iOS form sheet — large detent only (the multi-step

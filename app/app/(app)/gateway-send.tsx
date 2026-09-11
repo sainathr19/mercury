@@ -112,7 +112,10 @@ export default function GatewaySend() {
         noteEvent({ kind: 'delivered', amount: value, chainId: dest.chainId, ms: r.attestMs + r.relayMs });
         void refresh(addresses.eth);
       } else if (r.unclaimed) {
-        show('Sent, but delivery is pending — funds are safe.', 'info');
+        // "Funds are safe" used to be said while the app discarded the only
+        // thing that could deliver them. It is now saved as a pending claim, so
+        // the message can point at the retry that actually exists.
+        show('Sent, but not delivered yet — retry it from Gateway.', 'info');
       } else {
         setFault(r.error ?? 'Send failed');
         show(r.error ?? 'Send failed', 'error');

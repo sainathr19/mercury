@@ -22,7 +22,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { createWalletClient, createPublicClient, http, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { CHAIN_BY_DOMAIN, GATEWAY_MINTER, GATEWAY_MINTER_ABI } from './chains.js';
+import {
+  chainFor,
+  CHAINS_BY_ENV,
+  gatewayMinter,
+  GATEWAY_MINTER_ABI,
+  type RelayEnvironment,
+} from './chains.js';
 import type { Budget } from './budget.js';
 
 export interface RelayResult {
@@ -42,6 +48,7 @@ const MINT_GAS = 400_000n;
 
 export async function relayMint(args: {
   destinationDomain: number;
+  environment: RelayEnvironment;
   attestation: Hex;
   signature: Hex;
   relayerKey: Hex;
@@ -49,9 +56,13 @@ export async function relayMint(args: {
 }): Promise<RelayResult> {
   const t0 = Date.now();
   let reservation: string | null = null;
-  const chain = CHAIN_BY_DOMAIN[args.destinationDomain];
+  const chain = chainFor(args.environment, args.destinationDomain);
   if (!chain) {
-    return { ok: false, error: `Unsupported destination domain ${args.destinationDomain}`, ms: Date.now() - t0 };
+    return {
+      ok: false,
+      error: `Unsupported destination domain ${args.destinationDomain} on ${args.environment}`,
+      ms: Date.now() - t0,
+    };
   }
 
   try {
@@ -61,14 +72,28 @@ export async function relayMint(args: {
 
     // Refuse rather than broadcast a transaction we know cannot pay for itself —
     // a clear error beats an opaque RPC failure.
-    const gas = await pub.getBalance({ address: account.address });
-    if (gas === 0n) {
-      return { ok: false, error: `Relayer has no gas on ${chain.name}`, ms: Date.now() - t0 };
+    //
+    // Measured against the actual cost of a mint, not against zero. A balance of
+    // one wei is not zero and used to pass this check, then fail at broadcast
+    // having already told the caller everything was fine.
+    const [gas, gasPrice] = await Promise.all([
+      pub.getBalance({ address: account.address }),
+      pub.getGasPrice(),
+    ]);
+    const cost = MINT_GAS * gasPrice;
+    if (gas < cost) {
+      return {
+        ok: false,
+        error:
+          gas === 0n
+            ? `Relayer has no gas on ${chain.name}`
+            : `Relayer cannot afford a mint on ${chain.name}`,
+        ms: Date.now() - t0,
+      };
     }
 
     // Book before broadcasting. Checking after would let concurrent callers each
     // pass a limit none of them could afford together.
-    const gasPrice = await pub.getGasPrice();
     // Global cap only, for now.
     //
     // The right key is the TransferSpec's `sourceDepositor` — the person whose
@@ -86,7 +111,7 @@ export async function relayMint(args: {
     reservation = booked.id;
 
     const hash = await wallet.writeContract({
-      address: GATEWAY_MINTER,
+      address: gatewayMinter(args.environment),
       abi: GATEWAY_MINTER_ABI,
       functionName: 'gatewayMint',
       args: [args.attestation, args.signature],
@@ -120,4 +145,75 @@ export async function relayMint(args: {
     // Never broadcast → nothing owed.
     if (reservation) args.budget.release(reservation);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Readiness, published.
+//
+//  The app burns USDC through Circle BEFORE it calls this relayer: a burn intent
+//  debits the unified balance and returns an attestation, and only then does
+//  anyone submit the mint. So a relayer that is out of gas does not merely fail
+//  a send — it fails one whose money has already moved.
+//
+//  `relayMint` refuses cleanly in that case, but by then it is too late to be
+//  useful. Publishing readiness lets the app check BEFORE it signs anything,
+//  which turns an unrecoverable surprise into a disabled button.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DomainStatus {
+  domain: number;
+  chain: string;
+  chainId: number;
+  /** Relayer's native balance. `null` when the chain could not be reached —
+   *  unknown, which is NOT the same as empty and must not read as either. */
+  gasWei: string | null;
+  /** Enough to pay for one mint at the current gas price. `null` = unknown. */
+  ready: boolean | null;
+}
+
+export interface RelayerStatus {
+  environment: RelayEnvironment;
+  /** The address that pays. Published so it can be topped up without asking. */
+  relayer: string;
+  domains: DomainStatus[];
+}
+
+/** Balances move slowly relative to how often a screen asks. Short enough to
+ *  notice a top-up, long enough that this endpoint cannot be used to amplify
+ *  load onto the public RPCs. */
+const STATUS_TTL_MS = 15_000;
+const statusCache = new Map<RelayEnvironment, { at: number; value: RelayerStatus }>();
+
+export async function relayerStatus(
+  env: RelayEnvironment,
+  relayerKey: Hex,
+): Promise<RelayerStatus> {
+  const hit = statusCache.get(env);
+  if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.value;
+
+  const account = privateKeyToAccount(relayerKey);
+  const entries = Object.entries(CHAINS_BY_ENV[env]);
+
+  const domains = await Promise.all(
+    entries.map(async ([domain, chain]): Promise<DomainStatus> => {
+      const base = { domain: Number(domain), chain: chain.name, chainId: chain.id };
+      try {
+        const pub = createPublicClient({ chain, transport: http() });
+        const [gas, gasPrice] = await Promise.all([
+          pub.getBalance({ address: account.address }),
+          pub.getGasPrice(),
+        ]);
+        return { ...base, gasWei: gas.toString(), ready: gas >= MINT_GAS * gasPrice };
+      } catch {
+        // An unreachable chain is unknown. Reporting `false` would tell the app
+        // to disable a send that might work; reporting `true` would tell it to
+        // burn into one that cannot.
+        return { ...base, gasWei: null, ready: null };
+      }
+    }),
+  );
+
+  const value: RelayerStatus = { environment: env, relayer: account.address, domains };
+  statusCache.set(env, { at: Date.now(), value });
+  return value;
 }
