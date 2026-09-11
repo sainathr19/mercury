@@ -1,4 +1,4 @@
-// The Gateway page: two balances, one deposit action, and the history of both.
+// The Gateway page: one balance, where it can go, and how it got there.
 //
 // Gateway used to be invisible plumbing — the wallet swept every USDC into it on
 // each dashboard mount and the only trace was a one-line strip. That made sends
@@ -6,14 +6,14 @@
 // contract without asking, and hid a 13-to-19-minute finality wait behind a
 // balance that silently became unspendable.
 //
-// So the two pots are now named and separate:
+// So the distinction is drawn rather than explained:
 //
 //   GATEWAY  — deposited. Spendable on any supported network, in seconds.
 //   WALLET   — in the user's own address, on one specific chain.
 //
-// Both are the user's money and both count towards the total; the difference is
-// only where it can go next. Everything else on this page exists to make that
-// one distinction legible.
+// The page leads with the spendable figure because that is the number this
+// feature exists to produce. Everything under it answers one of two questions:
+// where can this go (the networks), and what has happened to it (Activity).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -21,13 +21,14 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon, PressableScale, ScreenScaffold, Text, useToast } from '../../../src/ui';
+import { ChainBadge } from '../../../src/components/ChainBadge';
 import { useGateway } from '../../../src/stores/gatewayStore';
 import { usePendingClaims } from '../../../src/stores/pendingClaimStore';
 import { useNetworks } from '../../../src/stores/networkStore';
 import { useSession } from '../../../src/stores/session';
 import { chainName, circleChainsForEnvironment } from '../../../src/lib/chains';
 import { hubChain, readyLabel } from '../../../src/lib/gatewayHub';
-import { formatUsd } from '../../../src/lib/format';
+import { formatUsd, relativeTime } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
 
 type Section = 'gateway' | 'activity';
@@ -47,7 +48,6 @@ export default function Gateway() {
   const spendable = useGateway((g) => g.spendable);
   const pending = useGateway((g) => g.pending);
   const inWallet = useGateway((g) => g.inWallet);
-  const total = useGateway((g) => g.total);
   const perDomain = useGateway((g) => g.perDomain);
   const perChain = useGateway((g) => g.perChain);
   const stuck = useGateway((g) => g.stuck);
@@ -80,6 +80,7 @@ export default function Gateway() {
           const held = perChain.find((w) => w.chainId === c.chainId);
           return {
             key: c.chainId.toString(),
+            chainId: Number(c.chainId),
             name: c.name,
             inGateway: deposited?.balance ?? 0,
             arriving: deposited?.pending ?? 0,
@@ -101,6 +102,8 @@ export default function Gateway() {
     [retryClaim, show, address, refresh],
   );
 
+  const funded = spendable >= VISIBLE || pending >= VISIBLE;
+
   return (
     <ScreenScaffold
       title="Gateway"
@@ -110,8 +113,6 @@ export default function Gateway() {
         onPress: () => router.push('/(app)/gateway/deposit'),
       }}
     >
-      {/* The same segmented control as the Networks environment switch, so a
-          two-way choice looks identical everywhere in the app. */}
       <View style={styles.segment}>
         {(['gateway', 'activity'] as Section[]).map((s) => {
           const on = section === s;
@@ -134,54 +135,76 @@ export default function Gateway() {
 
       {section === 'gateway' ? (
         <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
-          {/* ── The two pots ───────────────────────────────────────────────── */}
-          <View style={styles.pots}>
-            <View style={[styles.pot, styles.potLead]}>
-              <View style={styles.potHead}>
-                <Icon name="bolt" size={13} color={theme.colors.appBackground} />
-                <Text style={[styles.potLabel, styles.potLabelLead]}>GATEWAY</Text>
-              </View>
-              <Text style={[styles.potFigure, styles.potFigureLead]}>{formatUsd(spendable)}</Text>
-              <Text style={[styles.potNote, styles.potNoteLead]}>
-                {pending >= VISIBLE
-                  ? `${formatUsd(pending)} still arriving`
-                  : spendable > 0
-                    ? `spendable on ${networks.length} networks`
-                    : 'nothing deposited yet'}
-              </Text>
+          {/* ── The headline: what can be spent, right now ───────────────── */}
+          <View style={styles.hero}>
+            <View style={styles.heroTop}>
+              <Icon name="bolt" size={13} color={theme.colors.appBackground} />
+              <Text style={styles.heroLabel}>SPENDABLE NOW</Text>
             </View>
+            <Text style={styles.heroFigure}>
+              {loadedAt === null ? '—' : formatUsd(spendable)}
+            </Text>
 
-            <View style={styles.pot}>
-              <View style={styles.potHead}>
-                <Icon name="cash" size={13} color={theme.colors.muted} />
-                <Text style={styles.potLabel}>WALLET</Text>
+            {pending >= VISIBLE && (
+              <View style={styles.heroPending}>
+                <Icon name="clock" size={12} color={theme.colors.appBackground} />
+                <Text style={styles.heroPendingText}>
+                  {formatUsd(pending)} arriving
+                </Text>
               </View>
-              <Text style={styles.potFigure}>{formatUsd(inWallet)}</Text>
-              <Text style={styles.potNote}>
-                {inWallet >= VISIBLE ? 'on one network each' : 'none on a Gateway network'}
+            )}
+
+            {/* The networks, as marks. "Spendable anywhere" is a claim; showing
+                the chains it actually covers is the evidence. */}
+            <View style={styles.heroNetworks}>
+              <View style={styles.marks}>
+                {networks.map((c) => (
+                  <View key={c.chainId.toString()} style={styles.mark}>
+                    <ChainBadge chainId={Number(c.chainId)} size={20} ringColor={theme.colors.text} />
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.heroNetworksText} numberOfLines={1}>
+                {networks.length} networks · seconds
               </Text>
             </View>
           </View>
 
-          <Text style={styles.totalLine}>
-            {loadedAt === null
-              ? 'Reading your balance…'
-              : `${formatUsd(total)} of USDC in total`}
-          </Text>
+          {/* ── The other pot ───────────────────────────────────────────── */}
+          <PressableScale
+            style={styles.walletRow}
+            onPress={() => router.push('/(app)/gateway/deposit')}
+          >
+            <View style={styles.walletIcon}>
+              <Icon name="cash" size={16} color={theme.colors.muted} />
+            </View>
+            <View style={styles.walletMid}>
+              <Text style={styles.walletTitle}>In your wallet</Text>
+              <Text style={styles.walletSub} numberOfLines={1}>
+                {inWallet >= VISIBLE
+                  ? 'On one network each — deposit to spend anywhere'
+                  : 'No USDC on a Gateway network yet'}
+              </Text>
+            </View>
+            <Text style={styles.walletFigure}>{formatUsd(inWallet)}</Text>
+            <Icon name="chevronRight" size={15} color={theme.colors.faint} />
+          </PressableScale>
 
-          {/* ── Money that left but has not landed ─────────────────────────── */}
+          {/* ── Money that left but has not landed ───────────────────────── */}
           {claims.length > 0 && (
             <View style={styles.alert}>
               <View style={styles.alertHead}>
                 <Icon name="clock" size={14} color={theme.colors.warning} />
                 <Text style={styles.alertTitle}>
-                  {claims.length === 1 ? 'A send has not been delivered' : `${claims.length} sends have not been delivered`}
+                  {claims.length === 1
+                    ? 'A send has not been delivered'
+                    : `${claims.length} sends have not been delivered`}
                 </Text>
               </View>
               <Text style={styles.alertBody}>
                 These left your Gateway balance but the destination mint did not go
-                through. The signed claim is saved on this device and can be
-                resubmitted — the funds are recoverable, not lost.
+                through. The signed claim is saved on this device — the funds are
+                recoverable, not lost.
               </Text>
               {claims.map((c) => (
                 <View key={c.id} style={styles.claimRow}>
@@ -209,74 +232,131 @@ export default function Gateway() {
             </View>
           )}
 
-          {/* ── Where the money sits ───────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>WHERE IT SITS</Text>
-          {rows.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyBody}>
-                No USDC on any Gateway network yet. Receive some, then deposit it
-                here to make it spendable everywhere.
-              </Text>
+          {/* ── Where it sits, once there is something to place ──────────── */}
+          {rows.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>WHERE IT SITS</Text>
+              <View style={styles.card}>
+                {rows.map((r, i) => (
+                  <View key={r.key} style={[styles.netRow, i > 0 && styles.divided]}>
+                    <ChainBadge chainId={r.chainId} size={26} ringColor={theme.colors.cardBackground} />
+                    <View style={styles.netMid}>
+                      <Text style={styles.netName}>{r.name}</Text>
+                      <Text style={styles.netSub} numberOfLines={1}>
+                        {formatUsd(r.inGateway)} in Gateway
+                        {r.arriving >= VISIBLE ? ` · ${formatUsd(r.arriving)} arriving` : ''}
+                        {r.inWallet >= VISIBLE ? ` · ${formatUsd(r.inWallet)} in wallet` : ''}
+                      </Text>
+                      {r.needsGas && (
+                        <Text style={styles.netWarn}>Needs gas here before it can deposit.</Text>
+                      )}
+                    </View>
+                    <Text style={styles.netFigure}>
+                      {formatUsd(r.inGateway + r.arriving + r.inWallet)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : (
-            rows.map((r) => (
-              <View key={r.key} style={styles.row}>
-                <View style={styles.rowTop}>
-                  <Text style={styles.rowName}>{r.name}</Text>
-                  <Text style={styles.rowTotal}>
-                    {formatUsd(r.inGateway + r.arriving + r.inWallet)}
-                  </Text>
-                </View>
-                <Text style={styles.rowNote}>
-                  {formatUsd(r.inGateway)} in Gateway
-                  {r.arriving >= VISIBLE ? ` · ${formatUsd(r.arriving)} arriving` : ''}
-                  {r.inWallet >= VISIBLE ? ` · ${formatUsd(r.inWallet)} in your wallet` : ''}
-                </Text>
-                {r.needsGas && (
-                  <Text style={styles.rowWarn}>Needs gas on this network to deposit.</Text>
-                )}
+            /* The empty state does the teaching, because this is the only moment
+               the user is deciding whether the feature is worth using at all. */
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>WHY DEPOSIT</Text>
+              <View style={styles.card}>
+                <Point
+                  icon="bolt"
+                  title="Spend on any network, in seconds"
+                  body="One balance covers every supported chain. No bridging, and the recipient needs no gas."
+                />
+                <Point
+                  icon="shieldCheck"
+                  title="Still your money"
+                  body="It sits in Circle's Gateway contract rather than your address. Nobody else can move it."
+                  divided
+                />
+                <Point
+                  icon="clock"
+                  title={`Ready in ${hub ? readyLabel(hub.circleDomain!) : 'about a second'} on ${hub?.name ?? 'Arc'}`}
+                  body="Other networks take longer — Gateway waits for the deposit to reach finality there."
+                  divided
+                />
               </View>
-            ))
+            </View>
           )}
 
-          {!!hub && (
+          {funded && !!hub && (
             <Text style={styles.footnote}>
-              Depositing on {hub.name} is the fastest — {readyLabel(hub.circleDomain!)} before
-              it is spendable. Other networks take longer because Gateway waits
-              for the deposit to reach finality there.
+              Depositing on {hub.name} is the fastest — {readyLabel(hub.circleDomain!)} before it is
+              spendable.
             </Text>
           )}
         </Animated.View>
       ) : (
         <Animated.View entering={FadeIn.duration(160)} style={styles.pane}>
-          {events.length === 0 && claims.length === 0 ? (
-            <View style={styles.empty}>
+          {events.length === 0 ? (
+            <View style={styles.card}>
               <Text style={styles.emptyBody}>
                 Nothing yet this session. Deposits and sends appear here with the
                 time they actually took — measured, not estimated.
               </Text>
             </View>
           ) : (
-            events.map((e, i) => (
-              <View key={`${e.at}-${i}`} style={styles.row}>
-                <View style={styles.rowTop}>
-                  <Text style={styles.rowName}>
-                    {e.kind === 'settled'
-                      ? 'Deposited to Gateway'
-                      : `Delivered to ${chainName(e.chainId)}`}
-                  </Text>
-                  <Text style={styles.rowTotal}>{formatUsd(e.amount)}</Text>
+            <View style={styles.card}>
+              {events.map((e, i) => (
+                <View key={`${e.at}-${i}`} style={[styles.netRow, i > 0 && styles.divided]}>
+                  <View style={styles.eventIcon}>
+                    <Icon
+                      name={e.kind === 'settled' ? 'arrowDownLeft' : 'bolt'}
+                      size={15}
+                      color={theme.colors.text}
+                    />
+                  </View>
+                  <View style={styles.netMid}>
+                    <Text style={styles.netName}>
+                      {e.kind === 'settled'
+                        ? 'Deposited to Gateway'
+                        : `Delivered to ${chainName(e.chainId)}`}
+                    </Text>
+                    <Text style={styles.netSub}>
+                      {e.kind === 'settled' ? `on ${chainName(e.chainId)} · ` : ''}
+                      {(e.ms / 1000).toFixed(1)}s · {relativeTime(e.at)}
+                    </Text>
+                  </View>
+                  <Text style={styles.netFigure}>{formatUsd(e.amount)}</Text>
                 </View>
-                <Text style={styles.rowNote}>
-                  {e.kind === 'settled' ? `on ${chainName(e.chainId)} · ` : ''}
-                  {(e.ms / 1000).toFixed(1)}s
-                </Text>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </Animated.View>
       )}
     </ScreenScaffold>
+  );
+}
+
+/** One reason to deposit, on the empty state. */
+function Point({
+  icon,
+  title,
+  body,
+  divided = false,
+}: {
+  icon: 'bolt' | 'shieldCheck' | 'clock';
+  title: string;
+  body: string;
+  divided?: boolean;
+}) {
+  const theme = UnistylesRuntime.getTheme();
+  return (
+    <View style={[styles.point, divided && styles.divided]}>
+      <View style={styles.pointIcon}>
+        <Icon name={icon} size={15} color={theme.colors.text} />
+      </View>
+      <View style={styles.pointMid}>
+        <Text style={styles.pointTitle}>{title}</Text>
+        <Text style={styles.pointBody}>{body}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -290,63 +370,141 @@ const styles = StyleSheet.create((theme) => ({
   },
   segmentItem: { flex: 1, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   segmentItemOn: { backgroundColor: theme.colors.text },
-  segmentLabel: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-    color: theme.colors.muted,
-  },
+  segmentLabel: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.muted },
   segmentLabelOn: { color: theme.colors.appBackground },
 
-  pane: { marginTop: 18, gap: 8 },
+  pane: { marginTop: 18, gap: 10 },
 
-  // Two tiles, side by side, deliberately unequal: the Gateway one carries the
-  // app's ink because it is the balance this page is about, and the contrast is
-  // what says "these are two different things" without a word of explanation.
-  pots: { flexDirection: 'row', gap: 8 },
-  pot: {
-    flex: 1,
-    padding: 14,
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  hero: {
+    padding: 18,
+    borderRadius: 26,
+    backgroundColor: theme.colors.text,
     gap: 6,
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroLabel: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    color: theme.colors.appBackground,
+    opacity: 0.75,
+  },
+  heroFigure: {
+    fontFamily: fontFamily.bold,
+    fontSize: 44,
+    letterSpacing: -1.4,
+    color: theme.colors.appBackground,
+  },
+  heroPending: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heroPendingText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.2,
+    color: theme.colors.appBackground,
+    opacity: 0.75,
+  },
+  heroNetworks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+  },
+  // Overlapped marks: one balance across many chains, drawn as one object.
+  marks: { flexDirection: 'row' },
+  mark: { marginRight: -6 },
+  heroNetworksText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 12.5,
+    letterSpacing: -0.14,
+    color: theme.colors.appBackground,
+    opacity: 0.7,
+    textAlign: 'right',
+  },
+
+  // ── Wallet row ────────────────────────────────────────────────────────────
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
     borderRadius: theme.radius.xl,
     backgroundColor: theme.colors.cardBackground,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
-  potLead: { backgroundColor: theme.colors.text, borderColor: theme.colors.text },
-  potHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  potLabel: {
+  walletIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.tile,
+  },
+  walletMid: { flex: 1, gap: 1 },
+  walletTitle: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.26, color: theme.colors.text },
+  walletSub: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+  walletFigure: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.26, color: theme.colors.text },
+
+  // ── Sections ──────────────────────────────────────────────────────────────
+  section: { marginTop: 8, gap: 8 },
+  sectionLabel: {
     fontFamily: fontFamily.semibold,
     fontSize: 11,
     letterSpacing: 0.5,
     color: theme.colors.muted,
   },
-  potLabelLead: { color: theme.colors.appBackground, opacity: 0.7 },
-  potFigure: {
-    fontFamily: fontFamily.bold,
-    fontSize: 24,
-    letterSpacing: -0.6,
-    color: theme.colors.text,
+  card: {
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
   },
-  potFigureLead: { color: theme.colors.appBackground },
-  potNote: {
+  divided: { borderTopWidth: 1, borderTopColor: theme.colors.separator },
+
+  netRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
+  netMid: { flex: 1, gap: 1 },
+  netName: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.24, color: theme.colors.text },
+  netSub: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
+  netWarn: { fontFamily: fontFamily.medium, fontSize: 11.5, letterSpacing: -0.1, color: theme.colors.warning },
+  netFigure: { fontFamily: fontFamily.semibold, fontSize: 14.5, letterSpacing: -0.24, color: theme.colors.text },
+
+  eventIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.tile,
+  },
+
+  // ── Empty-state reasons ───────────────────────────────────────────────────
+  point: { flexDirection: 'row', gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
+  pointIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.tile,
+  },
+  pointMid: { flex: 1, gap: 2 },
+  pointTitle: { fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.text },
+  pointBody: {
     fontFamily: fontFamily.medium,
-    fontSize: 12,
+    fontSize: 12.5,
+    lineHeight: 17,
     letterSpacing: -0.14,
     color: theme.colors.muted,
   },
-  potNoteLead: { color: theme.colors.appBackground, opacity: 0.65 },
 
-  totalLine: {
-    fontFamily: fontFamily.medium,
-    fontSize: 13,
-    letterSpacing: -0.2,
-    color: theme.colors.muted,
-    marginTop: 2,
-  },
-
+  // ── Unclaimed ─────────────────────────────────────────────────────────────
   alert: {
-    marginTop: 8,
     padding: 14,
     gap: 8,
     borderRadius: theme.radius.xl,
@@ -355,13 +513,7 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.warning,
   },
   alertHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  alertTitle: {
-    flex: 1,
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-    color: theme.colors.text,
-  },
+  alertTitle: { flex: 1, fontFamily: fontFamily.semibold, fontSize: 14, letterSpacing: -0.24, color: theme.colors.text },
   alertBody: {
     fontFamily: fontFamily.medium,
     fontSize: 12,
@@ -371,18 +523,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   claimRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   claimText: { flex: 1, gap: 2 },
-  claimAmount: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 13,
-    letterSpacing: -0.2,
-    color: theme.colors.text,
-  },
-  claimError: {
-    fontFamily: fontFamily.medium,
-    fontSize: 11,
-    letterSpacing: -0.1,
-    color: theme.colors.muted,
-  },
+  claimAmount: { fontFamily: fontFamily.semibold, fontSize: 13, letterSpacing: -0.2, color: theme.colors.text },
+  claimError: { fontFamily: fontFamily.medium, fontSize: 11, letterSpacing: -0.1, color: theme.colors.muted },
   retry: {
     paddingHorizontal: 14,
     height: 32,
@@ -398,56 +540,8 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.appBackground,
   },
 
-  sectionLabel: {
-    marginTop: 14,
-    fontFamily: fontFamily.semibold,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    color: theme.colors.muted,
-  },
-
-  row: {
-    padding: 14,
-    gap: 2,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  rowName: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-    color: theme.colors.text,
-  },
-  rowTotal: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-    color: theme.colors.text,
-  },
-  rowNote: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.14,
-    color: theme.colors.muted,
-  },
-  rowWarn: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.14,
-    color: theme.colors.warning,
-  },
-
-  empty: {
-    padding: 16,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
   emptyBody: {
+    padding: 16,
     fontFamily: fontFamily.medium,
     fontSize: 13,
     lineHeight: 19,
@@ -456,7 +550,7 @@ const styles = StyleSheet.create((theme) => ({
   },
 
   footnote: {
-    marginTop: 16,
+    marginTop: 14,
     fontFamily: fontFamily.medium,
     fontSize: 12,
     lineHeight: 18,
