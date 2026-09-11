@@ -38,6 +38,9 @@ import {
 } from '../stores/portfolioStore';
 import { useActivity } from '../stores/activityStore';
 import { useGateway } from '../stores/gatewayStore';
+import { useSwaps } from '../stores/swapStore';
+import { useGardenSwaps } from '../stores/gardenSwapStore';
+import { withSwaps } from '../lib/swapActivity';
 import { useTokenPrefs } from '../stores/tokenPrefsStore';
 import { ActivityRow } from '../components/ActivityRow';
 import { CryptoIcon } from '../components/CryptoIcon';
@@ -45,6 +48,7 @@ import { ChainBadge, needsChainBadge } from '../components/ChainBadge';
 import type { MarketSnapshot, PortfolioAsset } from '../bridge/portfolio';
 import { formatUsd, formatPercent, formatCrypto } from '../lib/format';
 import { pushOnce } from '../lib/nav';
+import { byRecency } from '../lib/activity-merge';
 import { fontFamily } from '../theme/fonts';
 
 /** Light selection haptic for plain Pressables (PressableScale fires its own). */
@@ -74,9 +78,23 @@ export function WalletDashboard() {
   const gwStuck = useGateway((g) => g.stuck);
   const gwNetworks = useGateway((g) => g.perDomain.length);
   const refreshGateway = useGateway((g) => g.refresh);
-  const recentActivity = useActivity((s) => s.items);
+  const activityItems = useActivity((s) => s.items);
   const hydrateActivity = useActivity((s) => s.hydrate);
   const refreshActivity = useActivity((s) => s.refresh);
+  // The same fold as the Activity screen: a swap is a transaction this wallet
+  // made, and the two feeds disagreeing about that would be worse than either
+  // choice on its own.
+  const flashnetSwaps = useSwaps((s) => s.swaps);
+  const gardenSwaps = useGardenSwaps((s) => s.swaps);
+  const hydrateFlashnet = useSwaps((s) => s.hydrate);
+  const hydrateGarden = useGardenSwaps((s) => s.hydrate);
+  // Sorted here: `withSwaps` prepends, and the swaps are not necessarily newer
+  // than the scanned rows — an old swap would otherwise sit above this morning's
+  // transactions. The Activity screen does its own sort for the same reason.
+  const recentActivity = withSwaps(activityItems, {
+    flashnet: flashnetSwaps,
+    garden: gardenSwaps,
+  }).sort(byRecency);
   const hiddenTokens = useTokenPrefs((s) => s.hidden);
   const allowedTokens = useTokenPrefs((s) => s.allowed);
   const router = useRouter();
@@ -88,7 +106,9 @@ export function WalletDashboard() {
   useEffect(() => {
     refresh();
     hydrateActivity().then(refreshActivity);
-  }, [refresh, hydrateActivity, refreshActivity]);
+    void hydrateFlashnet();
+    void hydrateGarden();
+  }, [refresh, hydrateActivity, refreshActivity, hydrateFlashnet, hydrateGarden]);
 
   // READ the Gateway balance. Do not move money.
   //

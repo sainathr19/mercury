@@ -10,6 +10,9 @@ import { CryptoIcon } from '../../src/components/CryptoIcon';
 import { ChainBadge } from '../../src/components/ChainBadge';
 import { BtcSpeedSheet } from '../../src/components/BtcSpeedSheet';
 import { useActivity } from '../../src/stores/activityStore';
+import { useSwaps } from '../../src/stores/swapStore';
+import { useGardenSwaps } from '../../src/stores/gardenSwapStore';
+import { findSwapActivity } from '../../src/lib/swapActivity';
 import { useSession } from '../../src/stores/session';
 import { useSendNotice } from '../../src/stores/sendNoticeStore';
 import { bumpBtcFee } from '../../src/bridge/transfer';
@@ -36,7 +39,14 @@ export default function TransactionDetail() {
   const router = useRouter();
   const show = useToast((s) => s.show);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const item = useActivity((s) => s.items.find((i) => i.id === id));
+  const stored = useActivity((s) => s.items.find((i) => i.id === id));
+  // Swap rows are DERIVED into the feed rather than stored in it (the two swap
+  // stores already own and persist them), so a lookup by id misses and this
+  // screen would show "not found" for a transaction the user can plainly see.
+  const flashnetSwaps = useSwaps((s) => s.swaps);
+  const gardenSwaps = useGardenSwaps((s) => s.swaps);
+  const item =
+    stored ?? findSwapActivity(id, { flashnet: flashnetSwaps, garden: gardenSwaps });
   const replaceTx = useActivity((s) => s.replaceTx);
   const wallet = useSession((s) => s.wallet);
   const [speedOpen, setSpeedOpen] = useState(false);
