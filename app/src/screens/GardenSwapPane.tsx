@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { HoldToConfirm, Icon, PressableScale, Text, useToast } from '../ui';
 import { GardenAssetIcon } from '../components/GardenAssetIcon';
@@ -76,6 +77,7 @@ export function GardenSwapPane() {
   const environment = useNetworks((s) => s.environment);
   const wallet = useSession((s) => s.wallet);
   const addresses = useSession((s) => s.addresses);
+  const params = useLocalSearchParams<{ from?: string; to?: string }>();
   const portfolio = usePortfolio((s) => s.assets);
 
   const hydrateSwaps = useGardenSwaps((s) => s.hydrate);
@@ -162,6 +164,11 @@ export function GardenSwapPane() {
   /**
    * Opening pair: Arc USDC into Bitcoin.
    *
+   * Unless the caller named one. The Gateway deposit screen hands off here for
+   * holdings that cannot be deposited directly — "swap this to USDC on Sepolia,
+   * then come back" — and arriving on an unrelated default pair would make the
+   * user redo the choice they just made.
+   *
    * Arc is the source because it is the testnet chain this wallet is built
    * around — its gas token is USDC, so it is the one network a tester is
    * actually likely to hold a balance on, and an opening pair the user has no
@@ -173,17 +180,20 @@ export function GardenSwapPane() {
    */
   useEffect(() => {
     if (!assets?.length || source) return;
+    const asked = (id?: string) => (id ? assets.find((a) => a.id === id) : undefined);
     const preferred =
+      asked(typeof params.from === 'string' ? params.from : undefined) ??
       assets.find((a) => a.id === 'arc_testnet:usdc') ??
       assets.find((a) => a.chainName.startsWith('Arc')) ??
       assets[0];
     setSource(preferred);
     setDestination(
-      assets.find((a) => a.family === 'btc' && a.id !== preferred.id) ??
+      asked(typeof params.to === 'string' ? params.to : undefined) ??
+        assets.find((a) => a.family === 'btc' && a.id !== preferred.id) ??
         assets.find((a) => a.id !== preferred.id) ??
         null,
     );
-  }, [assets, source]);
+  }, [assets, source, params.from, params.to]);
 
   const bounds = useMemo(() => {
     if (!source) return null;

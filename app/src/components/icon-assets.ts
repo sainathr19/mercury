@@ -25,6 +25,11 @@ export const LOCAL_TOKEN_ICONS: Record<string, number> = {
   // three different tokens as the same plain Bitcoin glyph. These are keyed by
   // symbol rather than a CoinGecko id for exactly that reason: the id does not
   // distinguish them and the symbol does.
+  // EURC, from Trust Wallet's repo keyed by Circle's contract on Ethereum, so
+  // the art belongs to this token rather than to whatever shares its symbol.
+  // Arc's EURC is the one asset the deposit flow can swap from, and it was
+  // rendering as a green letter E.
+  'euro-coin': require('../../assets/crypto/eurc.png'),
   cbbtc: require('../../assets/crypto/cbbtc.svg'),
   ibtc: require('../../assets/crypto/ibtc.svg'),
   seed: require('../../assets/crypto/seed.svg'),

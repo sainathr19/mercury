@@ -157,3 +157,36 @@ export const isSamePair = (a: SwapAsset, b: SwapAsset): boolean => a.id === b.id
  *  quote time; this only removes the obviously impossible. */
 export const destinationsFor = (source: SwapAsset, all: SwapAsset[]): SwapAsset[] =>
   all.filter((a) => !isSamePair(source, a));
+
+/**
+ * The Garden asset matching a holding the wallet already knows about.
+ *
+ * Matched on CONTRACT (or mint), never on symbol: Garden's testnet catalog
+ * carries four different USDCs and three different WBTCs, and picking by ticker
+ * would route a swap out of a token the user does not hold.
+ */
+export function matchGardenAsset(
+  holding: {
+    chain: 'bitcoin' | 'ethereum' | 'solana';
+    evmChainId?: bigint;
+    tokenContract?: string;
+    tokenMint?: string;
+  },
+  scoped: SwapAsset[],
+): SwapAsset | undefined {
+  if (holding.chain === 'bitcoin') return scoped.find((a) => a.family === 'btc');
+  if (holding.chain === 'solana') {
+    const mint = holding.tokenMint?.toLowerCase();
+    return scoped.find(
+      (a) => a.family === 'sol' && (mint ? a.tokenAddress?.toLowerCase() === mint : !a.tokenAddress),
+    );
+  }
+  if (holding.evmChainId === undefined) return undefined;
+  const contract = holding.tokenContract?.toLowerCase();
+  return scoped.find(
+    (a) =>
+      a.family === 'evm' &&
+      a.evmChainId === holding.evmChainId &&
+      (contract ? a.tokenAddress?.toLowerCase() === contract : !a.tokenAddress),
+  );
+}

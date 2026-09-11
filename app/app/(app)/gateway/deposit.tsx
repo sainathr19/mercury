@@ -21,9 +21,13 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { HoldToConfirm, Icon, PressableScale, ScreenScaffold, Text, useToast } from '../../../src/ui';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
+import { DepositAssetPicker, type DepositChoice } from '../../../src/components/DepositAssetPicker';
 import { useGateway } from '../../../src/stores/gatewayStore';
+import { fetchAssets } from '../../../src/bridge/garden';
+import { matchGardenAsset, scopedAssets, type SwapAsset } from '../../../src/lib/gardenScope';
+import { needsNetworkBadge } from '../../../src/lib/gardenIcons';
 import { useNetworks } from '../../../src/stores/networkStore';
-import { usePortfolio } from '../../../src/stores/portfolioStore';
+import { usePortfolio, liveValue } from '../../../src/stores/portfolioStore';
 import { useSession } from '../../../src/stores/session';
 import { getActiveAccount } from '../../../src/bridge/account';
 import { GAS_RESERVE_USDC } from '../../../src/bridge/gateway';
@@ -69,6 +73,7 @@ export default function Deposit() {
   const refreshGateway = useGateway((g) => g.refresh);
   const noteEvent = useGateway((g) => g.noteEvent);
   const assets = usePortfolio((s) => s.assets);
+  const market = usePortfolio((s) => s.market);
 
   const [sourceKey, setSourceKey] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -77,6 +82,23 @@ export default function Deposit() {
   const [planError, setPlanError] = useState<string | null>(null);
   const [pricing, setPricing] = useState(false);
   const [step, setStep] = useState<DepositStep | null>(null);
+  /** Garden's testnet catalog, for the holdings that need a swap to get here. */
+  const [gardenAssets, setGardenAssets] = useState<SwapAsset[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    fetchAssets(environment)
+      .then((raw) => {
+        if (live) setGardenAssets(scopedAssets(raw, environment));
+      })
+      .catch(() => {
+        // No catalog just means the "swap first" list is empty; the direct
+        // deposits above it are unaffected.
+      });
+    return () => {
+      live = false;
+    };
+  }, [environment]);
 
   /**
    * Everything depositable, biggest first.
@@ -129,6 +151,62 @@ export default function Deposit() {
     }
     return out.sort((a, b) => b.held - a.held);
   }, [environment, perChain, assets, theme.colors.usdc]);
+
+  /**
+   * Everything the picker shows: the direct routes above, then every other
+   * holding, each labelled with what it would become.
+   *
+   * A holding only qualifies for the second list if Garden actually lists it —
+   * matched on contract, never on symbol — because otherwise there is no route
+   * and offering one would be a lie.
+   */
+  const choices = useMemo<DepositChoice[]>(() => {
+    const direct: DepositChoice[] = sources.map((s) => ({
+      key: s.key,
+      symbol: s.symbol,
+      chainName: s.chain.name,
+      coingeckoId: s.coingeckoId,
+      colorHex: s.colorHex,
+      chainId: Number(s.chain.chainId),
+      held: s.held,
+      route: s.swaps ? 'swap' : 'direct',
+      becomes: s.swaps ? `USDC on ${s.chain.name}` : undefined,
+    }));
+
+    const covered = new Set(sources.map((s) => s.key));
+    const bridge: DepositChoice[] = [];
+    for (const a of assets) {
+      if (!(a.amount > 0)) continue;
+      // Already offered above as a direct or same-chain route.
+      const evmKey = a.evmChainId
+        ? `${a.evmChainId}:${a.tokenContract ?? 'usdc'}`
+        : undefined;
+      if (evmKey && covered.has(evmKey)) continue;
+      const match = matchGardenAsset(a, gardenAssets);
+      if (!match) continue;
+      bridge.push({
+        key: `garden:${match.id}`,
+        symbol: a.symbol,
+        chainName: match.chainName,
+        coingeckoId: a.coingeckoId,
+        colorHex: a.colorHex,
+        imageUrl: a.imageUrl,
+        chainId: a.evmChainId ? Number(a.evmChainId) : undefined,
+        // Only where it says something: stamping Bitcoin's mark onto bitcoin,
+        // or Solana's onto native SOL, is noise that also hides the token art.
+        network: needsNetworkBadge(match)
+          ? match.family === 'sol'
+            ? 'Solana'
+            : undefined
+          : undefined,
+        held: a.amount,
+        usd: liveValue(a, market),
+        route: 'bridge',
+        becomes: 'USDC on Sepolia',
+      });
+    }
+    return [...direct, ...bridge];
+  }, [sources, assets, gardenAssets, market]);
 
   // Default to whatever the user has most of, so the common case needs no taps.
   useEffect(() => {
@@ -226,35 +304,31 @@ export default function Deposit() {
   // ── Picking what to deposit ───────────────────────────────────────────────
   if (picking) {
     return (
-      <ScreenScaffold title="Deposit from" subtitle="Any USDC, or anything with a route to it.">
-        <View style={styles.list}>
-          {sources.map((s) => (
-            <PressableScale
-              key={s.key}
-              style={[styles.pick, s.key === sourceKey && styles.pickOn]}
-              onPress={() => {
-                setSourceKey(s.key);
-                setAmount('');
-                setPicking(false);
-              }}
-            >
-              <CryptoIcon
-                coingeckoId={s.coingeckoId}
-                symbol={s.symbol}
-                size={34}
-                colorHex={s.colorHex}
-              />
-              <View style={styles.pickText}>
-                <Text style={styles.pickSymbol}>{s.symbol}</Text>
-                <Text style={styles.pickChain}>
-                  {s.chain.name}
-                  {s.swaps ? ' · swaps to USDC' : ''}
-                </Text>
-              </View>
-              <Text style={styles.pickHeld}>{formatCrypto(s.held)}</Text>
-            </PressableScale>
-          ))}
-        </View>
+      <ScreenScaffold
+        title="Deposit from"
+        subtitle="Pick what to turn into spendable USDC."
+      >
+        <DepositAssetPicker
+          choices={choices}
+          selectedKey={sourceKey}
+          onPick={(c) => {
+            Haptics.selectionAsync().catch(() => {});
+            if (c.route === 'bridge') {
+              // Not depositable from here: it has to reach a Gateway network
+              // first. Hand off to Swap with both ends already chosen, rather
+              // than dropping the user on an empty screen to work it out.
+              setPicking(false);
+              router.push({
+                pathname: '/(app)/swaps',
+                params: { from: c.key.replace(/^garden:/, ''), to: 'ethereum_sepolia:usdc' },
+              });
+              return;
+            }
+            setSourceKey(c.key);
+            setAmount('');
+            setPicking(false);
+          }}
+        />
       </ScreenScaffold>
     );
   }
@@ -531,38 +605,6 @@ const styles = StyleSheet.create((theme) => ({
   },
 
   confirm: { marginTop: 10 },
-
-  list: { marginTop: 18, gap: 8 },
-  pick: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.cardBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  pickOn: { borderColor: theme.colors.text },
-  pickText: { flex: 1, gap: 1 },
-  pickSymbol: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 15,
-    letterSpacing: -0.24,
-    color: theme.colors.text,
-  },
-  pickChain: {
-    fontFamily: fontFamily.medium,
-    fontSize: 12,
-    letterSpacing: -0.14,
-    color: theme.colors.muted,
-  },
-  pickHeld: {
-    fontFamily: fontFamily.semibold,
-    fontSize: 14,
-    letterSpacing: -0.24,
-    color: theme.colors.text,
-  },
 
   empty: {
     marginTop: 18,
