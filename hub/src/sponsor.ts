@@ -152,7 +152,9 @@ export async function sponsorRegister(
   if (inFlight.has(label)) return fail(409, 'That name is already being registered');
 
   const chain: Chain = cfg.mainnet ? mainnet : sepolia;
-  const transport = http(cfg.rpcUrl);
+  // Bounded for the same reason as relay.ts: a registration that cannot be
+  // priced should be refused quickly, not held open.
+  const transport = http(cfg.rpcUrl, { timeout: 8_000, retryCount: 1 });
   const account = privateKeyToAccount(cfg.relayerKey);
   const pub = createPublicClient({ chain, transport });
   const wallet = createWalletClient({ account, chain, transport });

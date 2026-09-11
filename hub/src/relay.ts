@@ -46,6 +46,22 @@ export interface RelayResult {
  */
 const MINT_GAS = 400_000n;
 
+/**
+ * Bounded RPC.
+ *
+ * viem defaults to a 10s timeout and three retries, and `relayerStatus` walks
+ * every domain, so one unreachable chain could hold a request for minutes
+ * rather than seconds. That is what made GET /gateway/domains hang: the app
+ * calls it BEFORE signing a burn, so a slow chain the user was not even sending
+ * to stalled the send screen, and POST /gateway/relay inherited the same wait
+ * after the money had already moved.
+ *
+ * Short and shallow on purpose. A chain that cannot answer in this window is
+ * reported as not ready, which is the honest answer and the one the caller can
+ * act on; grinding through retries only delays it.
+ */
+const rpc = (url?: string) => http(url, { timeout: 8_000, retryCount: 1 });
+
 export async function relayMint(args: {
   destinationDomain: number;
   environment: RelayEnvironment;
@@ -67,8 +83,8 @@ export async function relayMint(args: {
 
   try {
     const account = privateKeyToAccount(args.relayerKey);
-    const pub = createPublicClient({ chain, transport: http() });
-    const wallet = createWalletClient({ account, chain, transport: http() });
+    const pub = createPublicClient({ chain, transport: rpc() });
+    const wallet = createWalletClient({ account, chain, transport: rpc() });
 
     // Refuse rather than broadcast a transaction we know cannot pay for itself —
     // a clear error beats an opaque RPC failure.
@@ -198,7 +214,7 @@ export async function relayerStatus(
     entries.map(async ([domain, chain]): Promise<DomainStatus> => {
       const base = { domain: Number(domain), chain: chain.name, chainId: chain.id };
       try {
-        const pub = createPublicClient({ chain, transport: http() });
+        const pub = createPublicClient({ chain, transport: rpc() });
         const [gas, gasPrice] = await Promise.all([
           pub.getBalance({ address: account.address }),
           pub.getGasPrice(),
