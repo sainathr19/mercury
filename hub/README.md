@@ -46,7 +46,12 @@ serves — Sepolia for name registration, plus each Gateway destination domain
 (`GET /gateway/domains` lists them). It holds gas only; user funds never pass
 through it.
 
-**A persistent `/app/data`.** The spend ledgers live there. On ephemeral storage
+**A persistent `/app/data`.** Check it: `GET /names/status` returns a `storage`
+block, and `since` is the tell — on durable storage it stays identical across
+redeploys, on ephemeral storage it changes every time. `looksEphemeral: true`
+after a *redeploy* means the volume is being discarded.
+
+ The spend ledgers live there. On ephemeral storage
 they reset on every deploy, which hands every wallet its sponsorship allowance
 again — so on a platform with no volume, budgets are advisory at best. Compose
 mounts a named volume for this.

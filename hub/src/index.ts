@@ -6,6 +6,7 @@ import { CHAINS_BY_ENV, type RelayEnvironment } from './chains.js';
 import { claimMessage, sponsorRegister, type SponsorConfig } from './sponsor.js';
 import { Budget, policyFromEnv } from './budget.js';
 import { indexProxy, indexProxyConfigured } from './indexProxy.js';
+import { storageStatus } from './storage.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -72,6 +73,9 @@ app.route('/index', indexProxy);
 app.get('/names/status', (c) => {
   const cfg = sponsorConfig();
   return c.json({
+    // Published because a budget read from a volume that resets is a number
+    // that looks authoritative and is not.
+    storage: storageStatus(),
     sponsoring: !!cfg,
     parent: ENS_PARENT,
     registry: REGISTRY ?? null,
@@ -246,3 +250,17 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 console.log(`mercury hub on ${HOST}:${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
 console.log(`  names: ${sponsorConfig() ? `sponsoring ${ENS_PARENT} via ${REGISTRY}` : 'NOT sponsoring (set ENS_REGISTRY)'}`);
 console.log(`  index: ${indexProxyConfigured() ? 'proxying The Graph' : 'NOT configured (set TOKEN_API_JWT / ARC_SUBGRAPH_URL)'}`);
+{
+  const s = storageStatus();
+  if (!s.writable) {
+    console.error(`  DATA:  ${s.path} IS NOT WRITABLE — spend ledgers cannot persist at all.`);
+  } else if (s.looksEphemeral) {
+    console.warn(
+      `  DATA:  ${s.path} was empty at boot. Expected on a first deploy; after a REDEPLOY it means\n` +
+        '         the volume is being discarded, every wallet gets its sponsorship allowance back,\n' +
+        '         and the spend caps are not enforcing anything. Mount a persistent volume there.',
+    );
+  } else {
+    console.log(`  data:  persistent — this volume has survived ${Math.round(s.ageSeconds! / 3600)}h`);
+  }
+}

@@ -61,6 +61,21 @@ COPY package.json ./
 # directory, so `SPONSOR_LEDGER=data/...` lands here. It must exist and be
 # writable by the unprivileged user before the first sponsored claim, not after.
 RUN mkdir -p /app/data && chown -R node:node /app/data
+
+# This declaration does NOT make the data durable, and it is worth being blunt
+# about because it reads as though it does. VOLUME creates an ANONYMOUS volume,
+# freshly for every container, and most platform runtimes ignore the instruction
+# outright. It survives `docker restart`; it does not survive a deploy.
+#
+# Observed here: with this line present, a redeploy reset the spend ledgers
+# within the same UTC day — every wallet got its sponsorship allowance back and
+# the day's spend went to zero, while the API kept reporting those numbers as if
+# they meant something.
+#
+# Durability comes from the ORCHESTRATOR mounting storage here: the named volume
+# in docker-compose.yml, or a platform volume (Fly/Railway/Render) on the
+# deployed instance. The hub reports which it got — see src/storage.ts, and the
+# `storage` block on GET /names/status.
 VOLUME ["/app/data"]
 
 USER node
