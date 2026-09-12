@@ -67,7 +67,7 @@ describe('every chain the wallet can hold money on is readable', () => {
       .filter((c) => c.circleDomain !== undefined && !readableKeyless(c.chainId))
       .map((c) => c.name)
       .sort();
-    expect(keyedOnly).toEqual(['Avalanche Fuji', 'Polygon Amoy', 'World Chain Sepolia']);
+    expect(keyedOnly).toEqual(['Avalanche Fuji', 'Polygon Amoy', 'Sei Atlantic', 'World Chain Sepolia']);
   });
 
   it('testnet covers more than just Arc and the active chain', () => {

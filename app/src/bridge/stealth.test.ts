@@ -21,17 +21,26 @@ import {
   isRealStealthPayment,
   type StealthPayment,
 } from './stealth';
-import { TEMPO_TESTNET_CHAIN_ID, TEMPO_MAINNET_CHAIN_ID } from '../lib/tempo';
 
-describe('isRealStealthPayment (Tempo phantom-balance guard)', () => {
+// The guard drops a NATIVE stealth payment on a chain with no native gas coin,
+// where `eth_getBalance` returns a placeholder that would render as a bogus
+// balance. It reads `hasNativeAsset` from the registry, so it stays correct as
+// chains come and go.
+//
+// NOTE: no chain the wallet currently ships declares `hasNativeAsset: false` —
+// Tempo was the only one, and it was removed when the registry was cut to
+// Circle's domains. The false branch therefore has no chain to exercise it
+// today. It is kept rather than deleted because the condition is a property of
+// the chain, not of Tempo, and Arc-style stablecoin chains keep arriving.
+describe('isRealStealthPayment', () => {
   const p = (o: Partial<StealthPayment>) => o as unknown as StealthPayment;
-  it('drops NATIVE payments on Tempo (no native gas coin → placeholder balance)', () => {
-    expect(isRealStealthPayment(p({ chainFamily: 1, chainId: TEMPO_TESTNET_CHAIN_ID }))).toBe(false);
-    expect(isRealStealthPayment(p({ chainFamily: 1, chainId: TEMPO_MAINNET_CHAIN_ID }))).toBe(false);
+  it('keeps native payments on a stablecoin chain that DOES have a native coin', () => {
+    // Arc's native coin is USDC, so its native payments are real.
+    expect(isRealStealthPayment(p({ chainFamily: 1, chainId: 5042002n }))).toBe(true);
   });
-  it('keeps TIP-20 token payments on Tempo (those are real)', () => {
+  it('keeps token payments regardless of the chain', () => {
     expect(
-      isRealStealthPayment(p({ chainFamily: 1, chainId: TEMPO_TESTNET_CHAIN_ID, tokenContract: '0xabc' })),
+      isRealStealthPayment(p({ chainFamily: 1, chainId: 5042002n, tokenContract: '0xabc' })),
     ).toBe(true);
   });
   it('keeps native payments on normal EVM chains (Sepolia), BTC and SOL', () => {
@@ -98,14 +107,14 @@ describe('multi-chain EVM stealth registry', () => {
     setStealthEvmChains([cfg(11155111n, 'Sepolia')]);
   });
 
-  test('mirrors enabled EVM chains and excludes no-native-gas (Tempo) chains', () => {
+  test('mirrors enabled EVM chains, filtered by the registry', () => {
     setStealthEvmChains([
       cfg(11155111n, 'Sepolia'),
       cfg(84532n, 'Base Sepolia'),
       cfg(421614n, 'Arbitrum Sepolia'),
-      cfg(42431n, 'Tempo Testnet', 'USD'),
     ]);
-    // BTC + 3 EVM (Tempo excluded) + SOL.
+    // BTC + 3 EVM + SOL. The filter also drops no-native-gas chains; none is
+    // shipped today (see the note on isRealStealthPayment above).
     const chains = stealthChains();
     expect(chains.map((c) => c.chainId)).toEqual([0n, 11155111n, 84532n, 421614n, 0n]);
   });

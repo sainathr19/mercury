@@ -44,10 +44,9 @@ const ETHERSCAN_KEY = process.env.ETHERSCAN_API_KEY ?? '';
  *  nothing instead of a round trip that can only answer "chain not supported". */
 const ETHERSCAN_CHAINS = new Set([
   // mainnet
-  1, 10, 56, 137, 8453, 42161, 43114,
+  1, 10, 137, 8453, 42161, 43114,
   // testnet
-  97, 1301, 1328, 4801, 5003, 10143, 14601, 43113, 59141, 80002, 84532, 421614,
-  11155111, 11155420, 168587773,
+  1301, 1328, 4801, 43113, 80002, 84532, 421614, 11155111, 11155420,
 ]);
 
 /** The two history shapes the wallet reads: native transfers and ERC-20

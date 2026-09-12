@@ -45,9 +45,6 @@ function evmChainKey(a: PortfolioAsset): string {
     case 137:
     case 80002:
       return 'polygon';
-    case 4217:
-    case 42431:
-      return 'tempo';
     default:
       return 'ethereum';
   }

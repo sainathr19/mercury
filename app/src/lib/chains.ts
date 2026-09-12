@@ -29,7 +29,7 @@ export interface ChainDef {
   environment: ChainEnvironment;
   rpcUrl: string;
   explorerUrl: string;
-  /** Native gas coin. On Arc this is USDC; on Tempo there is no native coin. */
+  /** Native gas coin. On Arc this is USDC; some chains have none at all. */
   nativeSymbol: string;
   nativeDecimals: number;
   /** Coingecko id + colour for the native coin, when it has a tracked price. */
@@ -39,7 +39,10 @@ export interface ChainDef {
    *  "Arc Testnet"). */
   nativeName?: string;
   nativeColorHex?: string;
-  /** False when the chain has no native gas coin worth showing (Tempo). */
+  /** False when the chain has no native gas coin worth showing — a stablecoin
+   *  chain whose fees are paid in a token, where eth_getBalance answers with a
+   *  placeholder. No chain shipped today sets this, but the guards that read it
+   *  are what keep such a chain from rendering a phantom balance. */
   hasNativeAsset: boolean;
   /** The Graph Token API network slug, when it indexes this chain. */
   tokenApiNetwork?: string;
@@ -104,24 +107,12 @@ export const CHAINS: ChainDef[] = [
     coingeckoPlatform: 'polygon-pos',
     circleDomain: 7, usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' },
 
-  { chainId: 56n, name: 'BNB Smart Chain', environment: 'mainnet',
-    rpcUrl: 'https://bsc-rpc.publicnode.com', explorerUrl: 'https://bscscan.com',
-    nativeSymbol: 'BNB', nativeDecimals: 18, nativeCoingeckoId: 'binancecoin',
-    nativeColorHex: '#F3BA2F', hasNativeAsset: true, tokenApiNetwork: 'bsc',
-    coingeckoPlatform: 'binance-smart-chain' },
-
   { chainId: 43114n, name: 'Avalanche C-Chain', environment: 'mainnet',
     rpcUrl: 'https://avalanche-c-chain-rpc.publicnode.com', explorerUrl: 'https://snowtrace.io',
     nativeSymbol: 'AVAX', nativeDecimals: 18, nativeCoingeckoId: 'avalanche-2',
     nativeColorHex: '#E84142', hasNativeAsset: true, tokenApiNetwork: 'avalanche',
     coingeckoPlatform: 'avalanche',
     circleDomain: 1, usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' },
-
-  // Tempo: stablecoin payments chain with NO native gas coin. eth_getBalance
-  // returns a placeholder, so its native row must stay hidden.
-  { chainId: 4217n, name: 'Tempo', environment: 'mainnet',
-    rpcUrl: 'https://rpc.tempo.xyz', explorerUrl: 'https://explore.tempo.xyz',
-    nativeSymbol: 'USD', nativeDecimals: 18, hasNativeAsset: false },
 
   // ── Testnets ───────────────────────────────────────────────────────────────
 
@@ -138,22 +129,23 @@ export const CHAINS: ChainDef[] = [
   // Celo Alfajores is absent because no RPC answered — a chain we cannot read is
   // not a chain we can add.
 
-  { chainId: 998n, name: 'HyperEVM Testnet', environment: 'testnet',
-    rpcUrl: 'https://rpc.hyperliquid-testnet.xyz/evm', explorerUrl: 'https://testnet.purrsec.com',
-    nativeSymbol: 'HYPE', nativeDecimals: 18, nativeColorHex: '#97FCE4', hasNativeAsset: true },
-
+  // Circle domain 16. USDC address taken from Circle's published contract list
+  // and then READ ON-CHAIN here: symbol USDC, 6 decimals. Sonic (13) and
+  // HyperEVM (19) are also Gateway domains but are deliberately absent — the
+  // published Sonic address belongs to Sonic BLAZE (57054), a different chain
+  // from Gateway's Sonic Testnet (14601), and HyperEVM's could not be read
+  // because its RPC was down. A domain without a verified token is a
+  // destination the app offers and then cannot deliver to.
   { chainId: 1328n, name: 'Sei Atlantic', environment: 'testnet',
     rpcUrl: 'https://evm-rpc-testnet.sei-apis.com', explorerUrl: 'https://seitrace.com',
-    nativeSymbol: 'SEI', nativeDecimals: 18, nativeCoingeckoId: 'sei-network', nativeColorHex: '#9C1C1C', hasNativeAsset: true },
+    nativeSymbol: 'SEI', nativeDecimals: 18, nativeCoingeckoId: 'sei-network',
+    nativeColorHex: '#9C1C1C', hasNativeAsset: true,
+    circleDomain: 16, usdc: '0x4fCF1784B31630811181f670Aea7A7bEF803eaED' },
 
   { chainId: 4801n, name: 'World Chain Sepolia', environment: 'testnet',
     rpcUrl: 'https://worldchain-sepolia.g.alchemy.com/public', explorerUrl: 'https://worldchain-sepolia.explorer.alchemy.com',
     nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
     circleDomain: 14, usdc: '0x66145f38cBAC35Ca6F1Dfb4914dF98F1614aeA88' },
-
-  { chainId: 14601n, name: 'Sonic Testnet', environment: 'testnet',
-    rpcUrl: 'https://rpc.testnet.soniclabs.com', explorerUrl: 'https://testnet.sonicscan.org',
-    nativeSymbol: 'S', nativeDecimals: 18, nativeCoingeckoId: 'sonic-3', nativeColorHex: '#FE9A4C', hasNativeAsset: true },
 
   { chainId: 1301n, name: 'Unichain Sepolia', environment: 'testnet',
     rpcUrl: 'https://unichain-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.uniscan.xyz',
@@ -177,46 +169,6 @@ export const CHAINS: ChainDef[] = [
     nativeSymbol: 'AVAX', nativeDecimals: 18, nativeCoingeckoId: 'avalanche-2', nativeColorHex: '#E84142', hasNativeAsset: true,
     circleDomain: 1, usdc: '0x5425890298aed601595a70AB815c96711a31Bc65' },
 
-  { chainId: 168587773n, name: 'Blast Sepolia', environment: 'testnet',
-    rpcUrl: 'https://sepolia.blast.io', explorerUrl: 'https://testnet.blastscan.io',
-    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
-    blockscoutBase: 'https://blast-sepolia.blockscout.com' },
-
-  { chainId: 97n, name: 'BNB Testnet', environment: 'testnet',
-    rpcUrl: 'https://bsc-testnet-rpc.publicnode.com', explorerUrl: 'https://testnet.bscscan.com',
-    nativeSymbol: 'tBNB', nativeDecimals: 18, nativeCoingeckoId: 'binancecoin', nativeColorHex: '#F3BA2F', hasNativeAsset: true },
-
-  { chainId: 10200n, name: 'Gnosis Chiado', environment: 'testnet',
-    rpcUrl: 'https://gnosis-chiado-rpc.publicnode.com', explorerUrl: 'https://gnosis-chiado.blockscout.com',
-    nativeSymbol: 'XDAI', nativeDecimals: 18, nativeCoingeckoId: 'xdai', nativeColorHex: '#04795B', hasNativeAsset: true,
-    blockscoutBase: 'https://gnosis-chiado.blockscout.com' },
-
-  { chainId: 763373n, name: 'Ink Sepolia', environment: 'testnet',
-    rpcUrl: 'https://rpc-gel-sepolia.inkonchain.com', explorerUrl: 'https://explorer-sepolia.inkonchain.com',
-    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
-    blockscoutBase: 'https://explorer-sepolia.inkonchain.com' },
-
-  { chainId: 59141n, name: 'Linea Sepolia', environment: 'testnet',
-    rpcUrl: 'https://linea-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.lineascan.build',
-    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true },
-
-  { chainId: 5003n, name: 'Mantle Sepolia', environment: 'testnet',
-    rpcUrl: 'https://rpc.sepolia.mantle.xyz', explorerUrl: 'https://sepolia.mantlescan.xyz',
-    nativeSymbol: 'MNT', nativeDecimals: 18, nativeCoingeckoId: 'mantle', nativeColorHex: '#65B3AE', hasNativeAsset: true },
-
-  { chainId: 10143n, name: 'Monad Testnet', environment: 'testnet',
-    rpcUrl: 'https://testnet-rpc.monad.xyz', explorerUrl: 'https://testnet.monadexplorer.com',
-    nativeSymbol: 'MON', nativeDecimals: 18, nativeColorHex: '#836EF9', hasNativeAsset: true },
-
-  { chainId: 534351n, name: 'Scroll Sepolia', environment: 'testnet',
-    rpcUrl: 'https://scroll-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.scrollscan.com',
-    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
-    blockscoutBase: 'https://scroll-sepolia.blockscout.com' },
-
-  { chainId: 300n, name: 'zkSync Sepolia', environment: 'testnet',
-    rpcUrl: 'https://sepolia.era.zksync.dev', explorerUrl: 'https://sepolia.explorer.zksync.io',
-    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true },
-
   { chainId: 11155111n, name: 'Sepolia', environment: 'testnet',
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.etherscan.io',
     nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
@@ -235,9 +187,9 @@ export const CHAINS: ChainDef[] = [
     blockscoutBase: 'https://base-sepolia.blockscout.com',
     circleDomain: 6, usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' },
 
-  // Arc: like Tempo it's a stablecoin chain, but UNLIKE Tempo its native coin is
-  // real — USDC itself, at 18dp, which is also the gas token. Native rows are
-  // correct here. The Graph's Token API does not index Arc, so history comes
+  // Arc: a stablecoin chain whose native coin is REAL — USDC itself, at 18dp,
+  // which is also the gas token. Native rows are correct here, which is why it
+  // sets hasNativeAsset rather than relying on the default. The Graph's Token API does not index Arc, so history comes
   // from our own subgraph.
   { chainId: 5042002n, name: 'Arc Testnet', environment: 'testnet',
     rpcUrl: 'https://rpc.testnet.arc.io', explorerUrl: 'https://testnet.arcscan.app',
@@ -260,9 +212,6 @@ export const CHAINS: ChainDef[] = [
         decimals: 6, coingeckoId: 'euro-coin', colorHex: '#1AA68C' },
     ] },
 
-  { chainId: 42431n, name: 'Tempo Testnet', environment: 'testnet',
-    rpcUrl: 'https://rpc.moderato.tempo.xyz', explorerUrl: 'https://explore.testnet.tempo.xyz',
-    nativeSymbol: 'USD', nativeDecimals: 18, hasNativeAsset: false },
 ];
 
 /**

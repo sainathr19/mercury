@@ -24,10 +24,10 @@ test('environmentOfChainId maps to the right environment', () => {
   expect(environmentOfChainId(1n)).toBe('mainnet');
 });
 
-test('Tempo networks classify into the right environment', () => {
-  expect(isTestnetChainId(42431n)).toBe(true); // Tempo Testnet (Moderato)
-  expect(environmentOfChainId(42431n)).toBe('testnet');
-  expect(environmentOfChainId(4217n)).toBe('mainnet'); // Tempo Mainnet
+test('stablecoin chains classify into the right environment', () => {
+  expect(isTestnetChainId(5042002n)).toBe(true); // Arc Testnet
+  expect(environmentOfChainId(5042002n)).toBe('testnet');
+  expect(environmentOfChainId(43114n)).toBe('mainnet'); // Avalanche C-Chain
 });
 
 test('chainInEnvironment filters per environment', () => {

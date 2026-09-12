@@ -114,7 +114,7 @@ re-check anything marked ⚠️.
 | GatewayWallet | `0x0077777d7EBA4688BDeF3E311b846F25870A19B9` |
 | GatewayMinter | `0x0022222ABE238Cc2C7Bb1f21003F0a260052475B` |
 | Arc `minFinalityThreshold` | **2000** (finalized). 1000 leaves the Iris attestation pending forever. |
-| Gateway testnet chains | Arc, Ethereum, Base, Arbitrum, OP, Polygon, Avalanche, Unichain, World Chain, Sei, Sonic, HyperEVM |
+| Gateway testnet chains | Arc, Ethereum, Base, Arbitrum, OP, Polygon, Avalanche, Unichain, World Chain |
 | CCTP adds | Solana (domain 5) |
 
 ⚠️ Gateway on Arc is **testnet-only** today. Build **CCTP V2 as the primary

@@ -13,7 +13,7 @@ import {
 } from "../lib/registry";
 import { colorForSymbol } from "../lib/asset-color";
 import { chainById, tokensForChain as registryTokens } from "../lib/chains";
-import { evmChainHasNativeAsset } from "../lib/tempo";
+import { chainHasNativeAsset } from "../lib/chains";
 import { formatUnits } from "../lib/format";
 import { tokenName, tokenSymbol } from "../lib/tokenText";
 import { fetchSolBalance, fetchSolTokenBalances } from "./solTokens";
@@ -282,9 +282,10 @@ export function loadPortfolioChains(
 
         // Native — show if held, or if it's the active chain (so the current chain
         // always has a native row even at zero). Skipped entirely for chains with
-        // no native gas coin (Tempo): their eth_getBalance returns a placeholder
-        // that would otherwise render as a bogus multi-quadrillion balance.
-        const hasNative = evmChainHasNativeAsset(chainId);
+        // no native gas coin: their eth_getBalance returns a placeholder that
+        // would otherwise render as a bogus multi-quadrillion balance. No chain
+        // the wallet currently ships declares that, but the registry can.
+        const hasNative = chainHasNativeAsset(chainId);
         let nativeAmount = 0;
         let nativeOk = !hasNative; // nothing to fetch → treat as synced
         // Turns false if ANY token balance call on this chain fails, so we only

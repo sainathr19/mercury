@@ -20,6 +20,7 @@ import {
   optimismSepolia,
   polygon,
   polygonAmoy,
+  seiTestnet,
   sepolia,
   unichainSepolia,
   worldchainSepolia,
@@ -50,6 +51,7 @@ export const CHAINS_BY_ENV: Record<RelayEnvironment, Record<number, Chain>> = {
     7: polygonAmoy,
     10: unichainSepolia,
     14: worldchainSepolia,
+    16: seiTestnet,
     26: arcTestnet,
   },
   // Arc is testnet-only on Gateway (GET /v1/info lists no domain 26 on

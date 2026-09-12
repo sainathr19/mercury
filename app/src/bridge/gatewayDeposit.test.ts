@@ -50,12 +50,20 @@ describe('refusals', () => {
     }
   });
 
-  it('refuses a chain Circle does not support', async () => {
-    // Tempo testnet: a real chain in our registry with no Circle domain.
-    const r = await planDeposit({ source: { chainId: 42431n }, amount: 5, address: ADDR });
+  it('refuses a chain the wallet does not ship', async () => {
+    // BNB Smart Chain — a real chain, but not in our registry.
+    const r = await planDeposit({ source: { chainId: 56n }, amount: 5, address: ADDR });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toMatch(/not a Gateway network/i);
+    if (!r.ok) expect(r.reason).toMatch(/unknown network/i);
   });
+
+  // The "not a Gateway network" refusal guards a chain that IS in the registry
+  // but carries no circleDomain. Since the registry was cut to Circle's domains
+  // there is no such chain, so the branch has nothing to reach it from here —
+  // it is kept because it is what stops a newly added chain from being offered
+  // as a deposit source before its domain and USDC are confirmed. The bug it
+  // prevents is real: Arbitrum Sepolia shipped with a domain and no verified
+  // USDC and was undeliverable for a day.
 
   it('refuses a token swap on a chain with no exchange, and says why', async () => {
     const r = await planDeposit({

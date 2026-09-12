@@ -10,7 +10,7 @@ import type {
 import { toBaseUnits } from '../lib/format';
 import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { evmExplorerTxUrl } from './evmChain';
-import { evmChainHasNativeAsset } from '../lib/tempo';
+import { chainHasNativeAsset } from '../lib/chains';
 import { APP_ENVIRONMENT, DEFAULT_EVM_CHAIN_ID, chainInEnvironment, type Environment } from '../lib/environment';
 import { tokensForChain, type Registry } from '../lib/registry';
 import { authClient } from './auth';
@@ -52,13 +52,13 @@ const tokenMetaByContract = new Map<string, { coingeckoId: string; imageUrl: str
 
 /** Populate the EVM stealth chain registry from the wallet's enabled EVM chains,
  *  so stealth offers the same chains as the normal view. Excludes no-native-gas
- *  chains (e.g. Tempo — fees paid in a stablecoin) since the stealth flow assumes
- *  an ETH-like native asset. Falls back to Sepolia if the set is empty. */
+ *  chains (fees paid in a stablecoin instead) since the stealth flow assumes an
+ *  ETH-like native asset. Falls back to Sepolia if the set is empty. */
 export function setStealthEvmChains(
   configs: { chainId: bigint; name: string; nativeSymbol: string; nativeDecimals: number; enabled: boolean }[],
 ): void {
   const mapped = configs
-    .filter((c) => c.enabled && evmChainHasNativeAsset(c.chainId))
+    .filter((c) => c.enabled && chainHasNativeAsset(c.chainId))
     .map<StealthChain>((c) => ({
       family: 1,
       key: 'eth',
@@ -98,14 +98,17 @@ export function chainForPayment(payment: { chainFamily: number; chainId?: bigint
 }
 
 /** Whether a scanned stealth payment is a REAL balance worth surfacing. A NATIVE
- *  EVM payment on a no-native-gas chain (Tempo) is bogus: `eth_getBalance` there
- *  returns a huge placeholder (~76-digit `4242…42`) that would render as a multi-
+ *  EVM payment on a no-native-gas chain is bogus: `eth_getBalance` there returns
+ *  a huge placeholder (~76-digit `4242…42`) that would render as a multi-
  *  quadrillion balance and blow up the private total. Mirrors the normal
- *  portfolio, which skips native rows for these chains. Token (TIP-20) payments
- *  on Tempo ARE real and kept. Used to filter payments at the store boundary so
- *  the total, holdings, activity, and spend-planning all ignore the phantom. */
+ *  portfolio, which skips native rows for these chains. TOKEN payments on such a
+ *  chain are real and kept. Used to filter payments at the store boundary so the
+ *  total, holdings, activity, and spend-planning all ignore the phantom.
+ *
+ *  Registry-driven, so it needs no edit as chains change — though no chain the
+ *  wallet ships today declares `hasNativeAsset: false`. */
 export function isRealStealthPayment(p: { chainFamily: number; chainId?: bigint; tokenContract?: string | null }): boolean {
-  if (p.chainFamily === 1 && !p.tokenContract && !evmChainHasNativeAsset(p.chainId ?? 0n)) return false;
+  if (p.chainFamily === 1 && !p.tokenContract && !chainHasNativeAsset(p.chainId ?? 0n)) return false;
   return true;
 }
 

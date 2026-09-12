@@ -31,7 +31,6 @@ const TESTNET_HINTS = [
   'holesky',
   'amoy',
   'fuji',
-  'moderato', // Tempo testnet
 ];
 
 /** True if this activity row belongs to a testnet chain. */

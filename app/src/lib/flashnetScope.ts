@@ -30,7 +30,6 @@ export const SOURCE_CHAINS: Record<string, { family: 'evm' | 'sol'; evmChainId?:
   polygon: { family: 'evm', evmChainId: 137n },
   bsc: { family: 'evm', evmChainId: 56n },
   avalanche: { family: 'evm', evmChainId: 43114n },
-  tempo: { family: 'evm', evmChainId: 4217n },
   solana: { family: 'sol' },
 };
 

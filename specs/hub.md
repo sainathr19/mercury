@@ -63,24 +63,26 @@ Runs as a container; see `hub/README.md` and the root `docker-compose.yml`.
 ### Why history needs two sources
 
 The app tries The Graph, then Blockscout, then this proxy. Blockscout sits ahead
-of Etherscan deliberately — it is keyless and unmetered, and it covers chains
-Etherscan does not (Ink, Scroll, Gnosis Chiado). What it is not is dependable.
+of Etherscan deliberately: it is keyless and unmetered. What it is not is
+dependable.
 
-A survey of the 22 testnets this wallet supports found **5** with a reachable
-history source: four Blockscout instances answering 503/429/404 and thirteen
-chains with no explorer configured at all. Arbitrum Sepolia was among the dead
-ones, and it is a Circle domain — a Gateway send delivers real money there. The
+A survey taken while the registry still carried 22 testnets found **5** with a
+reachable history source: four Blockscout instances answering 503/429/404 and
+thirteen chains with no explorer configured at all. The registry has since been
+cut to the Circle domains, but the lesson outlived the chains that taught it —
+Arbitrum Sepolia was among the dead ones, and it is a Circle domain, so a
+Gateway send delivers real money there. The
 balance rendered correctly, because balances come from RPC; the matching
 "Received" row never appeared, because a **native transfer emits no logs** and
 there is nothing for `eth_getLogs` to find. Only an indexer sees it.
 
-`ETHERSCAN_API_KEY` closes that gap for 22 of our chains from one key. It is
+`ETHERSCAN_API_KEY` closes that gap for 14 of our chains from one key. It is
 optional: unset means Blockscout-only, which is the behaviour that shipped
 before, not a failure.
 
 Indexed is not the same as served. A free key is refused on some of those
-chains — observed on Optimism, Base, Avalanche and both BNB chains — while every
-testnet this wallet uses except BNB Testnet works on the free tier. Which chains
+chains — observed on Optimism, Base and Avalanche — while every testnet this
+wallet now uses works on the free tier. Which chains
 a plan covers is **learned from the upstream**, not hard-coded: a free-tier list
 here would be wrong for anyone who pays and stale the day Etherscan moves a
 chain between tiers. A refusal costs one call per chain per process, and is kept

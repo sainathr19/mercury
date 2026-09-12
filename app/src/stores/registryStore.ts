@@ -9,7 +9,6 @@ import {
   type RegistryAsset,
   type ResolvedRegistryToken,
 } from '../lib/registry';
-import { withTempoNetworks } from '../lib/tempoRegistry';
 
 // ===========================================================================
 // REGISTRY SOURCE OF TRUTH — set EXPO_PUBLIC_REGISTRY_URL to your CDN URL.
@@ -42,10 +41,8 @@ interface RegistryState {
 }
 
 export const useRegistry = create<RegistryState>((set, get) => ({
-  // Bundled seed = instant first paint. Tempo networks are always overlaid (the
-  // remote registry CDN doesn't know about Tempo, and refresh() replaces the
-  // whole registry — see withTempoNetworks).
-  registry: withTempoNetworks(seed as Registry),
+  // Bundled seed = instant first paint.
+  registry: seed as Registry,
   hydrated: false,
 
   hydrate: async () => {
@@ -55,7 +52,7 @@ export const useRegistry = create<RegistryState>((set, get) => ({
       if (f.exists) {
         const c = JSON.parse(await f.text()) as Partial<Cached>;
         if (c.registry && isValidRegistry(c.registry))
-          set({ registry: withTempoNetworks(c.registry) });
+          set({ registry: c.registry });
       }
     } catch {
       // corrupt cache → keep the seed
@@ -75,7 +72,7 @@ export const useRegistry = create<RegistryState>((set, get) => ({
       if (res.status === 304 || !res.ok) return;
       const data = (await res.json()) as unknown;
       if (!isValidRegistry(data)) return;
-      set({ registry: withTempoNetworks(data) });
+      set({ registry: data });
       try {
         cacheFile().write(
           JSON.stringify({ etag: res.headers.get('etag'), registry: data } satisfies Cached),

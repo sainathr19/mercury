@@ -111,7 +111,7 @@ describe('recipientFor', () => {
     expect(recipientFor('solana', addrs)).toBe('So1abc');
     // Every EVM chain is paid at the same 0x address.
     expect(recipientFor('base', addrs)).toBe('0xabc');
-    expect(recipientFor('tempo', addrs)).toBe('0xabc');
+    expect(recipientFor('arbitrum', addrs)).toBe('0xabc');
   });
 
   it('is undefined for an unsupported chain or a locked wallet', () => {

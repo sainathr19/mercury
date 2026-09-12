@@ -41,10 +41,6 @@ export const RECEIVE_NETWORKS: ReceiveNetwork[] = [
   { key: 'polygon', name: 'Polygon', kind: 'address', addrKey: 'eth', coingeckoId: 'polygon', symbol: 'POL', colorHex: '#6F41D8', uriScheme: 'ethereum' },
   { key: 'solana', name: 'Solana', kind: 'address', addrKey: 'sol', coingeckoId: 'solana', symbol: 'SOL', colorHex: '#7333D9', uriScheme: 'solana' },
   { key: 'hyperliquid', name: 'Hyperliquid', kind: 'address', addrKey: 'eth', coingeckoId: 'hyperliquid', symbol: 'HYPE', colorHex: '#50D2C1', uriScheme: 'ethereum' },
-  // Tempo is EVM-compatible (stablecoin payments chain) — same 0x receive address
-  // as the other EVM networks; funds arrive as TIP-20 stablecoins, so it uses the
-  // `ethereum:` URI scheme and the shared `eth` address.
-  { key: 'tempo', name: 'Tempo', kind: 'address', addrKey: 'eth', coingeckoId: 'tempo', symbol: 'USD', colorHex: '#1C1C1E', uriScheme: 'ethereum', chainIds: { mainnet: 4217n, testnet: 42431n } },
   // Arc is a stablecoin chain whose NATIVE coin is USDC itself, so it borrows
   // USDC's icon rather than carrying one of its own. Same 0x address as every
   // other EVM network.

@@ -452,7 +452,7 @@ export default function SendConfirm() {
         : addresses.eth
     : undefined;
   // The asset carries its own network name; `chainName` covers the chains the
-  // registry has no label for (Arc and Tempo included).
+  // registry has no label for (Arc included).
   const network =
     asset.networkName ??
     (asset.evmChainId !== undefined ? chainName(asset.evmChainId) : undefined) ??

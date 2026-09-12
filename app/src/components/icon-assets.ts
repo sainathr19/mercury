@@ -15,7 +15,6 @@ export const LOCAL_TOKEN_ICONS: Record<string, number> = {
   optimism: require('../../assets/crypto/optimism.svg'),
   polygon: require('../../assets/crypto/polygon.svg'),
   hyperliquid: require('../../assets/crypto/hyperliquid.jpg'),
-  tempo: require('../../assets/crypto/tempo.svg'),
   arc: require('../../assets/crypto/arc.svg'),
   'usd-coin': require('../../assets/crypto/usdc.svg'),
   usdc: require('../../assets/crypto/usdc.svg'),

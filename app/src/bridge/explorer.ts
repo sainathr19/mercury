@@ -38,10 +38,9 @@ const explorerApi = (): string => `${hubUrl()}/index/explorer`;
  */
 const ETHERSCAN_CHAINS = new Set<bigint>([
   // mainnet
-  1n, 10n, 56n, 137n, 8453n, 42161n, 43114n,
+  1n, 10n, 137n, 8453n, 42161n, 43114n,
   // testnet
-  97n, 1301n, 1328n, 4801n, 5003n, 10143n, 14601n, 43113n, 59141n, 80002n, 84532n,
-  421614n, 11155111n, 11155420n, 168587773n,
+  1301n, 1328n, 4801n, 43113n, 80002n, 84532n, 421614n, 11155111n, 11155420n,
 ]);
 
 /**

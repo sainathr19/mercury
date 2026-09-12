@@ -161,7 +161,7 @@ export const useActivity = create<ActivityState>((set, get) => ({
     const incoming = new Map(receipts.map((r) => [r.id, r]));
     // The scan is the source of truth for RECEIVED private payments: drop any
     // previously-persisted stealth receipt (stealth-recv-*) that's no longer in
-    // it, so a payment we now filter out (e.g. a Tempo native placeholder) or one
+    // it, so a payment we now filter out (e.g. a native placeholder) or one
     // that was spent away disappears instead of lingering with a stale amount.
     // Sends/spends (different id shape) are untouched.
     const byId = new Map(

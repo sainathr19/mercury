@@ -26,10 +26,6 @@ import { fontFamily } from '../theme/fonts';
  */
 const LOCAL_ART: Record<string, string> = {
   '5042002': 'arc',
-  // Tempo, for the same reason: the registry lists neither Arc nor Tempo, so
-  // both fell through to a coloured letter. Garden's testnet catalog puts real
-  // assets on both, which is how this surfaced.
-  '42431': 'tempo',
 };
 
 export interface ChainBadgeProps {
@@ -86,7 +82,7 @@ export function needsChainBadge(a: {
 export function ChainBadge({ chainId, network, size = 15, ringColor }: ChainBadgeProps) {
   const networks = useRegistry((s) => s.registry.networks);
   const hit = resolve(networks, chainId, network);
-  // `chainById` knows every chain the app ships (Arc and Tempo included), so it
+  // `chainById` knows every chain the app ships (Arc included), so it
   // supplies the name and tint the registry has no art for.
   const def = chainId !== undefined ? chainById(BigInt(chainId)) : undefined;
   const label = hit?.name ?? def?.name ?? network;
