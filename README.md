@@ -99,6 +99,33 @@ hardest in practice:
   storage they reset every deploy and every wallet gets its sponsorship
   allowance back, which makes the caps decorative.
 
+## The token registry
+
+The app ships a curated seed (`app/assets/registry.seed.json`) and can fetch a
+larger list at runtime. To build one:
+
+```bash
+cd app
+npm run registry:build                    # Uniswap Labs Default, the safe source
+npm run registry:build -- --source coingecko --max-per-chain 100
+```
+
+It writes `dist/registry.json`; host it and point `EXPO_PUBLIC_REGISTRY_URL` at
+it. The app fetches with an ETag and caches on device, and unset is a supported
+configuration — the bundled seed still resolves tokens.
+
+**The seed wins.** A curated entry is never overwritten by a downloaded one, and
+a downloaded token that wears a curated symbol at a different address is
+dropped. That is not hypothetical: against CoinGecko's list the guard drops a
+`UNI` that is really *UNICORN*, and an `ETH` that is really *The Infinite
+Garden* — an ERC-20 wearing the native coin's ticker. The generator refuses to
+write at all if a curated entry was altered or lost.
+
+Chains are deliberately **not** sourced this way. An entry in
+`app/src/lib/chains.ts` carries a Circle domain, a USDC address and Uniswap
+router addresses — money semantics no chain directory knows. Adding one is a
+curation decision made with evidence.
+
 ## Tests
 
 ```bash
