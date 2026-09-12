@@ -1,5 +1,10 @@
 # Onboarding — first run
 
+> **Built as described**, with one addition: the backup screen is mandatory and
+> the recovery phrase is revealed only behind an explicit tick, then confirmed
+> before the wallet opens. Name claiming is sponsored by the hub, so a wallet
+> with a zero balance can complete it.
+
 The path from a cold install to a working wallet. **Owner: track B**, with one
 hub endpoint owned by track A.
 

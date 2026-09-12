@@ -1,178 +1,108 @@
-# `hub/` — agent, push, and ops scripts
+# `hub/` — Gateway relayer, name sponsor, index proxy
 
-A small Hono service plus a scripts directory. **Owner: track A.**
+> **Rewritten after the build.** The previous version described an agent
+> endpoint and a push service, and opened with *"It holds no user keys, no user
+> funds, and no directory."* Two of those three are still true and the sentence
+> as a whole was badly misleading: the hub holds **a funded key** and spends it.
+> That is the line someone reads before deciding where to run this, so it is now
+> the first thing the file says.
 
-**It holds no user keys, no user funds, and no directory.** It does hold one
-key of its own, used solely to sign subname issuances. ENS is the directory
-([shared.md](shared.md)); the device holds the keys.
+**It holds no user keys and no user funds. It does hold one key of its own, and
+that key holds gas.** It pays for two things: submitting Circle Gateway mints on
+a destination chain, and registering ENS subnames for users who have no funds
+yet. ENS is the directory ([ens.md](ens.md)); the device holds the keys.
 
-**It is not on the critical path, with one exception.** Kill the hub and the
-wallet still shows balances, history, and sends money. Only natural-language
-history and push notifications stop. Protect this property: if a feature would
-put the hub between the user and their money, it belongs in the app instead.
+## Why it exists
 
-The exception is **sponsored name issuance** ([onboarding.md](onboarding.md)).
-It is confined to onboarding, and even there the name is skippable — a hub
-outage yields a working unnamed wallet, never a blocked user.
+Three reasons, none of them the ones this file originally gave.
 
-## Why it exists at all
+1. **The mint needs gas on the destination chain.** Circle attests a burn
+   instantly, but the funds only appear once somebody submits that attestation
+   to `GatewayMinter` on the destination — an ordinary transaction, needing gas
+   there. Making the recipient do it breaks the wallet's "no gas token" promise
+   at exactly the wrong moment.
+2. **A new user has no funds anywhere.** Their first name has to be paid for by
+   someone, and that someone needs a key.
+3. **The provider credential cannot ship in the app.** `EXPO_PUBLIC_*` is
+   inlined into the bundle at build time and recoverable from the package, so a
+   Graph key there is handed to anyone who downloads the app and billed to us.
+   ERC-7677 gives this advice for paymaster keys; it applies unchanged here.
 
-Three reasons, all of which need a server:
+The LLM key is **not** a reason. There is no agent (see
+[../PLAN.md §3.6](../PLAN.md)).
 
-1. **The LLM API key.** Anything shipped in a React Native bundle is
-   extractable from the `.ipa`.
-2. **Push fan-out.** Something has to watch for incoming payments while the app
-   is closed.
-3. **Sponsored name issuance.** A new user has no funds on any chain, so we pay
-   for their subname out of the subregistry we own. This needs our key, which
-   means a server. See [onboarding.md](onboarding.md).
-
-Remove all three and there is no hub. That is a legitimate three-service version of
-Mercury; it costs natural-language history and real notifications.
-
-## Layout
-
-```
-hub/
-  src/
-    index.ts      Hono app, routes, CORS
-    agent.ts      NL → GraphQL → NL
-    push.ts       token registry + poller + Expo push
-    graph.ts      its own Graph client (NOT shared with the app)
-    names.ts      subname issuance + the issuance index
-  scripts/
-    check-arc.ts          connectivity + balance sanity
-    ens-register.ts       claim mercury.eth on Sepolia
-    ens-subregistry.ts    deploy the subregistry
-    ens-set-records.ts    write addr(coinType) + text records
-    ens-issue-subname.ts  issue <user>.mercury.eth
-    seed-uniswap-pool.ts  add USDC/EURC liquidity at a sane rate
-```
-
-`scripts/` are one-shot operational tools, run by hand with `tsx`. They live
-here because they are Node + TypeScript + viem — the same environment the
-service already has — and a separate package for six scripts is not worth its
-`node_modules`.
-
-## `POST /agent/ask`
-
-The only interesting endpoint. **Read-only. It cannot move money.**
-
-```ts
-// request
-{ question: string, context: { arcAddress: string, name?: string } }
-
-// response
-{ answer: string,          // prose
-  data: unknown[],         // the actual rows
-  query: string }          // the GraphQL that ran
-```
-
-Pipeline:
-
-1. LLM turns the question into a GraphQL query against the schema in
-   [subgraph.md](subgraph.md). The schema goes in the system prompt.
-2. Hub executes it — **against an allowlist of query shapes**, not arbitrary
-   GraphQL. A model emitting an unbounded query is a denial-of-service on our
-   own indexer.
-3. LLM phrases the rows as prose.
-
-**The app renders numbers from `data`, never by parsing `answer`.** A
-hallucinated figure in the prose can then never reach the screen as a value the
-user might act on. `query` is returned so the UI can show its work.
-
-**`context.arcAddress` is supplied by the client and is not authenticated.**
-That is acceptable *only* because everything queryable is already public
-on-chain data — the endpoint reveals nothing a block explorer wouldn't. Do not
-add anything private to this endpoint without adding auth first.
-
-## `POST /name/claim`
-
-Issues `<name>.mercury.eth` from our subregistry, paid with our key. Full
-protocol, signed-message format and validation order in
-[onboarding.md](onboarding.md). Summary of the hub's obligations:
-
-```ts
-{ name, address, stealthMeta, timestamp, signature } → { name, txHash }
-```
-
-1. Recover the signature to `address`, else 401
-2. `timestamp` within ±5 minutes
-3. Name valid, not reserved, unclaimed
-4. **`address` does not already own a name** — one per address
-5. Rate limit per IP
-6. Issue the subname and set `addr(2152525650)` + the stealth text record in
-   **one** transaction
-
-**This endpoint spends real money** — every call costs Sepolia gas from our
-key. It is the only hub endpoint that does, and it is the only reason the hub
-holds a key at all. That key signs name issuances and nothing else; it never
-touches user funds.
-
-Keep an issuance index (`address → name → txHash`) — it backs the
-one-per-address check and the reverse lookup used by wallet import.
-
-## `POST /push/register` and the poller
-
-```ts
-{ expoPushToken: string, arcAddress: string, viewTags?: number[] }
-```
-
-The poller queries the subgraph on an interval for transfers to registered
-addresses since the last seen block, and pushes `IncomingPayment`
-([shared.md](shared.md)) for anything new.
-
-For private receipts the client registers **view tags, not addresses** — the
-hub learns that someone is watching 1/256 of announcements and nothing more.
-Sending stealth addresses here would hand the hub exactly the link the scheme
-exists to hide.
-
-State is a single SQLite table (`token, address, tags, lastBlock`). No ORM.
-It is a cache: losing it costs a re-register, not money.
-
-## Deployment
-
-One container, one process, one env file. Fly or Railway — whichever deploys
-faster on day 6; nothing here is platform-specific.
+## Shape
 
 ```
-LLM_API_KEY=        # server-only, never in the app
-GRAPH_API_KEY=      # the hub's own key, separate from the app's
-SUBGRAPH_URL_ARC=
-PORT=
+hub/src/
+  index.ts        routes, budgets, graceful shutdown
+  relay.ts        Gateway mints, per-chain RPC, revert detection
+  sponsor.ts      ENS subname issuance, signature check
+  budget.ts       two-phase spend ledger
+  indexProxy.ts   The Graph, key-side only
+  chains.ts       Circle domain -> chain, per environment
+hub/scripts/      one-shot ops (deploy registry, claim, verify)
 ```
 
-Two Graph keys on purpose. If the hub's poller trips a rate limit, the wallet
-keeps working.
+Runs as a container; see `hub/README.md` and the root `docker-compose.yml`.
+
+## Endpoints
+
+| | Spends gas | Notes |
+|---|---|---|
+| `GET /healthz` | | Returns `ok`. **`HEAD` currently 500s** — a `c.text()` without an explicit `content-length` breaks HEAD on this adapter. Point uptime monitors at GET. |
+| `GET /names/status` | | Whether sponsorship is on, and the live sponsor budget. |
+| `GET /gateway/budget` | | The relay budget. Published so sponsorship is a documented offer, not an opaque favour. |
+| `GET /gateway/domains?environment=` | | Per-chain relayer funding. **The app calls this before signing a burn.** |
+| `POST /names/claim-message` | | The exact bytes to sign. Served rather than rebuilt in the app, because two implementations of one string format drift. |
+| `POST /names/sponsor` | **yes** | Registers a subname. Requires the caller's signature — see below. |
+| `POST /gateway/relay` | **yes** | Submits a Circle attestation on the destination chain. |
+| `GET /index/*` | | Proxies The Graph. A fixed set of shapes, validated parameters. |
+
+### Why `/gateway/relay` is unauthenticated and `/names/sponsor` is not
+
+The attestation is signed by Circle and names its own recipient inside the
+signed payload. A relayer cannot redirect, alter or skim it — the only power it
+has is whether to submit. So the worst a hostile caller can do is waste our gas,
+which is a rate limit, not a custody risk.
+
+`/names/sponsor` has no such thing vouching for it. There is no Circle signature
+in the payload, so **the caller's own signature is the only thing standing
+between our gas and a name pointing wherever a stranger likes.**
+
+## The spend ledger
+
+Both gas-spending endpoints book against a budget denominated in **ETH, not
+operations**. Counting operations does not bound cost: 200 registrations is
+0.042 ETH at 1 gwei and 2.11 ETH at 50, and gas price was not in the count.
+
+- **Two-phase.** A request reserves its worst case *before* the transaction is
+  sent and settles the real cost afterwards. Charging only on success would let
+  concurrent requests each pass a check none of them could afford together.
+- **A gas-price ceiling.** The honest answer to "gas is 200 gwei" is "not right
+  now", not "here is ten times the usual bill".
+- **Per-address, where the payer is known.** The relay is global-only, because
+  the depositor cannot yet be read out of Circle's attestation layout. That is
+  strictly weaker and should not stay that way.
+- **`PER_ADDRESS_ETH` must cover `gasLimit × MAX_GAS_GWEI`.** Otherwise a claim
+  above that gas price is refused as *"this wallet has used its allowance"* — a
+  gas problem wearing a quota error's clothes.
+
+The ledger is a file under `/app/data`. On ephemeral storage it resets every
+deploy and every wallet gets its allowance back, which makes the caps
+decorative.
 
 ## Failure modes
 
-| Failure | Symptom | Response |
-|---|---|---|
-| Hub down | No agent, no push, no new names | Wallet unaffected. Agent tab shows unavailable; onboarding falls through to the claim banner. |
-| Sepolia key dry | Every claim fails | Monitor the balance. A dry key on demo day looks exactly like a broken product. |
-| LLM times out | Agent hangs | 10s timeout → "couldn't answer that", never a partial answer |
-| LLM emits invalid GraphQL | Query fails | Reject against the allowlist, retry once, then decline |
-| Poller falls behind | Late notifications | It is a cache — the app's own subgraph reads are the source of truth |
-| SQLite lost on redeploy | Push tokens gone | App re-registers on next launch. Make registration idempotent and cheap. |
+| | |
+|---|---|
+| An unreachable RPC | Reported as `ready: null`, **not** `ready: false`. Unknown is not the same as unfunded: reporting `false` tells the app to disable a send that might work, `true` tells it to burn into one that cannot. |
+| Public RPCs refusing the host | Providers rate-limit by IP and a datacenter address is what they refuse. `RPC_<chainId>` overrides exist for this. Observed: Sepolia unreachable from the deployed host while three other chains read fine. |
+| An unbounded RPC call | viem defaults to 10s × 3 retries; across four chains that turns one dead endpoint into a minutes-long hang — on an endpoint the app calls *before* signing a burn. Bounded to 8s / 1 retry. |
+| A mint that reverts | A receipt does **not** throw on revert. Every mint asserts `status === 'success'` or a failed claim reports as a success. |
+| A corrupt ledger | Throws rather than silently becoming an empty one — an empty ledger reopens the budget to everyone who already spent it. |
 
-## Explicitly not here
+## What it still does not hold
 
-- **Payment parsing.** *"Send sainath 20"* is a fixed grammar handled
-  deterministically **in the app**, offline. A model that reads `20` as `200`
-  moves real money, so nothing that can hallucinate goes near the write path.
-- **The directory.** ENS.
-- **Read proxying.** The app queries The Graph itself.
-- **Any signing.** Ever.
-
-## Open questions
-
-- **Is the poller the right shape for push?** An interval poll is simple and
-  survives restarts. Graph offers no webhooks. If interval latency looks bad in
-  the rehearsal, shorten the interval before redesigning — it is one constant.
-- **Does the agent need conversation history?** Single-shot Q&A is cheaper and
-  has no state. Add history only if the demo script actually needs a follow-up
-  question.
-- **Rate limiting.** Unauthenticated `/agent/ask` in front of a paid LLM key is
-  an obvious abuse vector. A per-IP limit is enough for a testnet demo; do not
-  ship this shape anywhere real without auth.
+No user keys. No user funds. No directory — ENS owns that, so the hub cannot lie
+about who a name belongs to. No mailbox. No LLM key, because there is no agent.

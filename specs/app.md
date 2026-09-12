@@ -1,5 +1,14 @@
 # `app/` — the wallet
 
+> **Written before the build.** Two things named below were never built: the
+> **agent** tab and **push** notifications. What shipped instead and is not
+> described here: the Gateway screens (deposit / instant send / withdraw),
+> cross-chain swaps through Garden and Flashnet, a dApp browser with
+> WalletConnect, and a token registry. Swapping is cross-chain, not the
+> Uniswap-on-Arc pool swap described below — Uniswap is used only to turn a
+> non-USDC balance into USDC so a Gateway deposit can proceed.
+> See [../PLAN.md §0.5](../PLAN.md).
+
 Expo / React Native, TypeScript, dev build via EAS (Expo Go cannot do remote
 push). **Owner: track B.**
 

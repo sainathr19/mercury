@@ -1,5 +1,15 @@
 # `shared/` — the seam
 
+> **Not used.** `shared/` exists in the tree and nothing imports it. The app and
+> the hub each keep their own chain registry (`app/src/lib/chains.ts` and
+> `hub/src/chains.ts`), kept in step by the Circle domain rather than a shared
+> module — they are separate processes with separate deploy cycles, and one is
+> bundled into a mobile binary. The decimals boundary this file describes lives
+> in `app/src/lib/format.ts`.
+>
+> Kept for the reasoning. If the two registries are ever unified, this is the
+> argument for how.
+
 Types and pure helpers that `app/`, `hub/` and `hub/scripts/` must agree on.
 **Owner: both tracks.** Changes land in their own commit with a message saying
 what moved, because both tracks rebuild against them.

@@ -1,5 +1,11 @@
 # `subgraph/` — indexing
 
+> **Written before the build.** The `Account` aggregates below exist to answer
+> agent questions, and there is no agent — see [../PLAN.md §3.6](../PLAN.md).
+> The transfer indexing is built and in use; history reaches the app through the
+> hub's `/index/*` proxy rather than directly, so no provider key ships in the
+> bundle.
+
 One schema, three deployments: **Arc testnet, Base, Ethereum**. Studio only —
 Arc's registry entry has `issuanceRewards: false`, so it cannot be published
 to the decentralized network. **Owner: track A.**

@@ -20,6 +20,31 @@ who knows the standard.
 
 ---
 
+## 0.5 Where this ended up
+
+This document was written on day 1 and is kept as written — the reasoning in
+§1 and §2 is still what the decisions rest on. This section records what the
+build actually produced, because a plan that quietly diverges from the code is
+worse than no plan.
+
+| Planned | Shipped |
+|---|---|
+| §3.1 Identity — ENSv2 | **Yes.** `name.mercurywallet.eth` resolves through ENSIP-10 wildcard resolution against `MercuryNameRegistry` on Sepolia. Claiming is sponsored by the hub, so a zero-balance wallet can get a name. Verified on-chain end to end. |
+| §3.2 Payments — Arc + USDC | **Yes.** |
+| §3.3 Cross-chain — Gateway | **Yes, and it is the strongest thing here.** Deposit, unified balance, and cross-chain send delivered in ~5.4s with the recipient holding no gas. Auto-top-up on send (`[stretch]`) was not built. |
+| §3.4 Data + The Graph | **Partly.** History works through a hub-side proxy so no provider key ships in the bundle. Push notifications are not built; background tasks do not run on a simulator at all, so the path is untested on device. |
+| §3.5 Swap — Uniswap | **Shipped, but not as Uniswap.** See the note in §3.5. |
+| §3.6 Agent | **Not built.** See the note in §3.6. |
+| §3.7 Wallet basics | **Yes**, plus a dApp browser and WalletConnect, which this plan never asked for. |
+| §3.9 Private payments | **Yes**, with §3.10's limits intact. |
+
+Two things this plan did not anticipate, both of which cost real time and are
+now written down in §2: Circle prices a Gateway transfer only in answer to a
+*signed* burn intent, and a hub deployed to a datacenter gets refused by the
+public RPC endpoints that work fine from a laptop.
+
+---
+
 ## 1. Scope decisions, and why
 
 Mercury is one rail and one asset: USDC on Arc. Three things drove that:
@@ -95,6 +120,18 @@ re-check anything marked ⚠️.
 ⚠️ Gateway on Arc is **testnet-only** today. Build **CCTP V2 as the primary
 path** and treat Gateway as the fast-path demo, or mainnet-readiness slips.
 
+**Learned while building, all measured against the live API:**
+
+| | |
+|---|---|
+| The fee cannot be quoted in advance | Circle prices a transfer only in answer to a **signed** burn intent; asking costs a signature. The app probes with a low fee, reads the quoted minimum out of the rejection, and re-signs — then reports the exact figure afterwards and remembers it as an estimate for next time. |
+| The fee is **per burn intent**, not per transfer | An amount drawn from three domains is charged three times, so paying the fee can push a transfer onto an extra source and raise the quote again. The re-pricing loop iterates until the quote stops rising. |
+| Testnet fee is a flat **1.00 USDC** | Not economically calibrated — 50% on a 2.00 send. Do not read a mainnet number into it. |
+| `Max` must reserve the fee | The allocator requires each source to cover its leg **plus** the fee, so an amount equal to the whole balance can never be allocated. Max that offered the full balance failed every time with "Not enough spendable balance". |
+| A same-chain transfer is the wrong operation | Balance already on the destination needs a *withdrawal*. Routed through a burn it costs a fee to move money off a chain and back onto it, and one such mint reverted on-chain. The app refuses it and points at Withdraw. |
+| An unminted burn intent is **returned** | A mint that reverts does not strand the money: Circle released the amount and its fee back to the unified balance. The claim, however, is dead — the same calldata reverts identically — so it must stop being offered for retry. |
+| Delivery must be checked **before** signing | Circle debits the instant a burn intent is accepted. `GET /gateway/domains` publishes per-chain relayer funding for exactly this, and the app fails closed on anything ambiguous. |
+
 ### The Graph
 
 | Network | Subgraphs | Substreams | Token API |
@@ -149,6 +186,26 @@ send** — faucet drips, external wallets, anything not routed through the ERC-2
 interface. It does not error; the money simply never appears. Index both, and
 have Mercury always pay via `transfer()` so our own payments are uniform.
 Details in [specs/subgraph.md](specs/subgraph.md).
+
+### Garden (cross-chain swaps)
+
+| | |
+|---|---|
+| Order response | `POST /v2/orders` returns `order_id`, `approval_transaction`, `initiate_transaction` and an EIP-712 `typed_data` payload. The calls come **ready to broadcast**, so funding an EVM swap needs no ABI encoding. |
+| Funding a BTC source | A plain transfer to a per-order HTLC address. |
+| Funding an EVM source | Broadcast Garden's approval, wait for it to be **mined**, then broadcast its initiate. The HTLC pulls tokens during initiate, so a node that has not seen the approval reverts. |
+| What to check before approving | That the approval spends the token you think it does, and that its **spender is the contract the initiate call goes to**. An approval is the only step that hands a third party standing authority over a balance. |
+| Testnet liquidity | Thin and route-dependent. Of 2,048 cross-chain pairs, 14 quote. **None involve Arc** — Arc has a market defined and nothing behind it. |
+| Key handling | `fnp_…` is a client key, meant to be embedded. `fn_…` is a server key with full account access and must never reach a bundle. An invalid key is 401; no key at all is allowed through on reads. |
+
+### Deployment (learned the hard way)
+
+| | |
+|---|---|
+| Public RPCs refuse datacenter IPs | The endpoints viem ships worked from a laptop and were refused from the deployed host — Sepolia unreachable while three other chains read fine. The hub takes `RPC_<chainId>` overrides for this. |
+| `ready: null` ≠ `ready: false` | Unreachable RPC vs unfunded relayer. Different problems, different fixes, and the distinction cost hours before it was published. |
+| Bound every RPC call | viem defaults to 10s × 3 retries; across four chains that turned one unreachable endpoint into a minutes-long hang on an endpoint the app calls **before** signing a burn. |
+| Ledgers need a real volume | The spend caps live in files under `/app/data`. On ephemeral storage they reset every deploy and every wallet gets its allowance back. |
 
 ### ENS
 
@@ -251,12 +308,36 @@ cosmetic, and it deletes the most-criticised component of the old design.
   OP, Polygon `[core]`
 
 ### 3.5 Swap — Uniswap
+
+> **What shipped instead.** Uniswap on Arc is still used for the one thing it
+> is good for here — turning a non-USDC balance into USDC so a Gateway deposit
+> can proceed (see the EURC row in the deposit picker). Actual swapping is
+> cross-chain and goes through **Garden** on testnet and **Flashnet Orchestra**
+> on mainnet, because neither the demo nor the product wanted an Arc-local pool
+> swap; they wanted "I hold X, pay me in Y, across chains". Funding a Garden
+> swap out of Bitcoin or any EVM chain works. Solana does not — its funding
+> instruction is not an EVM call and has not been observed, so it is refused
+> rather than guessed at.
+>
+> Garden's testnet has a market defined for Arc but no liquidity behind it, so
+> **no Arc route quotes**. That is outside this wallet.
+
 - USDC ↔ EURC and other Arc assets in-wallet `[core]`
 - Swap-and-send: pay in a currency you don't hold, one confirmation `[stretch]`
 - Publish our Arc EVM findings as `FEEDBACK.md` `[core]` — the quirks in §2
   cost us real time and aren't written down anywhere else
 
-### 3.6 Agent
+### 3.6 Agent — NOT BUILT
+
+> **None of this exists.** There is no agent, no chat, no natural-language
+> payment, and no LLM key in the hub. The hub earns its place for other reasons
+> — it is the Gateway mint relayer, the ENS name sponsor, and the proxy that
+> keeps The Graph credentials out of the app bundle.
+>
+> The design below is kept because the *shape* of it is still right and still
+> unbuilt: rules on the write path, an LLM only ever on the read path. If it is
+> ever built, build it that way. Do not describe it as existing.
+
 - NL payments: *"send sainath 20"* `[must]`
 - **NL over Graph data**: *"how much did I send sainath last month?"* `[core]`
 - **LLM on the read path, rules on the write path.** Payments parse with a
@@ -340,42 +421,50 @@ and we should say exactly that.
 Per-service detail lives in [specs/](specs/) — one file each for `app/`,
 `hub/`, `subgraph/` and `shared/`, including failure modes and open questions.
 
+> The diagram below is as built. It replaces an earlier one that labelled the
+> hub "no keys, no funds" — that is the single most misleading thing this plan
+> ever said, and it is the line someone reads before deciding where to run it.
+
 ```
 ┌─────────────────── Expo app (TypeScript) ────────────────────┐
 │  screens          stores           bridge/                   │
-│  onboard / send   session          keys.ts   (bip32)         │
-│  receive / swap   portfolio        ens.ts    (resolve+write) │
-│  activity / agent activity         arc.ts    (viem, USDC gas)│
-│                                    graph.ts  (subgraph reads)│
-│                                    stealth.ts(ERC-5564)      │
-│                                    cctp.ts   (fund from any) │
-│                                    uniswap.ts                │
-│           signs + broadcasts DIRECTLY to Arc ──────────►     │
-└───────┬──────────────────────────────────────┬───────────────┘
-        │ reads                                │ no keys, no funds
-┌───────▼─────────────────┐        ┌───────────▼────────────────┐
-│  The Graph              │        │  hub (Hono)                │
-│  subgraph: USDC/EURC    │        │  agent  → answers only     │
-│  transfers + ERC-5564   │        │  push   → notifications    │
-│  Announcement, on       │        │                            │
-│  Arc / Base / ETH       │        │  NO directory. ENS owns it.│
-│  + Token API (remainder)│        │  NO mailbox. Chain owns it.│
-└─────────────────────────┘        └────────────────────────────┘
-                    ┌──────────────────────────┐
-                    │  ENSv2 (Sepolia)         │
-                    │  mercury.eth subregistry │
-                    │  Permissioned Resolver   │
-                    │  = the whole directory   │
-                    └──────────────────────────┘
+│  onboard / send   session          keys.ts    (bip32)        │
+│  receive / swap   portfolio        ens.ts     (resolve+write)│
+│  gateway / swaps  gateway          gateway.ts (Circle)       │
+│  activity         pendingClaims    relayer.ts (hub client)   │
+│  browser / wc     gardenSwaps      gardenSwap.ts             │
+│                                    stealth.ts (ERC-5564)     │
+│                                    uniswap.ts (deposit prep) │
+│      HOLDS THE KEYS — every signature happens here ──────►   │
+└──┬────────────────┬───────────────────────────┬──────────────┘
+   │ reads          │ burn intents              │ relay + sponsor + index
+┌──▼───────────┐ ┌──▼─────────────────┐ ┌───────▼────────────────────┐
+│ The Graph    │ │ Circle Gateway     │ │ hub (Hono, Docker)         │
+│ Arc subgraph │ │ unified balance    │ │ ⚠ HOLDS A FUNDED KEY —     │
+│ + Token API  │ │ attests a burn     │ │   gas only, never funds    │
+│ (proxied by  │ │ in ~1s             │ │ /gateway/relay  mints      │
+│  the hub, so │ │                    │ │ /names/sponsor  pays ENS   │
+│  no key ships│ │ mint needs gas on  │ │ /index/*        proxies    │
+│  in the app) │ │ the DESTINATION ──►│ │ spend ledger bounds both   │
+└──────────────┘ └────────────────────┘ └────────────────────────────┘
+                    ┌───────────────────────────────┐
+                    │ MercuryNameRegistry (Sepolia) │
+                    │ mercurywallet.eth subnames    │
+                    │ ENSIP-10 wildcard resolution  │
+                    │ = the whole directory         │
+                    └───────────────────────────────┘
 ```
 
-**The trust rule:** the hub can suggest and relay, only the device can sign,
-and nothing the hub says is accepted without local verification. Identity now
+**The trust rule:** the hub can relay and sponsor, only the device can sign,
+and nothing the hub says is accepted without local verification. The hub's key
+holds gas and never user funds; `/gateway/relay` is safe to leave open because
+Circle signs the attestation and names the recipient inside it, so the worst a
+caller can do is burn our gas — which is what the spend ledger bounds. Identity now
 comes from ENS, so the hub cannot lie about who a name is — an attack the old
 signed-directory design could only mitigate.
 
 **Payment lifecycle — public (default):**
-1. `sainath.mercury.eth` → ENSv2 resolver → Arc address (coinType 2152525650)
+1. `sainathr.mercurywallet.eth` → ENSIP-10 wildcard resolution → the recipient's addresses
 2. Balance check; if short on Arc, CCTP/Gateway pulls USDC in
 3. Sign + broadcast the USDC transfer straight to Arc — **explicit gas, check `receipt.status`**
 4. Subgraph indexes the transfer; the hub pushes a notification to the recipient
@@ -394,6 +483,10 @@ signed-directory design could only mitigate.
 ---
 
 ## 5. Day-by-day — two tracks
+
+> **Historical.** Kept as written. It is not a to-do list any more, and the
+> track split below did not survive contact — §0.5 is what actually shipped.
+
 
 **Two devs, two tracks.** **A = chain/infra** (contracts, subgraph, CCTP,
 Uniswap, agent service). **B = app** (Expo, EAS, UI, payment flows). They
@@ -479,15 +572,22 @@ subgraph → Uniswap entirely.
 
 ## 8. Ship checklist
 
-- [ ] Public repo with a readable history
-- [ ] README: architecture, setup, and what actually works
-- [ ] `FEEDBACK.md` — our Arc EVM findings, written up for the ecosystem
+- [x] Public repo with a readable history
+- [x] README: architecture, setup, and what actually works
+- [x] `FEEDBACK.md` — our Arc EVM findings, written up for the ecosystem
+- [x] ENSv2 Sepolia name + subregistry address —
+      `MercuryNameRegistry` at `0xe6967ac719caa21ee46d62ceafa9969f96e9252d`,
+      parent `mercurywallet.eth`
+- [x] Hub deployed, with per-chain RPC overrides and spend caps set
 - [ ] Architecture diagram
 - [ ] Demo video
 - [ ] Arcscan links for the live transactions
 - [ ] Deployed subgraph URLs (Arc + Base + Ethereum)
-- [ ] ENSv2 Sepolia name + subregistry addresses
-- [ ] Arc mainnet deployment
+- [ ] **Rotate `TOKEN_API_JWT` and the Graph credentials** — they have been in
+      repo history. Blocking before this is public.
+- [ ] Confirm `/app/data` survives a redeploy (see §2, Deployment)
+- [ ] Arc mainnet deployment — the registry has no mainnet entry and Gateway
+      lists no Arc domain on mainnet, so this is not a config change
 
 ---
 

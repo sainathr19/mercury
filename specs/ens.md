@@ -1,5 +1,11 @@
 # ENS — implementation plan (all chains)
 
+> **Built.** `MercuryNameRegistry.sol` is deployed to Sepolia at
+> `0xe6967ac719caa21ee46d62ceafa9969f96e9252d` under `mercurywallet.eth`, and
+> resolves through ENSIP-10 wildcard resolution. Claiming is sponsored by the
+> hub. Verified end to end on-chain: a claimed name resolves to the wallet's
+> address through the universal resolver.
+
 Status: **Phases 0–2 built, on-chain.** Resolve any `.eth` name in the send
 field, and issue subnames under **`mercurywallet.eth`** (registered on Sepolia,
 ENSv2). Remaining: deploy the registry and point the name at it — see
