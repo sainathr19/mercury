@@ -273,20 +273,35 @@ export interface ActivityPrices {
 }
 
 /**
- * The EVM chains a history scan covers: the active one, plus every chain in this
- * environment that we index ourselves.
+ * The EVM chains a history scan covers: every chain in this environment we have
+ * any way to read, active one first.
  *
- * Those extra chains are not a convenience. The unified balance can hold money
- * on Arc, but Arc is not selectable as the active network, so scanning only the
- * active chain makes that history unreachable from the UI — the feed reads
- * "no recent activity" over a wallet that has been spending all day. They cost
- * one Graph query each, not an RPC scan.
+ * This used to be the active chain plus the ones we index ourselves, and the
+ * argument for that exception generalises: the unified balance can hold money on
+ * Arc, Arc is not selectable as the active network, so scanning only the active
+ * chain made that history unreachable from the UI — the feed read "no recent
+ * activity" over a wallet that had been spending all day.
+ *
+ * That is now true of every chain the wallet can end up holding something on,
+ * not just the indexed ones. A Gateway send can DELIVER to any Circle domain, a
+ * swap can land its output on any supported chain, and someone can simply
+ * transfer in. Observed: 0.005 ETH and a swap's WBTC output both arrived on
+ * Arbitrum Sepolia and neither appeared, because that chain was neither active
+ * nor self-indexed.
+ *
+ * Bounded by what is actually readable rather than by the whole registry, so a
+ * chain with no Graph coverage and no Blockscout instance is skipped instead of
+ * costing a request that can only fail. Each covered chain is one indexed query
+ * or one explorer call — not an RPC scan.
  */
 function evmChainsToScan(activeChainId: bigint): bigint[] {
-  const extra = chainsForEnvironment(getActiveEnvironment())
-    .filter((c) => c.subgraphEnv && c.chainId !== activeChainId)
+  const readable = (c: { chainId: bigint }) =>
+    graphCoversChain(c.chainId) || !!BLOCKSCOUT_BASES[c.chainId.toString()];
+  const others = chainsForEnvironment(getActiveEnvironment())
+    .filter((c) => c.chainId !== activeChainId && readable(c))
     .map((c) => c.chainId);
-  return [activeChainId, ...extra];
+  // Active first: its results are the ones the user is waiting to see.
+  return [activeChainId, ...others];
 }
 
 /**
