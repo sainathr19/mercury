@@ -120,8 +120,15 @@ describe('withdrawableByChain', () => {
 
     const rows = await withdrawableByChain(ADDR, 'testnet');
 
-    expect(rows.map((r) => r.available)).toEqual([4, 3, 0, 0]);
+    // One row per Circle chain, derived — the literal that used to be here
+    // grew stale the moment the registry did, and the property under test is
+    // the SHAPE (a figure per chain), not how many chains there happen to be.
+    expect(rows).toHaveLength(circleChainsForEnvironment('testnet').length);
+    expect(rows.slice(0, 4).map((r) => r.available)).toEqual([4, 3, 0, 0]);
     expect(rows.every((r) => r.available <= 4)).toBe(true);
+    // The whole point: the unified figure is never handed to a single chain.
+    const unified = rows.reduce((sum, r) => sum + r.available, 0);
+    expect(rows.every((r) => r.available < unified)).toBe(true);
   });
 
   it('reads an unreachable chain as zero withdrawable, never as the whole balance', async () => {

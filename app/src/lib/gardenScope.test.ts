@@ -1,3 +1,4 @@
+import { chainById, chainIdsForEnvironment } from './chains';
 /**
  * Tested against the REAL catalog, captured from the live testnet API
  * (__fixtures__/garden-assets.json). A hand-written fixture would only prove
@@ -45,9 +46,16 @@ describe('scope over the real catalog', () => {
     const families = new Set(scoped.map((a) => a.family));
     for (const f of families) expect(['evm', 'btc', 'sol']).toContain(f);
     // The fixture deliberately contains out-of-scope chains; none may survive.
+    // Asserted against the registry rather than a list of names: this used to
+    // name `bnbchain` as out of scope, which stopped being true the moment BNB
+    // Testnet was added — a test that pins a snapshot of the chain list fails
+    // for the wrong reason and teaches nothing.
     const ids = scoped.map((a) => a.id);
     expect(ids.some((i) => i.startsWith('alpen_signet'))).toBe(false);
-    expect(ids.some((i) => i.startsWith('bnbchain'))).toBe(false);
+    for (const a of scoped) {
+      if (a.family !== 'evm') continue;
+      expect(chainById(a.evmChainId!)).toBeDefined();
+    }
   });
 
   it('includes the chains we verified by hand', () => {
@@ -58,10 +66,12 @@ describe('scope over the real catalog', () => {
   });
 
   it('never returns a mainnet chain for the testnet environment', () => {
+    // Derived, not listed. The literal this replaced went stale the moment the
+    // registry grew, and the property it was reaching for is simply "testnet".
+    const testnet = chainIdsForEnvironment('testnet');
     for (const a of scoped) {
       if (a.family !== 'evm') continue;
-      // Every EVM entry must resolve to a registry chain marked testnet.
-      expect([11155111n, 421614n, 84532n, 5042002n, 42431n]).toContain(a.evmChainId);
+      expect(testnet).toContain(a.evmChainId);
     }
   });
 
