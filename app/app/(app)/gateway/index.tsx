@@ -84,6 +84,10 @@ export default function Gateway() {
   const retrying = usePendingClaims((s) => s.retrying);
   const hydrateClaims = usePendingClaims((s) => s.hydrate);
   const retryClaim = usePendingClaims((s) => s.retry);
+  const dismissClaim = usePendingClaims((s) => s.dismiss);
+  /** Still owed vs already returned — see the two blocks below. */
+  const liveClaims = useMemo(() => claims.filter((c) => !c.reverted), [claims]);
+  const deadClaims = useMemo(() => claims.filter((c) => c.reverted), [claims]);
 
   useEffect(() => {
     void hydrateClaims();
@@ -245,15 +249,51 @@ export default function Gateway() {
             </PressableScale>
           )}
 
+          {/* Split, because the two states are opposite advice. A pending claim
+              is money still owed to someone and worth retrying; a reverted one
+              is money Circle has already returned, and retrying it fails
+              forever. Showing them together told the user their funds were out
+              there when they were back in the balance. */}
+          {deadClaims.length > 0 && (
+            <View style={styles.alert}>
+              <View style={styles.alertHead}>
+                <Icon name="info" size={14} color={theme.colors.muted} />
+                <Text style={styles.alertTitle}>
+                  {deadClaims.length === 1 ? 'A send could not be delivered' : `${deadClaims.length} sends could not be delivered`}
+                </Text>
+              </View>
+              <Text style={styles.alertBody}>
+                The mint reverted on the destination chain, so these were never
+                claimed. Circle returns the amount and its fee to your Gateway
+                balance when that happens — nothing further is owed to you here.
+              </Text>
+              {deadClaims.map((c) => (
+                <View key={c.id} style={styles.claimRow}>
+                  <View style={styles.claimText}>
+                    <Text style={styles.claimAmount}>
+                      {formatUsd(c.amount)} to {c.chainName}
+                    </Text>
+                    <Text style={styles.claimError} numberOfLines={2}>
+                      Returned to your balance
+                    </Text>
+                  </View>
+                  <PressableScale style={styles.retry} onPress={() => dismissClaim(c.id)}>
+                    <Text style={styles.retryLabel}>Dismiss</Text>
+                  </PressableScale>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* ── Money that left but has not landed ───────────────────────── */}
-          {claims.length > 0 && (
+          {liveClaims.length > 0 && (
             <View style={styles.alert}>
               <View style={styles.alertHead}>
                 <Icon name="clock" size={14} color={theme.colors.warning} />
                 <Text style={styles.alertTitle}>
-                  {claims.length === 1
+                  {liveClaims.length === 1
                     ? 'A send has not been delivered'
-                    : `${claims.length} sends have not been delivered`}
+                    : `${liveClaims.length} sends have not been delivered`}
                 </Text>
               </View>
               <Text style={styles.alertBody}>
@@ -261,7 +301,7 @@ export default function Gateway() {
                 through. The signed claim is saved on this device — the funds are
                 recoverable, not lost.
               </Text>
-              {claims.map((c) => (
+              {liveClaims.map((c) => (
                 <View key={c.id} style={styles.claimRow}>
                   <View style={styles.claimText}>
                     <Text style={styles.claimAmount}>

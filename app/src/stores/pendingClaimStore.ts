@@ -17,6 +17,15 @@
 // Safe to persist: the payload names its own recipient inside Circle's
 // signature, so a copy of it grants no power to redirect or skim the funds. The
 // only thing it can do is deliver them to the person they were always for.
+//
+// One correction to the paragraph above, learned the hard way: a claim is not
+// retryable forever. A mint that is MINED AND REVERTS is deterministic — the
+// same calldata against the same contract reverts identically — and Circle
+// returns the debited amount to the unified balance afterwards. Observed: a
+// 0.50 transfer reverted, and 1.50 (the amount plus its fee) reappeared in the
+// balance. A claim in that state is not money waiting to be rescued, and
+// offering "Retry" on it invites the user to keep failing at something that has
+// already resolved itself. Those are marked dead — see `reverted`.
 import { create } from 'zustand';
 import { File, Paths } from 'expo-file-system';
 import { relayMint } from '../bridge/gateway';
@@ -45,6 +54,15 @@ export interface PendingClaim {
   createdAt: number;
   attempts: number;
   lastError?: string;
+  /**
+   * The mint was mined and reverted, so this payload can never be delivered.
+   *
+   * Distinguished from an ordinary failure by the relayer returning a
+   * transaction hash: it only has one once the mint reached the chain. A
+   * network error, an unfunded relayer or an unreachable hub produce no hash
+   * and stay retryable, which is the case this store was built for.
+   */
+  reverted?: { at: number; txHash?: string };
 }
 
 function file(): File {
@@ -64,6 +82,10 @@ interface PendingClaimState {
   retry: (id: string) => Promise<{ ok: boolean; error?: string }>;
   /** Drop a claim that has been delivered. */
   settle: (id: string) => void;
+  /** Record that this claim's mint was mined and reverted. */
+  markReverted: (id: string, txHash?: string) => void;
+  /** Forget a claim whose mint reverted; refuses to touch a live one. */
+  dismiss: (id: string) => void;
   reset: () => void;
 }
 
@@ -107,6 +129,9 @@ export const usePendingClaims = create<PendingClaimState>((set, get) => ({
   retry: async (id) => {
     const claim = get().claims.find((c) => c.id === id);
     if (!claim) return { ok: false, error: 'That claim is no longer pending.' };
+    if (claim.reverted) {
+      return { ok: false, error: 'That mint reverted on chain and cannot be resubmitted.' };
+    }
     if (get().retrying.includes(id)) return { ok: false, error: 'Already retrying.' };
 
     set({ retrying: [...get().retrying, id] });
@@ -121,8 +146,14 @@ export const usePendingClaims = create<PendingClaimState>((set, get) => ({
         get().settle(id);
         return { ok: true };
       }
+      // A hash means the mint reached the chain and came back reverted. Retrying
+      // identical calldata against the same contract cannot end differently, and
+      // Circle returns the amount to the unified balance on its own.
+      const reverted = r.txHash ? { at: Date.now(), txHash: r.txHash } : undefined;
       const claims = get().claims.map((c) =>
-        c.id === id ? { ...c, attempts: c.attempts + 1, lastError: r.error } : c,
+        c.id === id
+          ? { ...c, attempts: c.attempts + 1, lastError: r.error, ...(reverted ? { reverted } : {}) }
+          : c,
       );
       set({ claims });
       persist(claims);
@@ -130,6 +161,26 @@ export const usePendingClaims = create<PendingClaimState>((set, get) => ({
     } finally {
       set({ retrying: get().retrying.filter((r) => r !== id) });
     }
+  },
+
+  markReverted: (id, txHash) => {
+    const claims = get().claims.map((c) =>
+      c.id === id
+        ? { ...c, reverted: { at: Date.now(), txHash }, lastError: c.lastError ?? 'Mint reverted on chain' }
+        : c,
+    );
+    set({ claims });
+    persist(claims);
+  },
+
+  dismiss: (id) => {
+    // Only a dead claim can be dismissed. A pending one is the sole record of
+    // undelivered money, and letting it be swiped away would lose it.
+    const c = get().claims.find((x) => x.id === id);
+    if (!c?.reverted) return;
+    const claims = get().claims.filter((x) => x.id !== id);
+    set({ claims });
+    persist(claims);
   },
 
   settle: (id) => {
