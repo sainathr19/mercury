@@ -98,6 +98,43 @@ describe('explorer proxy — telling "empty" apart from "broken"', () => {
   });
 });
 
+describe('explorer proxy — chains the plan does not cover', () => {
+  test('a plan refusal is a fault, and the chain is not asked again', async () => {
+    // Etherscan indexes 61 chains but a free key is refused on several of them.
+    // Which ones depends on the plan, so this is learned rather than assumed.
+    const u = upstream({
+      status: '0',
+      message: 'NOTOK',
+      result: 'Free API access is not supported for this chain. Please upgrade your api plan',
+    });
+
+    const first = await call(`txlist?chainId=43114&address=${W}`);
+    assert.equal(first.status, 200);
+    assert.equal(Array.isArray(((await first.json()) as { result: unknown }).result), false);
+    assert.equal(u.calls.length, 1);
+
+    // Second ask must cost nothing upstream.
+    const second = await call(`txlist?chainId=43114&address=${W}`);
+    assert.equal(Array.isArray(((await second.json()) as { result: unknown }).result), false);
+    assert.equal(u.calls.length, 1, 'asked the upstream again for a chain it already refused');
+  });
+
+  test('one refused chain does not retire the others', async () => {
+    // A rejected KEY is global; a chain outside the plan is not. Conflating
+    // them would turn one unsupported chain into no history anywhere.
+    const u = upstream({
+      status: '0',
+      result: 'Free API access is not supported for this chain. Please upgrade',
+    });
+    await call(`txlist?chainId=56&address=${W}`);
+
+    upstream({ status: '1', result: [{ hash: '0xabc' }] });
+    const other = await call(`txlist?chainId=137&address=${W}`);
+    assert.equal(other.status, 200);
+    assert.deepEqual(((await other.json()) as { result: unknown[] }).result, [{ hash: '0xabc' }]);
+  });
+});
+
 describe('explorer proxy — rate limiting', () => {
   test('spaces concurrent calls so one wallet cannot burn the shared quota', async () => {
     // The ceiling is enforced per KEY and every app instance shares ours: one

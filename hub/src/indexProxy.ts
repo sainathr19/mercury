@@ -55,6 +55,23 @@ const ETHERSCAN_CHAINS = new Set([
 const EXPLORER_ACTIONS = new Set(['txlist', 'tokentx']);
 
 /**
+ * Chains this key's PLAN does not cover, learned from the upstream.
+ *
+ * Indexing a chain and serving it on the free tier are different things:
+ * Etherscan lists 61 chains, and a free key is refused on Optimism, Base,
+ * Avalanche and both BNB chains with "Free API access is not supported for this
+ * chain". Which chains those are depends on the operator's plan, so hard-coding
+ * a free-tier list here would be wrong for anyone who pays — and stale the day
+ * Etherscan moves a chain between tiers.
+ *
+ * Learning it instead costs one refused call per chain per process and is
+ * correct on every plan. Not persisted: a plan does not change mid-process, and
+ * a restart should re-check rather than trust yesterday's answer.
+ */
+const planExcluded = new Set<number>();
+const PLAN_REFUSAL = /free api access is not supported/i;
+
+/**
  * Etherscan's free tier allows 5 calls/second and enforces it per KEY — so every
  * app instance shares one budget. A single wallet opening its history fans out
  * to two calls per chain across a dozen chains, which alone exceeds the ceiling;
@@ -197,6 +214,12 @@ indexProxy.get('/explorer/:action', async (c) => {
     return c.json({ error: 'Unsupported chain' }, 400);
   }
 
+  // Already refused for this chain — answer without spending a rate-limit slot
+  // on a request whose outcome we know.
+  if (planExcluded.has(chainId)) {
+    return c.json({ status: '0', message: 'upstream', result: 'chain not in plan' });
+  }
+
   const offset = Math.min(Number(c.req.query('offset') ?? 25) || 25, 100);
   const params = new URLSearchParams({
     chainid: String(chainId),
@@ -226,6 +249,13 @@ indexProxy.get('/explorer/:action', async (c) => {
     // dummy key proved it — turns an unusable credential into a wallet that
     // calmly reports no transactions, forever, on every chain.
     const detail = typeof json.result === 'string' ? json.result : '';
+    if (PLAN_REFUSAL.test(detail)) {
+      // Permanent for this key, but specific to ONE chain — so it must not
+      // retire the explorer the way a bad key does.
+      planExcluded.add(chainId);
+      console.warn(`[explorer] chain ${chainId} is not in this key's plan — will not ask again`);
+      return c.json({ status: '0', message: 'upstream', result: 'chain not in plan' });
+    }
     if (/api key/i.test(detail)) {
       // Permanent until an operator acts. Reported as 503 so the app retires the
       // explorer for the session instead of re-asking once per chain per scan.

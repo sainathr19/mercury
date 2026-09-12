@@ -74,9 +74,17 @@ balance rendered correctly, because balances come from RPC; the matching
 "Received" row never appeared, because a **native transfer emits no logs** and
 there is nothing for `eth_getLogs` to find. Only an indexer sees it.
 
-`ETHERSCAN_API_KEY` closes that gap for 22 of our chains from one free key. It
-is optional: unset means Blockscout-only, which is the behaviour that shipped
+`ETHERSCAN_API_KEY` closes that gap for 22 of our chains from one key. It is
+optional: unset means Blockscout-only, which is the behaviour that shipped
 before, not a failure.
+
+Indexed is not the same as served. A free key is refused on some of those
+chains — observed on Optimism, Base, Avalanche and both BNB chains — while every
+testnet this wallet uses except BNB Testnet works on the free tier. Which chains
+a plan covers is **learned from the upstream**, not hard-coded: a free-tier list
+here would be wrong for anyone who pays and stale the day Etherscan moves a
+chain between tiers. A refusal costs one call per chain per process, and is kept
+distinct from a rejected key — that one is global, this one is not.
 
 Two properties the proxy is built around:
 
