@@ -55,9 +55,25 @@ export default function GatewaySend() {
 
   const value = Number(amount);
   const valid = Number.isFinite(value) && value > 0 && value <= spendable;
+  /**
+   * What could actually be burnt for the chosen destination.
+   *
+   * Balance sitting ON the destination is not a source — burning it there to
+   * mint it back there is a fee for nothing, and the bridge now refuses it. The
+   * screen has the per-domain figures already, so the refusal happens here,
+   * before a signature, rather than after one.
+   */
+  const sendableToDest = dest
+    ? perDomain
+        .filter((b) => b.domain !== dest.circleDomain)
+        .reduce((sum, b) => sum + b.balance, 0)
+    : spendable;
+  /** All of it is already where they are trying to send it. */
+  const alreadyThere = !!dest && spendable > 0 && sendableToDest <= 0;
+
   const trimmedTo = to.trim();
   const validAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedTo);
-  const ready = valid && !!dest && !!wallet && validAddress;
+  const ready = valid && !!dest && !!wallet && validAddress && !alreadyThere && value <= sendableToDest;
 
   // ── ENS ──────────────────────────────────────────────────────────────────
   // The wallet issues `name.mercurywallet.eth` and tells people to get paid at
@@ -255,9 +271,17 @@ export default function GatewaySend() {
               <Text style={styles.maxLabel}>Max</Text>
             </Pressable>
           </View>
-          {tooMuch ? (
+          {alreadyThere ? (
+            <Text style={styles.fieldError}>
+              {`Your Gateway balance is already on ${dest?.name}. Use Withdraw to move it to your wallet there — sending it to itself only costs a fee.`}
+            </Text>
+          ) : tooMuch ? (
             <Text style={styles.fieldError}>
               That is more than your settled balance. Only USDC already in Gateway can go instantly.
+            </Text>
+          ) : value > sendableToDest && value > 0 ? (
+            <Text style={styles.fieldError}>
+              {`Only ${formatUsd(sendableToDest)} can be sent to ${dest?.name} — the rest of your balance is already on that network.`}
             </Text>
           ) : (
             /* Said BEFORE the hold, because it is charged on top of the amount

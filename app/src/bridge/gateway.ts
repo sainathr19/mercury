@@ -581,6 +581,14 @@ export async function gatewayTransfer(opts: {
     const legs: { domain: number; value: bigint }[] = [];
     let left = value;
     for (const b of funded) {
+      // Never burn on the chain we are delivering to. Balance already sitting on
+      // the destination does not need a transfer — it needs a withdrawal, which
+      // is a different operation with a different screen. Routing it through a
+      // burn charges Circle's per-intent fee to take money off a chain and put
+      // it back on the same one, and the mint is not guaranteed to land: one
+      // such transfer reverted on-chain here, leaving the amount unspendable
+      // until Circle returned it.
+      if (b.domain === destinationDomain) continue;
       if (left <= 0n) break;
       const spendable = BigInt(Math.round(b.balance * 1e6)) - fee;
       if (spendable <= 0n) continue;
@@ -645,7 +653,21 @@ export async function gatewayTransfer(opts: {
   try {
     // Probe with a deliberately low fee; the rejection carries the real quote.
     let legs = allocate(1n);
-    if (!legs) return { ok: false, error: 'Not enough spendable balance', ms: Date.now() - t0 };
+    if (!legs) {
+      // Distinguish "you have nothing" from "all of it is already there", because
+      // the second is not a shortfall and the user has a better move available.
+      const elsewhere = funded
+        .filter((b) => b.domain !== destinationDomain)
+        .reduce((sum, b) => sum + b.balance, 0);
+      return {
+        ok: false,
+        error:
+          elsewhere <= 0
+            ? `That balance is already on ${chainById(toChainId)?.name ?? 'this network'} — withdraw it there instead of sending it to itself.`
+            : 'Not enough spendable balance',
+        ms: Date.now() - t0,
+      };
+    }
     let { res, body } = await submit(legs, 1n);
 
     // Re-price until the quote settles, not just once.
@@ -752,6 +774,11 @@ export async function gatewaySend(opts: Parameters<typeof gatewayTransfer>[0]): 
   );
   // Delivered — the ticket has been redeemed and is no longer owed to anyone.
   if (relay.ok) usePendingClaims.getState().settle(claimId);
+  // Mined and reverted. The same payload will revert again, so record that here
+  // too and not only on the retry path — the first attempt is the one most
+  // likely to hit it, and a claim left looking retryable is a promise the app
+  // cannot keep.
+  else if (relay.txHash) usePendingClaims.getState().markReverted(claimId, relay.txHash);
   return {
     ok: relay.ok,
     transferId: transfer.transferId,
