@@ -12,12 +12,17 @@ import {
   arbitrum,
   arbitrumSepolia,
   avalanche,
+  avalancheFuji,
   base,
   baseSepolia,
   mainnet,
   optimism,
+  optimismSepolia,
   polygon,
+  polygonAmoy,
   sepolia,
+  unichainSepolia,
+  worldchainSepolia,
 } from 'viem/chains';
 
 export type RelayEnvironment = 'mainnet' | 'testnet';
@@ -32,10 +37,19 @@ export const arcTestnet = defineChain({
 
 /** Circle domain -> the chain to submit the mint on, per environment. */
 export const CHAINS_BY_ENV: Record<RelayEnvironment, Record<number, Chain>> = {
+  // Must stay in step with the app's own registry (app/src/lib/chains.ts). The
+  // app asks THIS service which domains it can deliver to before it signs a
+  // burn, so a domain the app knows and this file does not is a destination the
+  // user can choose and then cannot be paid on.
   testnet: {
     0: sepolia,
+    1: avalancheFuji,
+    2: optimismSepolia,
     3: arbitrumSepolia,
     6: baseSepolia,
+    7: polygonAmoy,
+    10: unichainSepolia,
+    14: worldchainSepolia,
     26: arcTestnet,
   },
   // Arc is testnet-only on Gateway (GET /v1/info lists no domain 26 on

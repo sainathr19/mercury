@@ -124,6 +124,99 @@ export const CHAINS: ChainDef[] = [
     nativeSymbol: 'USD', nativeDecimals: 18, hasNativeAsset: false },
 
   // ── Testnets ───────────────────────────────────────────────────────────────
+
+  // Added after verifying each one against the chain itself: the RPC answers,
+  // eth_chainId matches the id claimed here, and where a Circle domain is set
+  // the USDC contract was read on-chain and reports symbol USDC at 6 decimals.
+  //
+  // A Circle domain is set ONLY alongside a verified USDC. Sonic (13), Sei (16)
+  // and HyperEVM (19) are Gateway domains whose token could not be verified from
+  // here, so they are listed as ordinary chains: a domain without a token is a
+  // destination the app would offer and then fail to deliver to, which is the
+  // bug that made Arbitrum Sepolia undeliverable for a day.
+  //
+  // Celo Alfajores is absent because no RPC answered — a chain we cannot read is
+  // not a chain we can add.
+
+  { chainId: 998n, name: 'HyperEVM Testnet', environment: 'testnet',
+    rpcUrl: 'https://rpc.hyperliquid-testnet.xyz/evm', explorerUrl: 'https://testnet.purrsec.com',
+    nativeSymbol: 'HYPE', nativeDecimals: 18, nativeColorHex: '#97FCE4', hasNativeAsset: true },
+
+  { chainId: 1328n, name: 'Sei Atlantic', environment: 'testnet',
+    rpcUrl: 'https://evm-rpc-testnet.sei-apis.com', explorerUrl: 'https://seitrace.com',
+    nativeSymbol: 'SEI', nativeDecimals: 18, nativeCoingeckoId: 'sei-network', nativeColorHex: '#9C1C1C', hasNativeAsset: true },
+
+  { chainId: 4801n, name: 'World Chain Sepolia', environment: 'testnet',
+    rpcUrl: 'https://worldchain-sepolia.g.alchemy.com/public', explorerUrl: 'https://worldchain-sepolia.explorer.alchemy.com',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    circleDomain: 14, usdc: '0x66145f38cBAC35Ca6F1Dfb4914dF98F1614aeA88' },
+
+  { chainId: 14601n, name: 'Sonic Testnet', environment: 'testnet',
+    rpcUrl: 'https://rpc.testnet.soniclabs.com', explorerUrl: 'https://testnet.sonicscan.org',
+    nativeSymbol: 'S', nativeDecimals: 18, nativeCoingeckoId: 'sonic-3', nativeColorHex: '#FE9A4C', hasNativeAsset: true },
+
+  { chainId: 1301n, name: 'Unichain Sepolia', environment: 'testnet',
+    rpcUrl: 'https://unichain-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.uniscan.xyz',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    blockscoutBase: 'https://unichain-sepolia.blockscout.com',
+    circleDomain: 10, usdc: '0x31d0220469e10c4E71834a79b1f276d740d3768F' },
+
+  { chainId: 80002n, name: 'Polygon Amoy', environment: 'testnet',
+    rpcUrl: 'https://polygon-amoy-bor-rpc.publicnode.com', explorerUrl: 'https://amoy.polygonscan.com',
+    nativeSymbol: 'POL', nativeDecimals: 18, nativeCoingeckoId: 'matic-network', nativeColorHex: '#8247E5', hasNativeAsset: true,
+    circleDomain: 7, usdc: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582' },
+
+  { chainId: 11155420n, name: 'OP Sepolia', environment: 'testnet',
+    rpcUrl: 'https://optimism-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia-optimism.etherscan.io',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    blockscoutBase: 'https://testnet-explorer.optimism.io',
+    circleDomain: 2, usdc: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7' },
+
+  { chainId: 43113n, name: 'Avalanche Fuji', environment: 'testnet',
+    rpcUrl: 'https://avalanche-fuji-c-chain-rpc.publicnode.com', explorerUrl: 'https://testnet.snowtrace.io',
+    nativeSymbol: 'AVAX', nativeDecimals: 18, nativeCoingeckoId: 'avalanche-2', nativeColorHex: '#E84142', hasNativeAsset: true,
+    circleDomain: 1, usdc: '0x5425890298aed601595a70AB815c96711a31Bc65' },
+
+  { chainId: 168587773n, name: 'Blast Sepolia', environment: 'testnet',
+    rpcUrl: 'https://sepolia.blast.io', explorerUrl: 'https://testnet.blastscan.io',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    blockscoutBase: 'https://blast-sepolia.blockscout.com' },
+
+  { chainId: 97n, name: 'BNB Testnet', environment: 'testnet',
+    rpcUrl: 'https://bsc-testnet-rpc.publicnode.com', explorerUrl: 'https://testnet.bscscan.com',
+    nativeSymbol: 'tBNB', nativeDecimals: 18, nativeCoingeckoId: 'binancecoin', nativeColorHex: '#F3BA2F', hasNativeAsset: true },
+
+  { chainId: 10200n, name: 'Gnosis Chiado', environment: 'testnet',
+    rpcUrl: 'https://gnosis-chiado-rpc.publicnode.com', explorerUrl: 'https://gnosis-chiado.blockscout.com',
+    nativeSymbol: 'XDAI', nativeDecimals: 18, nativeCoingeckoId: 'xdai', nativeColorHex: '#04795B', hasNativeAsset: true,
+    blockscoutBase: 'https://gnosis-chiado.blockscout.com' },
+
+  { chainId: 763373n, name: 'Ink Sepolia', environment: 'testnet',
+    rpcUrl: 'https://rpc-gel-sepolia.inkonchain.com', explorerUrl: 'https://explorer-sepolia.inkonchain.com',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    blockscoutBase: 'https://explorer-sepolia.inkonchain.com' },
+
+  { chainId: 59141n, name: 'Linea Sepolia', environment: 'testnet',
+    rpcUrl: 'https://linea-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.lineascan.build',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true },
+
+  { chainId: 5003n, name: 'Mantle Sepolia', environment: 'testnet',
+    rpcUrl: 'https://rpc.sepolia.mantle.xyz', explorerUrl: 'https://sepolia.mantlescan.xyz',
+    nativeSymbol: 'MNT', nativeDecimals: 18, nativeCoingeckoId: 'mantle', nativeColorHex: '#65B3AE', hasNativeAsset: true },
+
+  { chainId: 10143n, name: 'Monad Testnet', environment: 'testnet',
+    rpcUrl: 'https://testnet-rpc.monad.xyz', explorerUrl: 'https://testnet.monadexplorer.com',
+    nativeSymbol: 'MON', nativeDecimals: 18, nativeColorHex: '#836EF9', hasNativeAsset: true },
+
+  { chainId: 534351n, name: 'Scroll Sepolia', environment: 'testnet',
+    rpcUrl: 'https://scroll-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.scrollscan.com',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
+    blockscoutBase: 'https://scroll-sepolia.blockscout.com' },
+
+  { chainId: 300n, name: 'zkSync Sepolia', environment: 'testnet',
+    rpcUrl: 'https://sepolia.era.zksync.dev', explorerUrl: 'https://sepolia.explorer.zksync.io',
+    nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true },
+
   { chainId: 11155111n, name: 'Sepolia', environment: 'testnet',
     rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', explorerUrl: 'https://sepolia.etherscan.io',
     nativeSymbol: 'ETH', nativeDecimals: 18, ...ETH, hasNativeAsset: true,
