@@ -50,6 +50,14 @@ export default function GatewaySend() {
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
+  /**
+   * The amount the outcome below refers to.
+   *
+   * Not read live from the field: the receipt would then rewrite itself every
+   * time the user touched the amount afterwards, so "$1.50 left your balance"
+   * silently became "$1.00" when they tapped Max to see what was left.
+   */
+  const [sentAmount, setSentAmount] = useState(0);
   const [fault, setFault] = useState<string | null>(null);
   const amountRef = useRef<TextInput>(null);
 
@@ -179,6 +187,7 @@ export default function GatewaySend() {
         sources: perDomain,
       });
       setResult(r);
+      setSentAmount(value);
       // Charged at the burn, so it is owed whether or not the relay delivered.
       if (r.feeUsdc) noteFee(r.feeUsdc);
       if (r.ok) {
@@ -374,7 +383,7 @@ export default function GatewaySend() {
               <Text style={[styles.outcomeTitle, { color: theme.colors.success }]}>Delivered</Text>
               <Text style={styles.outcomeBody}>
                 {result.feeUsdc
-                  ? `${formatUsd(result.feeUsdc)} Circle fee — ${formatUsd(value + result.feeUsdc)} left your balance. ` +
+                  ? `${formatUsd(result.feeUsdc)} Circle fee — ${formatUsd(sentAmount + result.feeUsdc)} left your balance. ` +
                     `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`
                   : `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`}
               </Text>
@@ -391,7 +400,7 @@ export default function GatewaySend() {
                     refund it. Saying so here keeps the two outcomes honest in
                     the same way. */}
                 {result.feeUsdc
-                  ? `The transfer was signed and ${formatUsd(value + result.feeUsdc)} left your balance, including a ${formatUsd(result.feeUsdc)} Circle fee. It is held in a valid claim and will arrive once delivery retries.`
+                  ? `The transfer was signed and ${formatUsd(sentAmount + result.feeUsdc)} left your balance, including a ${formatUsd(result.feeUsdc)} Circle fee. It is held in a valid claim and will arrive once delivery retries.`
                   : 'The transfer was signed and the funds left your balance. They are held in a valid claim and will arrive once delivery retries.'}
               </Text>
             </View>
