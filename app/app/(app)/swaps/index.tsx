@@ -49,7 +49,7 @@ import {
   sourceAssets,
   type SwapAsset,
 } from '../../../src/lib/flashnetScope';
-import { formatCrypto, formatUnits, toBaseUnits } from '../../../src/lib/format';
+import { formatFee, formatCrypto, formatUnits, toBaseUnits } from '../../../src/lib/format';
 import { mapError } from '../../../src/lib/errors';
 import { fontFamily } from '../../../src/theme/fonts';
 
@@ -304,13 +304,13 @@ export default function Swaps() {
           <View style={styles.facts}>
             <Fact
               label="Fee"
-              value={`${formatUnits(est.totalFeeAmount ?? est.feeAmount, feeDecimals)} ${est.feeAsset}`}
+              value={`${formatFee(Number(formatUnits(est.totalFeeAmount ?? est.feeAmount, feeDecimals)))} ${est.feeAsset}`}
               sub={est.totalFeeAmountUsd ? `$${Number(est.totalFeeAmountUsd).toFixed(2)}` : undefined}
             />
             {est.networkCostRequired && !!est.networkCostAmount && (
               <Fact
                 label="Delivery"
-                value={`${formatUnits(est.networkCostAmount, feeDecimals)} ${est.networkCostAsset ?? ''}`}
+                value={`${formatFee(Number(formatUnits(est.networkCostAmount, feeDecimals)))} ${est.networkCostAsset ?? ''}`}
                 sub="account setup"
               />
             )}

@@ -21,7 +21,7 @@ import { retrySubmit } from '../../../src/bridge/flashnetSwap';
 import { SOURCE_CHAINS, type SwapAsset } from '../../../src/lib/flashnetScope';
 import { FlashnetAssetIcon } from '../../../src/components/FlashnetAssetIcon';
 import { chainExplorer } from '../../../src/lib/chains';
-import { formatUnits, shortenAddress } from '../../../src/lib/format';
+import { formatFee, formatUnits, shortenAddress } from '../../../src/lib/format';
 import { mapError } from '../../../src/lib/errors';
 import { fontFamily } from '../../../src/theme/fonts';
 
@@ -194,7 +194,7 @@ export default function SwapOrder() {
           {!!swap.feeAmount && (
             <Row
               label="Fee"
-              value={`${formatUnits(swap.feeAmount, swap.source.decimals)} ${swap.feeAsset ?? swap.source.symbol}`}
+              value={`${formatFee(Number(formatUnits(swap.feeAmount, swap.source.decimals)))} ${swap.feeAsset ?? swap.source.symbol}`}
             />
           )}
           <Row label="Recipient" value={shortenAddress(swap.recipientAddress, 8, 8)} onCopy={() => copy(swap.recipientAddress, 'Recipient address')} />

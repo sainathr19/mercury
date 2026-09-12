@@ -31,7 +31,7 @@ import { sendBtc } from './transfer';
 import { rpcUrlFor, sendCall, waitForReceipt } from './evmTx';
 import { getActiveAccount } from './account';
 import { requireAuth, authFailureMessage } from '../lib/biometrics';
-import { formatUnits, toBaseUnits } from '../lib/format';
+import { formatCrypto, formatUnits, toBaseUnits } from '../lib/format';
 import { recipientFor, type SwapAsset } from '../lib/gardenScope';
 import { useGardenSwaps, type GardenLeg, type GardenSwapRecord } from '../stores/gardenSwapStore';
 import type { ChainEnvironment } from '../lib/chains';
@@ -226,8 +226,8 @@ export function checkAmount(source: SwapAsset, amountHuman: string): string | nu
   if (units <= 0n) return 'Enter an amount.';
   const min = BigInt(source.minAmount);
   const max = BigInt(source.maxAmount);
-  if (units < min) return `Minimum is ${formatUnits(source.minAmount, source.decimals)} ${source.symbol}.`;
-  if (units > max) return `Maximum is ${formatUnits(source.maxAmount, source.decimals)} ${source.symbol}.`;
+  if (units < min) return `Minimum is ${formatCrypto(Number(formatUnits(source.minAmount, source.decimals)))} ${source.symbol}.`;
+  if (units > max) return `Maximum is ${formatCrypto(Number(formatUnits(source.maxAmount, source.decimals)))} ${source.symbol}.`;
   return null;
 }
 

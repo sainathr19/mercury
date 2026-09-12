@@ -137,3 +137,22 @@ describe('withSwaps', () => {
     expect(out.map((i) => i.id)).toContain('0xaaa');
   });
 });
+
+describe('a swap row fits the card', () => {
+  // The row that prompted this: an 18-decimal output rendered exactly as
+  // "+0.005870704924500982 ETH", which ran past the edge and pushed the symbol
+  // off the card. Every other row in the feed goes through a bounded formatter.
+  it('does not render every decimal of an 18dp asset', () => {
+    const item = gardenSwapActivity(
+      garden({ amountOut: '5870704924500982', destination: { id: 'eth', symbol: 'ETH', chainName: 'Sepolia', decimals: 18 } }),
+    );
+    expect(item.amountText).not.toContain('0.005870704924500982');
+    expect((item.amountText ?? '').length).toBeLessThanOrEqual(18);
+  });
+
+  it('still shows a small amount rather than collapsing it to zero', () => {
+    // An amount the user holds must never read as "0" beside a dollar value.
+    const item = gardenSwapActivity(garden({ amountOut: '19334' }));
+    expect(item.amountText).not.toMatch(/\+0 /);
+  });
+});

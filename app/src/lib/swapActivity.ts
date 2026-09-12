@@ -15,6 +15,33 @@ import type { ActivityItem } from '../bridge/activity';
 import { coingeckoId } from '../bridge/portfolio';
 import { colorForSymbol } from './asset-color';
 import { formatUnits } from './format';
+
+/**
+ * A swap leg, sized for a row without misstating it.
+ *
+ * `formatUnits` is exact, and exact on an 18-decimal asset is
+ * "0.005870704924500982" — nineteen characters that run past the edge of the
+ * card and push the symbol off it.
+ *
+ * `formatCrypto` is the app's usual bound, but it is wrong HERE: it rounds to
+ * four decimals, which turns a 0.00025 BTC swap into "0.0003 BTC". A balance
+ * may round, because the exact figure is a tap away. An amount received may
+ * not — this row is the record of what the swap actually paid out.
+ *
+ * So: cap the decimals at the asset's own precision or eight, whichever is
+ * smaller, and trim the zeros that leaves. Long amounts get shorter, short ones
+ * are untouched, and nothing is rounded up into a number the user did not get.
+ */
+const legAmount = (units: string, decimals: number): string => {
+  const n = Number(formatUnits(units, decimals));
+  if (!Number.isFinite(n)) return '0';
+  if (n === Math.floor(n)) return String(n);
+  if (n >= 100) return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const capped = n.toFixed(Math.min(decimals, 8)).replace(/0+$/, '').replace(/\.$/, '');
+  // Below the cap entirely — say so rather than showing a zero for money that
+  // moved.
+  return capped === '0' ? '<0.00000001' : capped;
+};
 import { isPending as flashnetPending, type SwapRecord } from '../stores/swapStore';
 import { type GardenSwapRecord } from '../stores/gardenSwapStore';
 
@@ -56,8 +83,8 @@ export function flashnetSwapActivity(r: SwapRecord): ActivityItem {
     fromCoingeckoId: src.coingeckoId,
     fromColorHex: src.colorHex,
     label: `${r.source.chainName} → ${r.destination.chainName}`,
-    amountText: `+${formatUnits(r.estimatedOut, r.destination.decimals)} ${r.destination.symbol}`,
-    secondaryAmountText: `−${formatUnits(r.amountIn, r.source.decimals)} ${r.source.symbol}`,
+    amountText: `+${legAmount(r.estimatedOut, r.destination.decimals)} ${r.destination.symbol}`,
+    secondaryAmountText: `−${legAmount(r.amountIn, r.source.decimals)} ${r.source.symbol}`,
     // Deliberately blank: we do not price either leg at swap time, and a "$0.00"
     // would read as a worthless transaction rather than an unpriced one.
     usdText: '',
@@ -86,8 +113,8 @@ export function gardenSwapActivity(r: GardenSwapRecord): ActivityItem {
     fromCoingeckoId: src.coingeckoId,
     fromColorHex: src.colorHex,
     label: `${r.source.chainName} → ${r.destination.chainName}`,
-    amountText: `+${formatUnits(r.amountOut, r.destination.decimals)} ${r.destination.symbol}`,
-    secondaryAmountText: `−${formatUnits(r.amountIn, r.source.decimals)} ${r.source.symbol}`,
+    amountText: `+${legAmount(r.amountOut, r.destination.decimals)} ${r.destination.symbol}`,
+    secondaryAmountText: `−${legAmount(r.amountIn, r.source.decimals)} ${r.source.symbol}`,
     usdText: '',
     sourceTxId: r.fundTxHash,
     timestamp: seconds(r.createdAt),
