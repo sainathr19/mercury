@@ -14,13 +14,22 @@
 // "insufficient liquidity". Measured with a valid app id — a bogus one returns
 // 401, so the key is not the obstacle.
 //
-// So `fundingPlan` reads the order response DEFENSIVELY and refuses whenever it
-// cannot find what it needs, rather than guessing at field names or encoding an
-// HTLC call from a shape nobody has seen. A swap that declines to start costs
-// the user nothing; one that funds the wrong address costs them the swap.
+// UPDATE: the order response HAS now been observed. With a valid app id and a
+// route that quotes (arbitrum_sepolia:usdc -> ethereum_sepolia:eth), POST
+// /v2/orders returns 200 with `order_id`, `approval_transaction`,
+// `initiate_transaction` and a `typed_data` payload for Garden's gasless path.
+// The calls come ready to broadcast, so EVM funding needs no ABI encoding and is
+// no longer a guess. Solana is still unobserved and still refused.
+//
+// `fundingPlan` still reads the response DEFENSIVELY and refuses whenever it
+// cannot find what it needs, or when the pieces disagree with each other. A swap
+// that declines to start costs the user nothing; one that funds the wrong
+// address costs them the swap.
 import type { WalletInterface } from 'mercury-wallet-core';
 import { createOrder, quote, GardenError, gardenErrorMessage, type GardenOrder } from './garden';
 import { sendBtc } from './transfer';
+import { rpcUrlFor, sendCall, waitForReceipt } from './evmTx';
+import { getActiveAccount } from './account';
 import { requireAuth, authFailureMessage } from '../lib/biometrics';
 import { formatUnits, toBaseUnits } from '../lib/format';
 import { recipientFor, type SwapAsset } from '../lib/gardenScope';
@@ -37,10 +46,37 @@ function leg(a: SwapAsset): GardenLeg {
   };
 }
 
+/** One call to broadcast, taken verbatim from Garden's order response. */
+export interface EvmCall {
+  to: string;
+  data: string;
+}
+
 /** How the source side gets funded, or why it cannot be. */
 export type FundingPlan =
   | { kind: 'transfer'; family: 'btc'; to: string; amountHuman: string }
+  | { kind: 'evm'; chainId: bigint; approval?: EvmCall; initiate: EvmCall }
   | { kind: 'refused'; reason: string };
+
+const HEX = /^0x[0-9a-fA-F]*$/;
+const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/** `approve(address,uint256)` — the spender is the first word of the calldata. */
+const APPROVE_SELECTOR = '0x095ea7b3';
+function approveSpender(data: string): string | null {
+  // selector (10 chars incl. 0x) + a 32-byte word, of which the last 20 bytes
+  // are the address.
+  if (data.length < 74 || !data.toLowerCase().startsWith(APPROVE_SELECTOR)) return null;
+  return `0x${data.slice(34, 74)}`;
+}
+
+function evmCall(tx: unknown): EvmCall | null {
+  if (!tx || typeof tx !== 'object') return null;
+  const t = tx as { to?: unknown; data?: unknown };
+  if (typeof t.to !== 'string' || typeof t.data !== 'string') return null;
+  if (!HEX.test(t.to) || t.to.length !== 42 || !HEX.test(t.data)) return null;
+  return { to: t.to, data: t.data };
+}
 
 /**
  * Where to send the source funds, read out of Garden's order response.
@@ -49,20 +85,77 @@ export type FundingPlan =
  * per-order HTLC address and the swap begins when it is paid. That is a shape
  * this wallet already implements and can reason about.
  *
- * EVM and Solana sources are NOT, and deliberately are not attempted. Their
- * HTLCs are funded by calling a contract with a secret hash and a timelock, and
- * Garden returns the transactions to sign inside the order response — a shape
- * that could not be observed, because no route on either network will produce an
- * order. Encoding that call from the documentation alone would be exactly the
- * kind of unverified guess that moves money to the wrong place.
+ * EVM sources are funded by calling an HTLC contract with a secret hash and a
+ * timelock. Nothing here encodes that call: Garden returns `approval_transaction`
+ * and `initiate_transaction` ready to broadcast, so this only has to check them
+ * and pass them on. That is the whole reason it can be attempted — an earlier
+ * build refused precisely because this response could not be observed, and
+ * encoding an HTLC from documentation is how funds reach the wrong contract.
+ *
+ * Checked, because "Garden said so" is not a reason to approve a contract:
+ *
+ *   • the initiate call is on the chain the source asset actually lives on;
+ *   • the approval spends the token we think we are spending;
+ *   • the approval's SPENDER is the very contract the initiate call goes to.
+ *
+ * The last one is the load-bearing check. An approval is the only step here that
+ * hands a third party ongoing authority over a balance, and a response that
+ * approved one address while calling another would be doing something other than
+ * what it claimed. Any mismatch refuses, which costs a swap and nothing else.
+ *
+ * Solana sources remain refused: its funding instruction is not an EVM call and
+ * none of this applies.
  */
 export function fundingPlan(order: GardenOrder, source: SwapAsset, amountIn: string): FundingPlan {
+  if (source.family === 'evm') {
+    const initiate = evmCall(order.initiate_transaction);
+    if (!initiate) {
+      return { kind: 'refused', reason: 'Garden did not return an initiate transaction for this order.' };
+    }
+    const chainId = source.evmChainId;
+    if (chainId === undefined) {
+      return { kind: 'refused', reason: `No chain id is known for ${source.chainName}.` };
+    }
+    const said = order.initiate_transaction?.chain_id;
+    if (said !== undefined && BigInt(said) !== chainId) {
+      return {
+        kind: 'refused',
+        reason: `Garden returned a transaction for chain ${said}, not ${source.chainName}.`,
+      };
+    }
+
+    const approval = evmCall(order.approval_transaction);
+    if (approval) {
+      // A native coin has no token to approve, so an approval for one is a
+      // contradiction rather than a spare step.
+      if (!source.tokenAddress) {
+        return { kind: 'refused', reason: `${source.symbol} needs no approval, but Garden returned one.` };
+      }
+      if (!same(approval.to, source.tokenAddress)) {
+        return {
+          kind: 'refused',
+          reason: `Garden asked to approve a contract that is not ${source.symbol}.`,
+        };
+      }
+      const spender = approveSpender(approval.data);
+      if (!spender || !same(spender, initiate.to)) {
+        return {
+          kind: 'refused',
+          reason: 'Garden asked to approve a different contract than the one it wants called.',
+        };
+      }
+    }
+
+    return { kind: 'evm', chainId, approval: approval ?? undefined, initiate };
+  }
+
   if (source.family !== 'btc') {
     return {
       kind: 'refused',
       reason:
-        `Funding a ${source.chainName} swap needs Garden's initiate transaction, which this ` +
-        `build does not yet encode. Swaps out of Bitcoin work; swaps out of ${source.symbol} do not.`,
+        `Funding a ${source.chainName} swap needs Garden's initiate instruction, which this ` +
+        `build does not yet encode. Swaps out of Bitcoin and EVM chains work; ` +
+        `swaps out of ${source.symbol} do not.`,
     };
   }
   // Every plausible spelling, because the response shape is unobserved and a
@@ -81,6 +174,35 @@ export function fundingPlan(order: GardenOrder, source: SwapAsset, amountIn: str
     };
   }
   return { kind: 'transfer', family: 'btc', to, amountHuman: formatUnits(amountIn, source.decimals) };
+}
+
+/**
+ * Broadcast Garden's two calls, in order.
+ *
+ * The approval must be MINED before the initiate is sent, not merely broadcast:
+ * the HTLC pulls the tokens during initiate, and a node that has not yet seen
+ * the approval reverts the transfer. Waiting costs a block; not waiting costs
+ * the gas of a failed initiate and leaves the order unfunded.
+ *
+ * Returns the initiate hash — the transaction that actually funds the swap and
+ * the one worth showing.
+ */
+async function fundEvm(
+  wallet: WalletInterface,
+  plan: Extract<FundingPlan, { kind: 'evm' }>,
+  owner: string,
+): Promise<string> {
+  const url = rpcUrlFor(plan.chainId);
+  if (!url) throw new Error('No RPC is configured for that network.');
+  const account = getActiveAccount();
+
+  if (plan.approval) {
+    const hash = await sendCall(wallet, account, plan.chainId, url, owner, plan.approval.to, plan.approval.data);
+    if (!(await waitForReceipt(url, hash))) {
+      throw new Error('The token approval did not confirm, so the swap was not funded.');
+    }
+  }
+  return sendCall(wallet, account, plan.chainId, url, owner, plan.initiate.to, plan.initiate.data);
 }
 
 export interface GardenSwapRequest {
@@ -195,14 +317,24 @@ export async function createGardenSwap(req: GardenSwapRequest): Promise<GardenSw
     throw new Error(plan.reason);
   }
 
-  store.patch(id, { status: 'funding', htlcAddress: plan.to });
+  store.patch(id, {
+    status: 'funding',
+    htlcAddress: plan.kind === 'transfer' ? plan.to : plan.initiate.to,
+  });
 
   try {
-    const res = await sendBtc(wallet, plan.to, plan.amountHuman);
-    store.patch(id, { status: 'pending', fundTxHash: res.id });
+    if (plan.kind === 'transfer') {
+      const res = await sendBtc(wallet, plan.to, plan.amountHuman);
+      store.patch(id, { status: 'pending', fundTxHash: res.id });
+    } else {
+      const fundTxHash = await fundEvm(wallet, plan, owner);
+      store.patch(id, { status: 'pending', fundTxHash });
+    }
   } catch (e) {
-    // The transfer never broadcast, so the HTLC is unfunded and the order simply
-    // expires. Retryable, and nothing is stranded.
+    // Nothing broadcast, or the approval did and the initiate did not — either
+    // way the HTLC is unfunded and the order expires. An approval left standing
+    // grants the HTLC an allowance it never draws on, which is the same position
+    // every approve-then-act flow leaves behind.
     store.patch(id, {
       status: 'fund_failed',
       error: e instanceof Error ? e.message : 'Could not fund the swap.',

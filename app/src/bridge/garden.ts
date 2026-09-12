@@ -329,6 +329,21 @@ export interface GardenSwapLeg {
   [k: string]: unknown;
 }
 
+/**
+ * An unsigned transaction Garden wants broadcast, exactly as it returns one.
+ *
+ * Observed, not assumed: `{to, value, data, gas_limit, chain_id}` on both the
+ * approval and the initiate leg of an EVM order.
+ */
+export interface GardenEvmTx {
+  to?: string;
+  value?: string;
+  data?: string;
+  gas_limit?: string;
+  chain_id?: number;
+  [k: string]: unknown;
+}
+
 export interface GardenOrder {
   /** Garden calls this `order_id` in the docs and returns `create_id` on some
    *  responses; both are carried so a caller never has to guess. */
@@ -338,6 +353,15 @@ export interface GardenOrder {
   destination_swap?: GardenSwapLeg;
   /** Unsigned transactions for non-UTXO sources, when Garden supplies them. */
   transactions?: unknown;
+  /**
+   * EVM sources. Garden returns the calls ready to sign rather than describing
+   * them, so funding one requires no ABI encoding on our side — which is what
+   * made this path implementable at all (see gardenSwap.fundingPlan).
+   */
+  approval_transaction?: GardenEvmTx;
+  initiate_transaction?: GardenEvmTx;
+  /** EIP-712 `Initiate` payload for Garden's gasless submission path. */
+  typed_data?: unknown;
   status?: string;
   [k: string]: unknown;
 }

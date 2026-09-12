@@ -1,7 +1,11 @@
 /**
- * The funding decision is the dangerous one: it chooses where money goes. These
- * tests pin that it REFUSES whenever the order response is not what it expects,
- * because the response shape could not be observed against the live API.
+ * The funding decision is the dangerous one: it chooses where money goes, and on
+ * an EVM source it also chooses what to grant an allowance to.
+ *
+ * The EVM fixtures below are a REAL order response, captured from
+ * POST /v2/orders on arbitrum_sepolia:usdc -> ethereum_sepolia:eth. The
+ * addresses and calldata are verbatim, so these tests pin behaviour against what
+ * Garden actually returns rather than against a shape we imagined.
  */
 jest.mock('./garden', () => ({
   ...jest.requireActual('./garden'),
@@ -39,6 +43,96 @@ const WBTC: SwapAsset = {
   htlcAddress: '0xd1e0ba2b165726b3a6051b765d4564d030fdcf50',
 };
 
+// ── Captured from a live order ───────────────────────────────────────────────
+const HTLC = '0xf2f4aa8a5451af9aa881e54662f25f41d8d22331';
+const ARB_USDC = '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d';
+/** approve(HTLC, uint256max) */
+const APPROVE_DATA =
+  '0x095ea7b3000000000000000000000000f2f4aa8a5451af9aa881e54662f25f41d8d22331' +
+  'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+const INITIATE_DATA =
+  '0x97ffc7ae0000000000000000000000001fd1f7b5c6e4e7b9f80a4db17903afd83d3fd31d';
+
+const ARB_USDC_ASSET: SwapAsset = {
+  id: 'arbitrum_sepolia:usdc',
+  symbol: 'USDC',
+  name: 'USD Coin',
+  family: 'evm',
+  evmChainId: 421614n,
+  chainName: 'Arbitrum Sepolia',
+  decimals: 6,
+  minAmount: '15000000',
+  maxAmount: '50000000',
+  tokenAddress: ARB_USDC,
+};
+
+const liveOrder = (over: Partial<GardenOrder> = {}): GardenOrder => ({
+  order_id: 'fe779b5d',
+  approval_transaction: { to: ARB_USDC, value: '0x0', data: APPROVE_DATA, chain_id: 421614 },
+  initiate_transaction: { to: HTLC, value: '0x0', data: INITIATE_DATA, chain_id: 421614 },
+  ...over,
+});
+
+describe('fundingPlan funds an EVM source from Garden’s own calls', () => {
+  it('passes both calls through verbatim', () => {
+    const plan = fundingPlan(liveOrder(), ARB_USDC_ASSET, '20000000');
+    expect(plan.kind).toBe('evm');
+    if (plan.kind !== 'evm') return;
+    expect(plan.chainId).toBe(421614n);
+    expect(plan.initiate.to).toBe(HTLC);
+    expect(plan.initiate.data).toBe(INITIATE_DATA);
+    expect(plan.approval?.to).toBe(ARB_USDC);
+  });
+
+  it('refuses when the approval spends a token that is not the source', () => {
+    // Otherwise Garden could have us approve any contract it liked.
+    const plan = fundingPlan(
+      liveOrder({ approval_transaction: { to: '0x' + '11'.repeat(20), data: APPROVE_DATA, chain_id: 421614 } }),
+      ARB_USDC_ASSET,
+      '20000000',
+    );
+    expect(plan.kind).toBe('refused');
+    if (plan.kind === 'refused') expect(plan.reason).toMatch(/not USDC/i);
+  });
+
+  it('refuses when the approval’s spender is not the contract being called', () => {
+    // The load-bearing check: approve one address, call another.
+    const elsewhere =
+      '0x095ea7b3' + '0'.repeat(24) + 'dead'.repeat(10) + 'f'.repeat(64);
+    const plan = fundingPlan(
+      liveOrder({ approval_transaction: { to: ARB_USDC, data: elsewhere, chain_id: 421614 } }),
+      ARB_USDC_ASSET,
+      '20000000',
+    );
+    expect(plan.kind).toBe('refused');
+    if (plan.kind === 'refused') expect(plan.reason).toMatch(/different contract/i);
+  });
+
+  it('refuses a transaction for the wrong chain', () => {
+    const plan = fundingPlan(
+      liveOrder({ initiate_transaction: { to: HTLC, data: INITIATE_DATA, chain_id: 1 } }),
+      ARB_USDC_ASSET,
+      '20000000',
+    );
+    expect(plan.kind).toBe('refused');
+    if (plan.kind === 'refused') expect(plan.reason).toMatch(/chain 1/);
+  });
+
+  it('refuses when there is no initiate transaction to send', () => {
+    const plan = fundingPlan(liveOrder({ initiate_transaction: undefined }), ARB_USDC_ASSET, '20000000');
+    expect(plan.kind).toBe('refused');
+    if (plan.kind === 'refused') expect(plan.reason).toMatch(/initiate transaction/i);
+  });
+
+  it('refuses malformed calldata rather than broadcasting it', () => {
+    for (const bad of [{ to: HTLC, data: 'not-hex' }, { to: 'nope', data: INITIATE_DATA }]) {
+      expect(fundingPlan(liveOrder({ initiate_transaction: bad }), ARB_USDC_ASSET, '20000000').kind).toBe(
+        'refused',
+      );
+    }
+  });
+});
+
 describe('fundingPlan refuses what it cannot verify', () => {
   it('funds a Bitcoin source from the order’s HTLC address', () => {
     const order: GardenOrder = { source_swap: { asset: BTC.id, htlc_address: 'tb1qhtlc' } };
@@ -60,23 +154,15 @@ describe('fundingPlan refuses what it cannot verify', () => {
     expect(fundingPlan({}, BTC, '100000').kind).toBe('refused');
   });
 
-  it('refuses an EVM source, and says which swaps do work', () => {
-    // Funding an EVM HTLC needs Garden's initiate transaction, whose shape no
-    // live route would produce. Guessing it is how money reaches a wrong address.
-    const order: GardenOrder = { source_swap: { asset: WBTC.id, htlc_address: '0xsomething' } };
+  it('never turns an EVM source into a plain transfer', () => {
+    // The trap this has always guarded, and still must: source_swap.htlc_address
+    // IS populated for EVM too, and paying it directly would lose the money —
+    // an HTLC has to be INITIATED, not paid. With no initiate transaction in the
+    // response there is nothing to send, so this refuses rather than falling
+    // back to the address.
+    const order: GardenOrder = { source_swap: { asset: WBTC.id, htlc_address: '0xd1e0ba2b' } };
     const plan = fundingPlan(order, WBTC, '100000');
     expect(plan.kind).toBe('refused');
-    if (plan.kind !== 'refused') return;
-    expect(plan.reason).toContain('Base Sepolia');
-    expect(plan.reason).toMatch(/Bitcoin/);
-  });
-
-  it('does not fund an EVM source even when an address is present', () => {
-    // The trap this guards: source_swap.htlc_address IS populated for EVM too,
-    // and a plain transfer to it would be lost — an HTLC has to be initiated,
-    // not paid.
-    const order: GardenOrder = { source_swap: { htlc_address: '0xd1e0ba2b' } };
-    expect(fundingPlan(order, WBTC, '100000').kind).toBe('refused');
   });
 });
 
