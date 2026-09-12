@@ -3,6 +3,7 @@ import { getActiveEnvironment } from './activeEnv';
 import { btcExplorerTxUrl, solExplorerTxUrl } from './explorers';
 import { BLOCKSCOUT_BASES, mapEvmActivity, type RawEvmTx, type RawEvmTokenTx } from '../lib/evm-activity';
 import { graphActivity, graphCoversChain } from './graph';
+import { explorerCoversChain, explorerHistory } from './explorer';
 import { chainsForEnvironment } from '../lib/chains';
 import { tokenSymbol } from '../lib/tokenText';
 
@@ -248,21 +249,44 @@ export async function loadEvmActivity(
     if (viaGraph.length) return viaGraph;
   }
 
+  // Blockscout next — keyless and unmetered, so it is the right default even
+  // though it is the less reliable of the two. `null` here means the instance
+  // could not answer (down, or none deployed), NOT that the address is quiet;
+  // only the difference between those lets us decide whether to fall back.
+  const rows = (await blockscoutHistory(address, chainId)) ?? (await explorerHistory(address, chainId));
+  if (!rows) return [];
+  return mapEvmActivity({ address, chainId, native: rows.native, tokens: rows.tokens, ethPrice, priceOf });
+}
+
+/**
+ * Etherscan-compatible history straight from a Blockscout instance.
+ *
+ * Returns null when the instance could not answer at all. Blockscout has been
+ * observed returning 503 for hours at a time (arbitrum-sepolia), 429 under
+ * light load (gnosis-chiado) and 404 for instances that moved (scroll, blast) —
+ * so "no answer" is a routine state here, not an exceptional one, and the
+ * caller has a fallback precisely because of it.
+ */
+async function blockscoutHistory(
+  address: string,
+  chainId: bigint,
+): Promise<{ native: RawEvmTx[]; tokens: RawEvmTokenTx[] } | null> {
   const base = BLOCKSCOUT_BASES[chainId.toString()];
-  if (!base) return [];
-  async function query<T>(action: 'txlist' | 'tokentx'): Promise<T[]> {
+  if (!base) return null;
+  async function query<T>(action: 'txlist' | 'tokentx'): Promise<T[] | null> {
     try {
       const url = `${base}/api?module=account&action=${action}&address=${address}&sort=desc&page=1&offset=25`;
       const res = await fetch(url);
-      if (!res.ok) return [];
+      if (!res.ok) return null;
       const json = (await res.json()) as { result?: unknown };
-      return Array.isArray(json.result) ? (json.result as T[]) : [];
+      return Array.isArray(json.result) ? (json.result as T[]) : null;
     } catch {
-      return [];
+      return null;
     }
   }
   const [native, tokens] = await Promise.all([query<RawEvmTx>('txlist'), query<RawEvmTokenTx>('tokentx')]);
-  return mapEvmActivity({ address, chainId, native, tokens, ethPrice, priceOf });
+  if (native === null && tokens === null) return null;
+  return { native: native ?? [], tokens: tokens ?? [] };
 }
 
 /** Prices needed to value historical transactions (current spot, best-effort). */
@@ -296,7 +320,9 @@ export interface ActivityPrices {
  */
 function evmChainsToScan(activeChainId: bigint): bigint[] {
   const readable = (c: { chainId: bigint }) =>
-    graphCoversChain(c.chainId) || !!BLOCKSCOUT_BASES[c.chainId.toString()];
+    graphCoversChain(c.chainId) ||
+    !!BLOCKSCOUT_BASES[c.chainId.toString()] ||
+    explorerCoversChain(c.chainId);
   const others = chainsForEnvironment(getActiveEnvironment())
     .filter((c) => c.chainId !== activeChainId && readable(c))
     .map((c) => c.chainId);

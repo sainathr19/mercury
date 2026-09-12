@@ -57,7 +57,38 @@ Runs as a container; see `hub/README.md` and the root `docker-compose.yml`.
 | `POST /names/claim-message` | | The exact bytes to sign. Served rather than rebuilt in the app, because two implementations of one string format drift. |
 | `POST /names/sponsor` | **yes** | Registers a subname. Requires the caller's signature — see below. |
 | `POST /gateway/relay` | **yes** | Submits a Circle attestation on the destination chain. |
-| `GET /index/*` | | Proxies The Graph. A fixed set of shapes, validated parameters. |
+| `GET /index/token/*`, `/index/arc/*` | | Proxies The Graph. A fixed set of shapes, validated parameters. |
+| `GET /index/explorer/:action` | | Proxies Etherscan V2 for `txlist`/`tokentx`. The fallback under Blockscout. |
+
+### Why history needs two sources
+
+The app tries The Graph, then Blockscout, then this proxy. Blockscout sits ahead
+of Etherscan deliberately — it is keyless and unmetered, and it covers chains
+Etherscan does not (Ink, Scroll, Gnosis Chiado). What it is not is dependable.
+
+A survey of the 22 testnets this wallet supports found **5** with a reachable
+history source: four Blockscout instances answering 503/429/404 and thirteen
+chains with no explorer configured at all. Arbitrum Sepolia was among the dead
+ones, and it is a Circle domain — a Gateway send delivers real money there. The
+balance rendered correctly, because balances come from RPC; the matching
+"Received" row never appeared, because a **native transfer emits no logs** and
+there is nothing for `eth_getLogs` to find. Only an indexer sees it.
+
+`ETHERSCAN_API_KEY` closes that gap for 22 of our chains from one free key. It
+is optional: unset means Blockscout-only, which is the behaviour that shipped
+before, not a failure.
+
+Two properties the proxy is built around:
+
+- **An empty array is an answer; a failure is not.** Every fault path returns a
+  non-array `result`, because `result: []` from a socket hang-up is the wallet
+  asserting "you have no transactions" on the strength of a request that never
+  arrived. A rejected key answers 503 so the app retires the source for the
+  session instead of re-asking once per chain per scan.
+- **The rate limit is per key, and every app instance shares ours.** One wallet
+  opening its history is two calls per chain across a dozen chains, which alone
+  exceeds the 5/s free tier. Calls are spaced in the hub, so no client can burn
+  the shared quota.
 
 ### Why `/gateway/relay` is unauthenticated and `/names/sponsor` is not
 

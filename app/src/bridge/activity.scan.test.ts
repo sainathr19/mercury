@@ -11,9 +11,15 @@ jest.mock('../lib/biometrics', () => ({ requireAuth: jest.fn(), authFailureMessa
 import { chainsForEnvironment, chainUsdc } from '../lib/chains';
 import { BLOCKSCOUT_BASES } from '../lib/evm-activity';
 import { graphCoversChain } from './graph';
+import { etherscanIndexes } from './explorer';
 
 /** Mirrors `evmChainsToScan` — exported indirectly through loadActivity. */
 const readable = (chainId: bigint) =>
+  graphCoversChain(chainId) || !!BLOCKSCOUT_BASES[chainId.toString()] || etherscanIndexes(chainId);
+
+/** The same question without the keyed fallback: what a deployment sees when
+ *  the operator sets no ETHERSCAN_API_KEY on the hub. */
+const readableKeyless = (chainId: bigint) =>
   graphCoversChain(chainId) || !!BLOCKSCOUT_BASES[chainId.toString()];
 
 describe('every chain the wallet can hold money on is readable', () => {
@@ -41,14 +47,27 @@ describe('every chain the wallet can hold money on is readable', () => {
     });
   }
 
-  it('records which chains have no history source, so the gap is visible', () => {
-    // Not a failure — a fact worth keeping in front of us. These chains show a
-    // balance but no rows until they gain an indexer.
+  it('every Circle domain now has SOME history source', () => {
+    // Was ['Avalanche Fuji', 'Polygon Amoy', 'World Chain Sepolia'] — three
+    // chains that could receive a Gateway delivery and then show a balance with
+    // no row to explain it. Etherscan's V2 API indexes all three, which is why
+    // the explorer fallback exists.
     const noHistory = chainsForEnvironment('testnet')
       .filter((c) => c.circleDomain !== undefined && !readable(c.chainId))
       .map((c) => c.name)
       .sort();
-    expect(noHistory).toEqual(['Avalanche Fuji', 'Polygon Amoy', 'World Chain Sepolia']);
+    expect(noHistory).toEqual([]);
+  });
+
+  it('records which chains depend on the hub having an explorer key', () => {
+    // Not a failure — the gap that remains when no ETHERSCAN_API_KEY is set.
+    // Keeping it visible stops "we added a fallback" from being mistaken for
+    // "every deployment has one".
+    const keyedOnly = chainsForEnvironment('testnet')
+      .filter((c) => c.circleDomain !== undefined && !readableKeyless(c.chainId))
+      .map((c) => c.name)
+      .sort();
+    expect(keyedOnly).toEqual(['Avalanche Fuji', 'Polygon Amoy', 'World Chain Sepolia']);
   });
 
   it('testnet covers more than just Arc and the active chain', () => {

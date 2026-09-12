@@ -5,7 +5,7 @@ import { relayMint, relayerStatus } from './relay.js';
 import { CHAINS_BY_ENV, type RelayEnvironment } from './chains.js';
 import { claimMessage, sponsorRegister, type SponsorConfig } from './sponsor.js';
 import { Budget, policyFromEnv } from './budget.js';
-import { indexProxy, indexProxyConfigured } from './indexProxy.js';
+import { indexProxy, indexProxyConfigured, explorerProxyConfigured, explorerChainCount } from './indexProxy.js';
 import { storageStatus } from './storage.js';
 
 const RELAYER_KEY = process.env.RELAYER_PRIVATE_KEY as Hex | undefined;
@@ -250,6 +250,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 console.log(`mercury hub on ${HOST}:${PORT}  relayer=${RELAYER_KEY ? 'configured' : 'MISSING'}`);
 console.log(`  names: ${sponsorConfig() ? `sponsoring ${ENS_PARENT} via ${REGISTRY}` : 'NOT sponsoring (set ENS_REGISTRY)'}`);
 console.log(`  index: ${indexProxyConfigured() ? 'proxying The Graph' : 'NOT configured (set TOKEN_API_JWT / ARC_SUBGRAPH_URL)'}`);
+console.log(`  explorer: ${explorerProxyConfigured() ? `proxying Etherscan V2 (${explorerChainCount()} chains)` : 'NOT configured (set ETHERSCAN_API_KEY) — Blockscout only'}`);
 {
   const s = storageStatus();
   if (!s.writable) {
