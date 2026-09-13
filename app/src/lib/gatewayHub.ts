@@ -97,14 +97,34 @@ export const gasIsUsdc = (chain: ChainDef): boolean => chain.nativeSymbol === 'U
  *
  * `feeUsdc` is the previous charge, not a quote: Circle prices a transfer only
  * in answer to a signed burn intent, so nothing better exists before the user
- * commits. Zero (no send yet) reproduces the old behaviour rather than
- * inventing a reserve.
+ * commits. Zero (no send yet) reserves nothing rather than inventing a figure.
+ *
+ * It is a WEAK predictor, and the reserve is capped because of it. The same
+ * route was observed charging 1.00 USDC once and 0.0035 the next time — three
+ * orders of magnitude apart — so one past charge held as a hard ceiling locks
+ * people out of their own balance: with 0.50 spendable and 1.00 remembered,
+ * Max offered 0.00 and the button went dead, while the real fee that day was
+ * 0.0035 and roughly 0.49 was perfectly sendable.
+ *
+ * The two ways to be wrong are not symmetric:
+ *
+ *   Reserve too much → the button is disabled with nothing said. The balance
+ *                      is visible, spendable in truth, and unreachable.
+ *   Reserve too little → the allocator comes up short and the send stops at
+ *                      "Not enough spendable balance", BEFORE any burn intent
+ *                      is signed. Nothing has moved; the user lowers it.
+ *
+ * A visible, recoverable failure beats a silent lockout, so the reserve never
+ * takes more than half — Max always offers something when there is something
+ * to send, and an over-large estimate costs a retry instead of the balance.
  *
  * Floored to cents because the contract works in 6dp but a figure that cannot
  * be typed back into the field is not a usable Max.
  */
 export function maxSendable(spendable: number, feeUsdc: number): number {
-  const room = spendable - (Number.isFinite(feeUsdc) && feeUsdc > 0 ? feeUsdc : 0);
+  if (!Number.isFinite(spendable) || spendable <= 0) return 0;
+  const fee = Number.isFinite(feeUsdc) && feeUsdc > 0 ? feeUsdc : 0;
+  const room = spendable - Math.min(fee, spendable / 2);
   if (!Number.isFinite(room) || room <= 0) return 0;
   return Math.floor(room * 100) / 100;
 }

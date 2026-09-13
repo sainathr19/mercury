@@ -83,9 +83,32 @@ describe('maxSendable leaves room for the fee', () => {
     expect(maxSendable(5, 0)).toBe(5);
   });
 
-  test('never offers a negative amount when the fee exceeds the balance', () => {
-    expect(maxSendable(0.5, 1)).toBe(0);
+  test('never offers a negative amount, and nothing on an empty balance', () => {
     expect(maxSendable(0, 1)).toBe(0);
+    expect(maxSendable(-1, 1)).toBe(0);
+  });
+
+  test('a remembered fee larger than the balance does not zero out Max', () => {
+    // The regression this replaces: `maxSendable(0.5, 1)` returned 0, so the
+    // button went dead with no explanation. The remembered 1.00 came from one
+    // earlier send; the real fee that day was 0.0035 and ~0.49 was sendable.
+    expect(maxSendable(0.5, 1)).toBe(0.25);
+    expect(maxSendable(0.5, 99)).toBe(0.25);
+  });
+
+  test('the reserve never takes more than half the balance', () => {
+    // Under-reserving stops at "Not enough spendable balance" before anything
+    // is signed; over-reserving silently strands the money. Bias to the first.
+    for (const [spendable, fee] of [[2, 5], [10, 40], [0.1, 3]] as const) {
+      expect(maxSendable(spendable, fee)).toBeCloseTo(Math.floor((spendable / 2) * 100) / 100, 6);
+    }
+  });
+
+  test('a plausible fee is still reserved in full', () => {
+    // The cap is a backstop, not the normal path: when the estimate is small
+    // relative to the balance it is taken off the top exactly as before.
+    expect(maxSendable(5, 1)).toBe(4);
+    expect(maxSendable(2.5, 0.0035)).toBe(2.49);
   });
 
   test('floors to cents so the figure can be typed back in', () => {
