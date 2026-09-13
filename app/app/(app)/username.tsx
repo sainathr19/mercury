@@ -41,6 +41,13 @@ export default function Username() {
   const theme = UnistylesRuntime.getTheme();
   const handle = useMercuryName((s) => s.name);
   const claimed = !!handle;
+  // The store keeps the FULL name (`diwakar.mercurywallet.eth`), while the card
+  // renders the label and the parent in two different weights — so the parent
+  // has to come off here. Without this the card read
+  // "diwakar.mercurywallet.eth.mercurywallet.eth".
+  const label = claimed && handle.endsWith(`.${PARENT}`)
+    ? handle.slice(0, -(PARENT.length + 1))
+    : handle;
 
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
@@ -67,7 +74,7 @@ export default function Username() {
           </View>
 
           <Text style={[styles.name, !claimed && styles.nameEmpty]} numberOfLines={2}>
-            {claimed ? handle : 'yourname'}
+            {claimed ? label : 'yourname'}
             <Text style={[styles.nameParent, !claimed && styles.nameEmpty]}>.{PARENT}</Text>
           </Text>
 

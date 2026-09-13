@@ -377,15 +377,24 @@ export default function Deposit() {
               <Icon name="chevronDown" size={16} color={theme.colors.muted} />
             </PressableScale>
 
-            <TextInput
-              style={styles.input}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0"
-              placeholderTextColor={theme.colors.faint}
-              keyboardType="decimal-pad"
-              editable={step === null}
-            />
+            {/* The zero is a <Text>, not the input's `placeholder` — see the
+                same treatment in gateway-send. iOS lays the placeholder label
+                out with its own metrics, so at 34pt Switzer it renders clipped
+                to its bottom arc on first mount. */}
+            <View style={styles.field}>
+              <TextInput
+                style={styles.input}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                editable={step === null}
+              />
+              {!amount && (
+                <View style={styles.fieldPlaceholder} pointerEvents="none">
+                  <Text style={styles.inputPlaceholder}>0</Text>
+                </View>
+              )}
+            </View>
             {overBalance && (
               <Text style={styles.warn}>
                 {gasIsUsdc(source!.chain) && !source!.swaps
@@ -564,12 +573,30 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.muted,
   },
 
+  field: { justifyContent: 'center' },
+  fieldPlaceholder: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   input: {
     fontFamily: fontFamily.bold,
     fontSize: 34,
     letterSpacing: -0.8,
     color: theme.colors.text,
     paddingVertical: 2,
+  },
+  // Same face and metrics as `input`, so the zero sits on the typed digits'
+  // baseline. The explicit lineHeight is what keeps the glyph off the clip.
+  inputPlaceholder: {
+    fontFamily: fontFamily.bold,
+    fontSize: 34,
+    lineHeight: 46,
+    letterSpacing: -0.8,
+    color: theme.colors.faint,
   },
 
   detail: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

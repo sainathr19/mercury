@@ -195,7 +195,7 @@ export function WalletDashboard() {
     { key: 'send', label: 'Send', icon: 'arrowUpRight', onPress: () => router.push('/(app)/send') },
     { key: 'receive', label: 'Receive', icon: 'arrowDownLeft', onPress: () => router.push('/(app)/receive') },
     { key: 'swap', label: 'Swap', icon: 'swap', accent: 'mint', onPress: () => router.push('/(app)/swaps') },
-    { key: 'scan', label: 'Scan a code', icon: 'scan', accent: 'lilac', onPress: () => pushOnce('/(app)/scan') },
+    { key: 'scan', label: 'Scan a code', icon: 'scan', accent: 'lilac', onPress: () => pushOnce('/(app)/scan?then=send') },
   ];
 
   return (

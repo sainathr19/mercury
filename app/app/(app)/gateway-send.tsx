@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,8 +8,9 @@ import { dismiss } from '../../src/lib/nav';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { HoldToConfirm, Icon, PressableScale, Text, useToast } from '../../src/ui';
 import { ChainBadge } from '../../src/components/ChainBadge';
-import { useScan, parseScanned } from '../../src/stores/scanStore';
-import { formatUsd } from '../../src/lib/format';
+import { useScan, parsePayment, parseScanned } from '../../src/stores/scanStore';
+import { useActivity } from '../../src/stores/activityStore';
+import { formatUnits, formatUsd } from '../../src/lib/format';
 import { fontFamily } from '../../src/theme/fonts';
 import { useSession } from '../../src/stores/session';
 import { useGateway } from '../../src/stores/gatewayStore';
@@ -71,6 +72,10 @@ export default function GatewaySend() {
    * silently became "$1.00" when they tapped Max to see what was left.
    */
   const [sentAmount, setSentAmount] = useState(0);
+  /** Frozen at submit: the form keeps mutating (balance refresh, cleared
+   *  fields), but a receipt has to keep saying what was actually paid. */
+  const [sentTo, setSentTo] = useState('');
+  const [sentChain, setSentChain] = useState('');
   const [fault, setFault] = useState<string | null>(null);
   const amountRef = useRef<TextInput>(null);
 
@@ -93,8 +98,7 @@ export default function GatewaySend() {
   const alreadyThere = !!dest && spendable > 0 && sendableToDest <= 0;
 
   const trimmedTo = to.trim();
-  const validAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedTo);
-  const ready = valid && !!dest && !!wallet && validAddress && !alreadyThere && value <= sendableToDest;
+  const typedAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedTo);
 
   // ── Deliverability ───────────────────────────────────────────────────────
   // Asked once, up front, purely so the default is a destination that can be
@@ -138,8 +142,20 @@ export default function GatewaySend() {
   // theirs, so the payer sees where the money is actually going before it moves.
   const isEns = isEnsName(trimmedTo);
   const [ensHandle, setEnsHandle] = useState<string | null>(null);
+  /** The address a name resolved to. The FIELD keeps showing the name — this is
+   *  what actually gets paid, and it is printed under the field so the payer
+   *  still sees where the money goes before it moves. */
+  const [ensAddr, setEnsAddr] = useState<string | null>(null);
   const [ensResolving, setEnsResolving] = useState(false);
   const [ensErr, setEnsErr] = useState<string | null>(null);
+
+  /** What actually gets paid: the typed address, or the address a name resolved
+   *  to. The field itself is never rewritten, so the payer keeps seeing the
+   *  name they meant to pay. */
+  const payTo = typedAddress ? trimmedTo : (isEns && ensHandle === trimmedTo.toLowerCase() ? ensAddr : null);
+  const validAddress = !!payTo;
+  const ready =
+    valid && !!dest && !!wallet && validAddress && !alreadyThere && value <= sendableToDest;
 
   useEffect(() => {
     if (!isEns) {
@@ -158,7 +174,7 @@ export default function GatewaySend() {
       setEnsResolving(false);
       if (r.status === 'ok' && r.records.evm) {
         setEnsHandle(trimmedTo.toLowerCase());
-        setTo(r.records.evm);
+        setEnsAddr(r.records.evm);
       } else if (r.status === 'unavailable') {
         // Could not CHECK is not the same as bad, and the difference matters
         // when someone is staring at their own name.
@@ -181,20 +197,47 @@ export default function GatewaySend() {
   /** Typing by hand detaches whatever name last filled this field. */
   const editTo = (next: string) => {
     setEnsHandle(null);
+    setEnsAddr(null);
     setEnsErr(null);
     setTo(next);
   };
 
   /** A scan lands back here through the shared scan store, the same way the
-   *  ordinary send flow picks one up. */
+   *  ordinary send flow picks one up.
+   *
+   *  A payment QR carries three things, and taking only the address would make
+   *  the payer retype the other two — worse, it would leave the DESTINATION on
+   *  whatever chain happened to be selected, which is how money lands on the
+   *  right address on the wrong network. The `@chainId` in the request is the
+   *  merchant saying where they want it; honour it. */
   const scanResult = useScan((s) => s.result);
   useEffect(() => {
     if (!scanResult) return;
+    const req = parsePayment(scanResult);
     setEnsHandle(null);
-    setTo(parseScanned(scanResult));
+    setEnsAddr(null);
+    setTo(req.address);
+
+    if (req.chainId != null) {
+      const asked = destinations.find((c) => Number(c.chainId) === req.chainId);
+      // Only follow the request to a destination this screen actually offers.
+      // Silently ignoring an unknown chain is right: the picker still shows what
+      // IS possible, rather than the screen refusing to open.
+      if (asked) setDest(asked);
+    }
+
+    // The request is denominated in the token's own decimals — 6 for USDC on
+    // every Circle domain, which is what Gateway moves.
+    if (req.amountBase && req.amountBaseKind === 'token') {
+      const human = formatUnits(req.amountBase, 6);
+      if (Number(human) > 0) setAmount(human);
+    } else if (req.amount && Number(req.amount) > 0) {
+      setAmount(req.amount);
+    }
+
     useScan.getState().consume();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, [scanResult]);
+  }, [scanResult, destinations]);
 
   async function pasteAddress() {
     tap();
@@ -204,6 +247,7 @@ export default function GatewaySend() {
       return;
     }
     setEnsHandle(null);
+    setEnsAddr(null);
     setTo(parseScanned(t));
   }
 
@@ -224,7 +268,7 @@ export default function GatewaySend() {
         address: addresses.eth,
         toChainId: dest.chainId,
         amount: value,
-        recipient: to.trim(),
+        recipient: payTo,
         env,
         // The user picks a destination, never a source. Hand over the balances
         // already on screen so the burn is drawn from domains that hold money.
@@ -232,10 +276,35 @@ export default function GatewaySend() {
       });
       setResult(r);
       setSentAmount(value);
+      setSentTo(ensHandle ?? trimmedTo);
+      setSentChain(dest.name);
       // Charged at the burn, so it is owed whether or not the relay delivered.
       if (r.feeUsdc) noteFee(r.feeUsdc);
       if (r.ok) {
         show(`Sent $${value.toFixed(2)} in ${((r.attestMs + r.relayMs) / 1000).toFixed(1)}s`, 'success');
+        // A Gateway send burns from the unified balance through Circle's API,
+        // so no transfer leaves this address on-chain for the scanner to find —
+        // the row only ever showed up in the Gateway page's own log. Record it
+        // in activity too, named by whoever was actually paid.
+        useActivity.getState().prepend({
+          id: r.txHash ?? `gateway-${r.transferId ?? Date.now()}`,
+          symbol: 'USDC',
+          coingeckoId: 'usd-coin',
+          colorHex: '#2775CA',
+          type: 'sent',
+          title: 'Sent instantly',
+          peerName: ensHandle ?? undefined,
+          label: `To ${ensHandle ?? `${payTo!.slice(0, 6)}…${payTo!.slice(-4)}`}`,
+          amountText: `-${value} USDC`,
+          usd: -value,
+          usdText: `-$${value.toFixed(2)}`,
+          timestamp: Math.floor(Date.now() / 1000),
+          status: 'confirmed',
+          explorerUrl: r.explorerUrl ?? '',
+          network: dest.name,
+          // ActivityItem persists as JSON, so the chain id is a number there.
+          chainId: Number(dest.chainId),
+        });
         // The contract keeps reporting this money for a few minutes; tell the
         // store so the balance drops now rather than after settlement.
         noteSent(value);
@@ -273,6 +342,75 @@ export default function GatewaySend() {
         </PressableScale>
       </View>
 
+      {/* ── Receipt ─────────────────────────────────────────────────────
+          A delivered send gets its own screen, not a green strip under a form
+          that still says "Hold to send". The money has moved; the next useful
+          act is reading what happened and leaving, so the form is replaced
+          rather than annotated. */}
+      {result?.ok ? (
+        <View style={styles.receiptWrap}>
+          <View style={styles.receiptTop}>
+            <View style={styles.receiptMark}>
+              <Icon name="checkCircle" size={34} color={theme.colors.success} />
+            </View>
+            <Text style={styles.receiptAmount}>{formatUsd(sentAmount)}</Text>
+            <Text style={styles.receiptTo} numberOfLines={2}>
+              {`to ${sentTo}`}
+            </Text>
+            <Text style={styles.receiptSub}>
+              {`Delivered on ${sentChain} in ${((result.attestMs + result.relayMs) / 1000).toFixed(1)}s`}
+            </Text>
+          </View>
+
+          <View style={styles.receiptRows}>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptKey}>Circle fee</Text>
+              <Text style={styles.receiptVal}>{formatUsd(result.feeUsdc ?? 0)}</Text>
+            </View>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptKey}>Left your balance</Text>
+              <Text style={styles.receiptVal}>{formatUsd(sentAmount + (result.feeUsdc ?? 0))}</Text>
+            </View>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptKey}>Attested</Text>
+              <Text style={styles.receiptVal}>{`${result.attestMs}ms`}</Text>
+            </View>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptKey}>Minted</Text>
+              <Text style={styles.receiptVal}>{`${result.relayMs}ms`}</Text>
+            </View>
+            {!!result.txHash && (
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptKey}>Transaction</Text>
+                <Text style={styles.receiptHash}>
+                  {`${result.txHash.slice(0, 10)}…${result.txHash.slice(-8)}`}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.receiptActions}>
+            {!!result.explorerUrl && (
+              <PressableScale
+                style={styles.receiptGhost}
+                onPress={() => {
+                  tap();
+                  Linking.openURL(result.explorerUrl!).catch(() => {
+                    show('No explorer for this network', 'error');
+                  });
+                }}
+              >
+                <Icon name="globe" size={14} color={theme.colors.text} />
+                <Text style={styles.receiptGhostLabel}>View on explorer</Text>
+              </PressableScale>
+            )}
+            <PressableScale style={styles.receiptDone} onPress={() => dismiss(router)}>
+              <Text style={styles.receiptDoneLabel}>Done</Text>
+            </PressableScale>
+          </View>
+        </View>
+      ) : (
+        <>
       <ScrollView
         style={styles.fill}
         contentContainerStyle={styles.content}
@@ -286,19 +424,38 @@ export default function GatewaySend() {
             as a form with a decorative total on top. */}
         <View style={styles.amountCard}>
           <Text style={styles.cardLabel}>You send</Text>
-          <Pressable style={styles.amountRow} onPress={() => amountRef.current?.focus()}>
+          {/* `accessible={false}`: this Pressable only forwards a tap to the
+              input, but as an accessibility element it swallowed the field
+              entirely — VoiceOver saw "$ 0" and no editable amount. Opting the
+              container out exposes the TextInput itself. */}
+          <Pressable
+            accessible={false}
+            style={styles.amountRow}
+            onPress={() => amountRef.current?.focus()}
+          >
             <Text style={[styles.amountGlyph, !amount && styles.amountEmpty]}>$</Text>
-            <TextInput
-              ref={amountRef}
-              value={amount}
-              onChangeText={(v) => {
-                if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v);
-              }}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              placeholderTextColor={theme.colors.faint}
-              style={styles.amountInput}
-            />
+            {/* The zero is a <Text>, NOT the input's `placeholder`. iOS lays the
+                placeholder label out with its own font metrics, which the
+                input's explicit height does not govern — so at 40pt Switzer it
+                renders clipped to its bottom arc on first mount. The "$" beside
+                it never clipped, because a Text with an explicit lineHeight
+                cannot; reusing that exact style for the zero is what fixes it. */}
+            <View style={styles.amountField}>
+              <TextInput
+                ref={amountRef}
+                value={amount}
+                onChangeText={(v) => {
+                  if (/^\d*\.?\d{0,6}$/.test(v)) setAmount(v);
+                }}
+                keyboardType="decimal-pad"
+                style={styles.amountInput}
+              />
+              {!amount && (
+                <View style={styles.amountPlaceholder} pointerEvents="none">
+                  <Text style={[styles.amountGlyph, styles.amountEmpty]}>0</Text>
+                </View>
+              )}
+            </View>
           </Pressable>
           <View style={styles.amountFoot}>
             <Text style={styles.available} numberOfLines={1}>
@@ -390,7 +547,11 @@ export default function GatewaySend() {
           ) : ensResolving ? (
             <Text style={styles.fieldHint}>Looking up {trimmedTo}…</Text>
           ) : ensHandle ? (
-            <Text style={styles.fieldHint}>{ensHandle} resolves to this address.</Text>
+            /* The field keeps the name, so the address it resolved to is shown
+               HERE — the payer still sees where the money actually goes. */
+            <Text style={styles.fieldHint}>
+              {`Pays ${ensAddr ? `${ensAddr.slice(0, 10)}…${ensAddr.slice(-8)}` : ''}`}
+            </Text>
           ) : (
             <Text style={styles.fieldHint}>
               The recipient receives spendable USDC — no bridge claim, no gas token needed.
@@ -420,20 +581,6 @@ export default function GatewaySend() {
         </View>
 
         {/* ── Outcome ────────────────────────────────────────────────────── */}
-        {result?.ok && (
-          <View style={[styles.outcome, styles.outcomeOk]}>
-            <Icon name="checkCircle" size={15} color={theme.colors.success} />
-            <View style={styles.outcomeMid}>
-              <Text style={[styles.outcomeTitle, { color: theme.colors.success }]}>Delivered</Text>
-              <Text style={styles.outcomeBody}>
-                {result.feeUsdc
-                  ? `${formatUsd(result.feeUsdc)} Circle fee — ${formatUsd(sentAmount + result.feeUsdc)} left your balance. ` +
-                    `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`
-                  : `Attested in ${result.attestMs}ms, minted in ${result.relayMs}ms.`}
-              </Text>
-            </View>
-          </View>
-        )}
         {result && !result.ok && result.unclaimed && (
           <View style={[styles.outcome, styles.outcomeWarn]}>
             <Icon name="clock" size={15} color={theme.colors.warning} />
@@ -473,6 +620,8 @@ export default function GatewaySend() {
           onConfirm={submit}
         />
       </View>
+        </>
+      )}
 
       {/* The sheet the "Deliver on" row opens.
           This was missing outright: `Modal` was imported and `picking` was set
@@ -615,6 +764,79 @@ const styles = StyleSheet.create((theme) => ({
   },
   miniLabel: { fontFamily: fontFamily.semibold, fontSize: 12, letterSpacing: -0.1, color: theme.colors.text },
 
+  // ── Receipt ───────────────────────────────────────────────────────────────
+  receiptWrap: { flex: 1, paddingHorizontal: theme.spacing.screen, paddingTop: 8, gap: 18 },
+  receiptTop: { alignItems: 'center', gap: 6, paddingTop: 28, paddingBottom: 4 },
+  receiptMark: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(52,199,89,0.12)',
+    marginBottom: 6,
+  },
+  receiptAmount: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 44,
+    lineHeight: 56,
+    letterSpacing: -1.6,
+    color: theme.colors.text,
+  },
+  receiptTo: {
+    fontFamily: fontFamily.monoRegular,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    color: theme.colors.text,
+  },
+  receiptSub: {
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    letterSpacing: -0.2,
+    textAlign: 'center',
+    color: theme.colors.muted,
+  },
+  receiptRows: {
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 11,
+  },
+  receiptKey: { fontFamily: fontFamily.medium, fontSize: 13.5, letterSpacing: -0.2, color: theme.colors.muted },
+  receiptVal: { fontFamily: fontFamily.semibold, fontSize: 13.5, letterSpacing: -0.2, color: theme.colors.text },
+  receiptHash: { fontFamily: fontFamily.monoRegular, fontSize: 12.5, color: theme.colors.text },
+  receiptActions: { marginTop: 'auto', gap: 10, paddingBottom: 4 },
+  receiptGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    height: 50,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.cardBackground,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  receiptGhostLabel: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.3, color: theme.colors.text },
+  receiptDone: {
+    height: 56,
+    borderRadius: theme.radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+  },
+  receiptDoneLabel: { fontFamily: fontFamily.semibold, fontSize: 16, letterSpacing: -0.3, color: theme.colors.primaryLabel },
+
   // ── Amount ────────────────────────────────────────────────────────────────
   amountCard: {
     paddingHorizontal: 14,
@@ -638,6 +860,17 @@ const styles = StyleSheet.create((theme) => ({
   // An explicit height: a 40pt TextInput with `padding: 0` in a centred row
   // gets an intrinsic box shorter than its own glyphs and clips their tops,
   // which is what cut the "0" in half.
+  amountField: { flex: 1, justifyContent: 'center' },
+  // Sits exactly over the input's text box so the zero and a typed digit share
+  // one baseline; `pointerEvents` none keeps the row's tap-to-focus working.
+  amountPlaceholder: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   amountInput: {
     flex: 1,
     height: 54,

@@ -251,16 +251,27 @@ export default function Swaps() {
             )}
           </View>
           <AssetRow asset={source} onPress={() => setPicking('source')} placeholder="Choose an asset" />
-          <TextInput
-            value={amount}
-            onChangeText={(v) => {
-              if (/^\d*\.?\d*$/.test(v)) setAmount(v);
-            }}
-            keyboardType="decimal-pad"
-            placeholder="0"
-            placeholderTextColor={theme.colors.faint}
-            style={styles.amountInput}
-          />
+          {/* The zero is a <Text>, not the input's `placeholder` — the same
+              defect fixed on send/deposit/withdraw and the Garden pane. iOS
+              lays the placeholder label out with its own metrics, which this
+              input's fixed height does not govern, so a large custom face
+              renders clipped. `amountOut` opposite carries the same size on a
+              Text and has never clipped. */}
+          <View style={styles.amountField}>
+            <TextInput
+              value={amount}
+              onChangeText={(v) => {
+                if (/^\d*\.?\d*$/.test(v)) setAmount(v);
+              }}
+              keyboardType="decimal-pad"
+              style={styles.amountInput}
+            />
+            {!amount && (
+              <View style={styles.amountPlaceholder} pointerEvents="none">
+                <Text style={[styles.amountOut, styles.amountOutEmpty]}>0</Text>
+              </View>
+            )}
+          </View>
           {overBalance ? (
             <Text style={styles.legError}>
               More than the {formatCrypto(held)} {source?.symbol} you hold
@@ -475,6 +486,15 @@ const styles = StyleSheet.create((theme) => ({
 
   // Explicit height: a large-font input with padding 0 gets an intrinsic box
   // shorter than its glyphs and clips the digits.
+  amountField: { justifyContent: 'center' },
+  amountPlaceholder: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   amountInput: {
     height: 44,
     padding: 0,

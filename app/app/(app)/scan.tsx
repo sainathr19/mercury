@@ -3,13 +3,24 @@ import { Pressable, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native-unistyles';
 import { Button, Icon, Text } from '../../src/ui';
-import { useScan } from '../../src/stores/scanStore';
+import { useScan, parsePayment } from '../../src/stores/scanStore';
+import { preferGateway } from '../../src/lib/scanResolve';
+import { usePortfolio } from '../../src/stores/portfolioStore';
 
 export default function Scan() {
   const router = useRouter();
+  // Where to go once a code is captured.
+  //
+  // Most callers (send, gateway send, asset) are already sitting on a screen
+  // that consumes the scan, so going BACK to them is right. The dashboard is
+  // not: it has no consumer, so a scan there would be parsed, stored, and
+  // silently dropped — the camera closes and nothing happens. Those callers
+  // pass `then=send`, and the scanner hands the result to the send flow, which
+  // resolves the asset from the QR and jumps straight to the right step.
+  const { then: dest } = useLocalSearchParams<{ then?: string }>();
   const setResult = useScan((s) => s.setResult);
   const [permission, requestPermission] = useCameraPermissions();
   // The camera fires onBarcodeScanned continuously; a ref guard blocks re-entry
@@ -24,7 +35,15 @@ export default function Scan() {
     // success/error notification once it knows if the QR matches the chain.
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setResult(value);
-    router.back();
+    if (dest !== 'send') {
+      router.back();
+      return;
+    }
+    // Which send can actually keep the promise for THIS request. A USDC ask on
+    // a chain we hold nothing on is not a dead end — it is what the unified
+    // Gateway balance exists for. See preferGateway.
+    const assets = usePortfolio.getState().assets;
+    router.replace(preferGateway(parsePayment(value), assets) ? '/(app)/gateway-send' : '/(app)/send');
   }
 
   return (

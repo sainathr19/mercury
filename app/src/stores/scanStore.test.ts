@@ -49,3 +49,24 @@ test('stealth meta-address is returned as-is (no scheme match)', () => {
   const meta = 'stealth1qqabc...';
   expect(parseScanned(meta)).toBe(meta);
 });
+
+it('carries the payee label and amount off a terminal QR', () => {
+  const p = parsePayment(
+    'ethereum:0x3600000000000000000000000000000000000000@5042002/transfer' +
+      '?address=0xRECIP&uint256=3000000&label=Starbucks',
+  );
+  expect(p.address).toBe('0xRECIP');
+  expect(p.chainId).toBe(5042002);
+  expect(p.token?.contract).toBe('0x3600000000000000000000000000000000000000');
+  expect(p.amountBase).toBe('3000000');
+  expect(p.amountBaseKind).toBe('token');
+  expect(p.label).toBe('Starbucks');
+});
+
+it('reads a label from a Solana Pay request too', () => {
+  expect(parsePayment('solana:SolRecip?amount=12.5&label=Corner%20Cafe').label).toBe('Corner Cafe');
+});
+
+it('has no label when the QR does not name one', () => {
+  expect(parsePayment('ethereum:0xRECIP@11155111?value=1500000000000000000').label).toBeUndefined();
+});

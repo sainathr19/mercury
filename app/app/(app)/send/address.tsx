@@ -5,7 +5,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { Icon, PressableScale, SheetNav, SheetNavButton, Text } from '../../../src/ui';
 import * as Clipboard from 'expo-clipboard';
-import { useScan, parseScanned } from '../../../src/stores/scanStore';
+import { useScan, parsePayment } from '../../../src/stores/scanStore';
 import { CryptoIcon } from '../../../src/components/CryptoIcon';
 import { ChainBadge, needsChainBadge } from '../../../src/components/ChainBadge';
 import { WalletIdenticon } from '../../../src/components/WalletIdenticon';
@@ -15,7 +15,7 @@ import { authClient } from '../../../src/bridge/auth';
 import { isEnsName, resolveEns } from '../../../src/bridge/ens';
 import { validateHandle } from '../../../src/bridge/username';
 import { validateAddr, chainOf, detectAddressChain, CHAIN_LABEL } from '../../../src/lib/sendHelpers';
-import { formatCrypto, relativeTime, shortenAddress } from '../../../src/lib/format';
+import { formatCrypto, formatUnits, relativeTime, shortenAddress } from '../../../src/lib/format';
 import { fontFamily } from '../../../src/theme/fonts';
 
 const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -115,8 +115,22 @@ export default function SendAddress() {
   const scanResult = useScan((s) => s.result);
   useEffect(() => {
     if (!scanResult) return;
-    const scanned = parseScanned(scanResult);
-    patch({ address: scanned });
+    const req = parsePayment(scanResult);
+    const scanned = req.address;
+
+    // A payment request carries more than an address: a terminal QR names the
+    // payee and the amount it is asking for. Carrying both across means the
+    // customer approves a filled-in payment instead of retyping one, and the
+    // screen can say WHO is being paid. The label is display only — the address
+    // is still the only thing that decides where the money goes.
+    const filled: Parameters<typeof patch>[0] = { address: scanned };
+    if (req.label) filled.recipientHandle = req.label;
+    if (req.amountBase && req.amountBaseKind === 'token' && asset) {
+      filled.amount = formatUnits(req.amountBase, asset.decimals);
+    } else if (req.amount) {
+      filled.amount = req.amount;
+    }
+    patch(filled);
     useScan.getState().consume();
     const s = scanned.trim();
     const ok = s.toLowerCase().startsWith('stealth1')
@@ -240,7 +254,7 @@ export default function SendAddress() {
     tap();
     const t = (await Clipboard.getStringAsync()).trim();
     if (!t) return;
-    patch({ address: parseScanned(t) });
+    patch({ address: parsePayment(t).address });
   }
 
   return (

@@ -5,7 +5,7 @@
 import type { PortfolioAsset } from '../bridge/portfolio';
 import type { ScannedPayment } from '../stores/scanStore';
 import { chainOf, detectAddressChain, validateAddr, trimNum } from './sendHelpers';
-import { chainById, tokenOnChain } from './chains';
+import { chainById, chainCircleDomain, tokenOnChain } from './chains';
 
 /** Whether a parsed payment is a "scan-to-pay": a plain chain address (not a
  *  stealth meta-address) we can resolve to an on-chain asset. Asset-independent,
@@ -97,4 +97,36 @@ export function resolveScanTarget(pay: ScannedPayment, assets: PortfolioAsset[])
   const addrOk = validateAddr(asset, addr);
   const dest: ScanDest = !addrOk ? 'address' : amount && Number(amount) > 0 ? 'confirm' : 'amount';
   return { asset, amount, dest };
+}
+
+/**
+ * Should this scan be paid out of the unified Gateway balance instead?
+ *
+ * The wallet's promise is that USDC spends on whatever chain the recipient
+ * asked for, whether or not you happen to hold anything there. The ordinary
+ * send flow cannot keep that promise: it spends an asset you HOLD on that
+ * chain, so a Base request from a wallet whose USDC was deposited elsewhere
+ * drops the payer into an asset picker with nothing to pick.
+ *
+ * Gateway is exactly the path that covers it — one balance, burnt toward any
+ * Circle domain. So a USDC request pinned to a Circle-domain chain, which the
+ * ordinary flow could not resolve to a held asset, belongs there.
+ *
+ * Deliberately the second choice, not the first: when the asset IS held on the
+ * requested chain, a plain transfer is cheaper, needs no relayer, and works
+ * with the hub down. Gateway is what rescues the case that would otherwise
+ * dead-end.
+ */
+export function preferGateway(pay: ScannedPayment | null, assets: PortfolioAsset[]): boolean {
+  if (!pay || !isScanToPay(pay)) return false;
+  const cid = pay.chainId;
+  const contract = pay.token?.contract;
+  if (cid == null || !contract) return false;
+
+  // Only USDC, and only on a chain Circle can actually mint into.
+  const def = chainById(BigInt(cid));
+  if (!def?.usdc || def.usdc.toLowerCase() !== contract.toLowerCase()) return false;
+  if (chainCircleDomain(BigInt(cid)) === undefined) return false;
+
+  return resolveScanTarget(pay, assets) === null;
 }

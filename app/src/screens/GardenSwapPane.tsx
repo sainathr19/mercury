@@ -336,15 +336,24 @@ export function GardenSwapPane() {
               </View>
               <Icon name="chevronDown" size={16} color={theme.colors.muted} />
             </PressableScale>
-            <TextInput
-              style={styles.input}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0"
-              placeholderTextColor={theme.colors.faint}
-              keyboardType="decimal-pad"
-              editable={!working}
-            />
+            {/* The zero is a <Text>, not the input's `placeholder`. `outFigure`
+                below carries the very same metrics on a Text and has never
+                clipped, while this input's placeholder rendered as a bare "U" —
+                iOS lays the placeholder label out with its own metrics. */}
+            <View style={styles.inputField}>
+              <TextInput
+                style={styles.input}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                editable={!working}
+              />
+              {!amount && (
+                <View style={styles.inputPlaceholderWrap} pointerEvents="none">
+                  <Text style={styles.inputPlaceholder}>0</Text>
+                </View>
+              )}
+            </View>
             {!!amountProblem && <Text style={styles.warn}>{amountProblem}</Text>}
           </View>
 
@@ -455,6 +464,16 @@ const styles = StyleSheet.create((theme) => ({
   assetSymbol: { fontFamily: fontFamily.semibold, fontSize: 15, letterSpacing: -0.24, color: theme.colors.text },
   assetChain: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: -0.14, color: theme.colors.muted },
 
+  inputField: { justifyContent: 'center' },
+  inputPlaceholderWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  inputPlaceholder: { fontFamily: fontFamily.bold, fontSize: 34, lineHeight: 46, letterSpacing: -0.8, color: theme.colors.faint },
   input: { fontFamily: fontFamily.bold, fontSize: 34, letterSpacing: -0.8, color: theme.colors.text, paddingVertical: 2 },
   outFigure: { fontFamily: fontFamily.bold, fontSize: 34, letterSpacing: -0.8, color: theme.colors.text, paddingVertical: 2 },
 

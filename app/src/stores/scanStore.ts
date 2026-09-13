@@ -42,7 +42,13 @@ export interface ScannedPayment {
   /** Chain implied by the URI scheme (`ethereum:`→eth, `bitcoin:`→btc,
    *  `solana:`→sol). Authoritative over address-byte guessing, which is
    *  ambiguous (a bech32 `tb1…` also matches the base58 Solana shape). */
-  chainHint?: 'btc' | 'eth' | 'sol';}
+  chainHint?: 'btc' | 'eth' | 'sol';
+  /** Who is being paid, in words — Solana Pay and BIP-21 both spell this
+   *  `label`, and a payment terminal is the case that needs it: a customer
+   *  approving a QR should read "Starbucks", not a 0x address they cannot
+   *  check. Display only. The ADDRESS remains the only thing that decides
+   *  where money goes, because anyone can write anything here. */
+  label?: string;}
 
 /** Manual query-string parse. Avoids depending on RN's partial URLSearchParams
  *  polyfill, and handles percent-encoding. */
@@ -112,6 +118,8 @@ export function parsePayment(raw: string): ScannedPayment {
 
   const out: ScannedPayment = { address: path.trim() };
   if (chainId != null) out.chainId = chainId;
+  const label = (query.label ?? query.message ?? '').trim();
+  if (label) out.label = label.slice(0, 40);
   const hint = scheme === 'ethereum' ? 'eth' : scheme === 'bitcoin' ? 'btc' : scheme === 'solana' ? 'sol' : undefined;
   if (hint) out.chainHint = hint;
 

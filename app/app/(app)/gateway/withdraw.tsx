@@ -266,15 +266,24 @@ export default function Withdraw() {
           <View style={styles.amountCard}>
             <View style={styles.amountRow}>
               <Text style={styles.currency}>$</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={amount}
-                onChangeText={setAmount}
-                placeholder="0.00"
-                placeholderTextColor={theme.colors.faint}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-              />
+              {/* The zero is a <Text>, not the input's `placeholder` — iOS lays
+                  the placeholder label out with its own metrics, so at 34pt
+                  Switzer it rendered clipped ("$U.UU"). The "$" beside it never
+                  clipped because a Text cannot. */}
+              <View style={styles.amountField}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  inputMode="decimal"
+                />
+                {!amount && (
+                  <View style={styles.amountPlaceholder} pointerEvents="none">
+                    <Text style={styles.amountHint}>0.00</Text>
+                  </View>
+                )}
+              </View>
               <PressableScale
                 style={styles.maxChip}
                 onPress={() => {
@@ -519,6 +528,23 @@ const styles = StyleSheet.create((theme) => ({
   },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   currency: { fontFamily: fontFamily.bold, fontSize: 30, letterSpacing: -1, color: theme.colors.faint },
+  amountField: { flex: 1, justifyContent: 'center' },
+  amountPlaceholder: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  // Same face and size as the input, so the hint sits on the typed baseline.
+  amountHint: {
+    fontFamily: fontFamily.bold,
+    fontSize: 34,
+    lineHeight: 46,
+    letterSpacing: -1.2,
+    color: theme.colors.faint,
+  },
   amountInput: {
     flex: 1,
     fontFamily: fontFamily.bold,

@@ -1,4 +1,4 @@
-import { isScanToPay, resolveScanTarget } from './scanResolve';
+import { isScanToPay, preferGateway, resolveScanTarget } from './scanResolve';
 import { parsePayment } from '../stores/scanStore';
 import type { PortfolioAsset } from '../bridge/portfolio';
 
@@ -82,4 +82,36 @@ test('requested token not held → null (caller shows chooser)', () => {
 test('native asset not held → null', () => {
   const pay = parsePayment(`bitcoin:${BTC_ADDR}?amount=0.01`);
   expect(resolveScanTarget(pay, [ETH, USDC_EVM])).toBeNull(); // BTC not in this wallet
+});
+
+describe('preferGateway', () => {
+  const usdcOn = (chainId: number, usdc: string) => ({
+    address: '0xdE9A40f17aC209B4e65933d1C8703125EA35F3f1',
+    chainId,
+    chainHint: 'eth' as const,
+    token: { contract: usdc },
+    amountBase: '3000000',
+    amountBaseKind: 'token' as const,
+  });
+
+  it('sends a USDC request we cannot cover locally to Gateway', () => {
+    // Base Sepolia USDC, wallet holds nothing there.
+    const pay = usdcOn(84532, '0x036CbD53842c5426634e7929541eC2318f3dCF7e');
+    expect(preferGateway(pay, [])).toBe(true);
+  });
+
+  it('leaves a non-Circle chain alone', () => {
+    const pay = usdcOn(1337, '0x036CbD53842c5426634e7929541eC2318f3dCF7e');
+    expect(preferGateway(pay, [])).toBe(false);
+  });
+
+  it('leaves a non-USDC token alone', () => {
+    // EURC on Arc is a real token, but not something Gateway moves.
+    const pay = usdcOn(5042002, '0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a');
+    expect(preferGateway(pay, [])).toBe(false);
+  });
+
+  it('is false when nothing was scanned', () => {
+    expect(preferGateway(null, [])).toBe(false);
+  });
 });
