@@ -19,6 +19,7 @@ import { getActiveAccount } from '../../src/bridge/account';
 import { circleChainsForEnvironment, type ChainDef } from '../../src/lib/chains';
 import { maxSendable } from '../../src/lib/gatewayHub';
 import { isEnsName, resolveEns } from '../../src/bridge/ens';
+import { deliverableDomains, type DeliverableDomains } from '../../src/bridge/relayer';
 
 /**
  * Send from the Circle Gateway unified balance.
@@ -47,6 +48,18 @@ export default function GatewaySend() {
   const [amount, setAmount] = useState('');
   const [to, setTo] = useState('');
   const [dest, setDest] = useState<ChainDef | null>(destinations[0] ?? null);
+  /**
+   * Which destinations the relayer can actually pay out on.
+   *
+   * Null until the hub answers. The default destination used to be
+   * `destinations[0]` — registry order, which put Sei Atlantic first, a chain
+   * the relayer had no gas on. The screen let you fill in an amount and a
+   * recipient and only refused at the hold.
+   */
+  const [delivery, setDelivery] = useState<DeliverableDomains | null>(null);
+  /** Cleared once the user picks for themselves, so a late answer cannot move
+   *  the destination out from under them. */
+  const destTouched = useRef(false);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -82,6 +95,37 @@ export default function GatewaySend() {
   const trimmedTo = to.trim();
   const validAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedTo);
   const ready = valid && !!dest && !!wallet && validAddress && !alreadyThere && value <= sendableToDest;
+
+  // ── Deliverability ───────────────────────────────────────────────────────
+  // Asked once, up front, purely so the default is a destination that can be
+  // paid. The authoritative refusal still happens in `gatewaySend` before the
+  // burn — this only avoids walking the user to the end of a closed road.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const d = await deliverableDomains(env);
+      if (!live || !d.answered) return;
+      setDelivery(d);
+      if (destTouched.current) return;
+      const usable = (c: ChainDef) =>
+        c.circleDomain !== undefined &&
+        (d.ready.has(c.circleDomain) || d.unverified.has(c.circleDomain));
+      // Only move off the default if it is actually unusable; a hub that lists
+      // nothing leaves the picker exactly as it was.
+      setDest((cur) => (cur && usable(cur) ? cur : destinations.find(usable) ?? cur));
+    })();
+    return () => {
+      live = false;
+    };
+    // `destinations` is derived from `env` and stable for a given environment.
+  }, [env]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** True when we know the relayer cannot pay out on this chain right now. */
+  const undeliverable = (c: ChainDef): boolean =>
+    !!delivery &&
+    c.circleDomain !== undefined &&
+    !delivery.ready.has(c.circleDomain) &&
+    !delivery.unverified.has(c.circleDomain);
 
   // ── ENS ──────────────────────────────────────────────────────────────────
   // The wallet issues `name.mercurywallet.eth` and tells people to get paid at
@@ -457,6 +501,11 @@ export default function GatewaySend() {
           <ScrollView contentContainerStyle={styles.pickBody} showsVerticalScrollIndicator={false}>
             {destinations.map((c, i) => {
               const on = dest?.chainId === c.chainId;
+              // Still selectable: the hub can refuel between now and the hold,
+              // and the real refusal is made there with the money still safe.
+              // Greying it says why before the amount is typed, rather than
+              // after — it does not take the choice away.
+              const out = undeliverable(c);
               return (
                 <Pressable
                   key={c.chainId.toString()}
@@ -467,14 +516,19 @@ export default function GatewaySend() {
                   ]}
                   onPress={() => {
                     tap();
+                    destTouched.current = true;
                     setDest(c);
                     setPicking(false);
                   }}
                 >
-                  <ChainBadge chainId={Number(c.chainId)} size={26} />
+                  <View style={out && styles.pickDim}>
+                    <ChainBadge chainId={Number(c.chainId)} size={26} />
+                  </View>
                   <View style={styles.selectMid}>
-                    <Text style={styles.selectValue}>{c.name}</Text>
-                    <Text style={styles.selectSub}>Chain {c.chainId.toString()}</Text>
+                    <Text style={[styles.selectValue, out && styles.pickDimText]}>{c.name}</Text>
+                    <Text style={styles.selectSub}>
+                      {out ? 'Delivery unavailable — out of gas' : `Chain ${c.chainId.toString()}`}
+                    </Text>
                   </View>
                   {on && <Icon name="check" size={16} color={theme.colors.text} />}
                 </Pressable>
@@ -676,5 +730,10 @@ const styles = StyleSheet.create((theme) => ({
   pickBody: { paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.lg },
   pickRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12 },
   pickPressed: { backgroundColor: 'rgba(11,13,16,0.03)' },
+  /** A destination the relayer cannot pay out on right now. Dimmed, not
+   *  removed — the hub can refuel, and the binding refusal is made at the
+   *  hold, where the money is still safe. */
+  pickDim: { opacity: 0.4 },
+  pickDimText: { color: theme.colors.muted },
   divider: { borderTopWidth: 1, borderTopColor: theme.colors.separator },
 }));

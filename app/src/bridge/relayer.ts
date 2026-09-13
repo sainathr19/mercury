@@ -167,3 +167,52 @@ export async function relayMint(
     clearTimeout(deadline);
   }
 }
+
+/** Which destinations can be delivered to right now, asked once for all of them. */
+export interface DeliverableDomains {
+  /** Domains the relayer is funded for. Empty when the hub could not answer. */
+  ready: Set<number>;
+  /** Domains the hub serves but whose funding it does not publish — an older
+   *  hub. Treated as usable, the bar the app applied before it published any. */
+  unverified: Set<number>;
+  /** False when the hub could not be reached or is not configured. Callers
+   *  must not read an empty `ready` as "nothing is deliverable" without it. */
+  answered: boolean;
+}
+
+/**
+ * The same question as `deliveryStatus`, for every destination at once.
+ *
+ * The send screen needs this before the user has chosen anything, so that the
+ * default destination is one that can actually be paid. It used to be
+ * `destinations[0]` — which is registry order, not readiness, and landed on Sei
+ * Atlantic: a chain the relayer had no gas on. The screen offered it, the user
+ * could fill in an amount and a recipient, and only the hold at the very end
+ * refused. Safe, because the check happens before the burn, but it walks
+ * someone all the way to the end of a road that was closed at the start.
+ *
+ * Fails OPEN, unlike `deliveryStatus`. This only picks a default and annotates
+ * a list; the authoritative refusal still happens before the burn, so an
+ * unreachable hub here should leave the picker as it was rather than blank it.
+ */
+export async function deliverableDomains(env: ChainEnvironment): Promise<DeliverableDomains> {
+  const empty: DeliverableDomains = { ready: new Set(), unverified: new Set(), answered: false };
+  if (!RELAYER_URL) return empty;
+  try {
+    const res = await fetch(`${RELAYER_URL}/gateway/domains?environment=${env}`);
+    if (!res.ok) return empty;
+    const json = (await res.json()) as DomainsResponse;
+    if (json.relayerConfigured === false) return empty;
+    const ready = new Set<number>();
+    const unverified = new Set<number>();
+    for (const d of json.domains ?? []) {
+      if (d.ready === true) ready.add(d.domain);
+      // `null`/absent is an older hub that does not publish funding, not a
+      // refusal — see `unverified` on DeliveryStatus.
+      else if (d.ready === null || d.ready === undefined) unverified.add(d.domain);
+    }
+    return { ready, unverified, answered: true };
+  } catch {
+    return empty;
+  }
+}
